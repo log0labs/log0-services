@@ -10,7 +10,7 @@ public class RequestHeaderExtractor {
     public static String getRequiredHeader(HttpServletRequest request, String headerName) {
         String value = request.getHeader(headerName);
 
-        if(value == null || value.isEmpty()) {
+        if (value == null || value.isEmpty()) {
             throw new IllegalArgumentException("Missing required header: " + headerName);
         }
 

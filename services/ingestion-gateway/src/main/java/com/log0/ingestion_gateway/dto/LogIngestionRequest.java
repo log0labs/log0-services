@@ -1,10 +1,10 @@
 package com.log0.ingestion_gateway.dto;
 
+import java.time.Instant;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-
-import java.time.Instant;
 
 public class LogIngestionRequest {
     @NotNull

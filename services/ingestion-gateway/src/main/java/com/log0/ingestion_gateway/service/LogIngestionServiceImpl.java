@@ -1,45 +1,37 @@
 package com.log0.ingestion_gateway.service;
 
-import com.log0.ingestion_gateway.dto.LogIngestionRequest;
-import com.log0.ingestion_gateway.dto.RawLogEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Instant;
 import java.util.UUID;
 
+import org.springframework.stereotype.Service;
+
+import com.log0.ingestion_gateway.context.RequestContext;
+import com.log0.ingestion_gateway.dto.LogIngestionRequest;
+import com.log0.ingestion_gateway.dto.RawLogEvent;
+import com.log0.ingestion_gateway.kafka.producer.RawLogProducer;
+
+@Service
 public class LogIngestionServiceImpl implements LogIngestionService {
-    private static final Logger logger = LoggerFactory.getLogger(LogIngestionServiceImpl.class);
+    private final RawLogProducer rawLogProducer;
+
+    public LogIngestionServiceImpl(RawLogProducer rawLogProducer) {
+        this.rawLogProducer = rawLogProducer;
+    }
 
     @Override
-    public void ingest(
-            String tenantId,
-            String serviceName,
-            String environment,
-            String apiKey,
-            LogIngestionRequest request
-    ) {
-        RawLogEvent event = new RawLogEvent();
-        event.setEventId(UUID.randomUUID().toString());
-        event.setTenantId(tenantId);
-        event.setServiceName(serviceName);
-        event.setEnvironment(environment);
+    public void ingest(LogIngestionRequest request, RequestContext context) {
+        RawLogEvent event = RawLogEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .tenantId(context.getTenantId())
+                .serviceName(context.getServiceName())
+                .environment(context.getEnvironment())
+                .receivedAt(Instant.now())
+                .logTimestamp(request.getTimestamp())
+                .level(request.getLevel())
+                .message(request.getMessage())
+                .trace(request.getTrace())
+                .build();
 
-        event.setReceivedAt(Instant.now());
-        event.setLogTimestamp(request.getTimestamp());
-
-        event.setLevel(request.getLevel());
-        event.setMessage(request.getMessage());
-        event.setTrace(request.getTrace());
-
-        // Temporary: log instead of publishing to Kafka
-        logger.info(
-                "Ingested log event [eventId={}, tenant={}, service={}, env={}, level={}]",
-                event.getEventId(),
-                tenantId,
-                serviceName,
-                environment,
-                event.getLevel()
-        );
+        rawLogProducer.publish(event);
     }
 }
