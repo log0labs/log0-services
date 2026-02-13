@@ -1,4 +1,4 @@
-package com.log0.normalisation_service.dto;
+package com.log0.normalization_service.dto;
 
 import lombok.Data;
 

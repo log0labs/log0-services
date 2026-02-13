@@ -1,6 +1,6 @@
-package com.log0.normalisation_service.kafka.config;
+package com.log0.normalization_service.kafka.config;
 
-import com.log0.normalisation_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.context.annotation.Bean;
@@ -20,7 +20,7 @@ public class KafkaProducerConfig {
         Map<String, Object> config = new HashMap<>();
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, com.log0.normalisation_service.kafka.serializer.NormalizedLogEventSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, com.log0.normalization_service.kafka.serializer.NormalizedLogEventSerializer.class);
 
         return new DefaultKafkaProducerFactory<>(config);
     }

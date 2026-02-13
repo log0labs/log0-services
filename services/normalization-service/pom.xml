@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>om.log0</groupId>
-	<artifactId>normalisation-service</artifactId>
+	<artifactId>normalization-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>normalisation-service</name>
-	<description>Normalisation Service for log0 </description>
+	<name>normalization-service</name>
+	<description>Normalization Service for log0 </description>
 	<url/>
 	<licenses>
 		<license/>

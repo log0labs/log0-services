@@ -1,7 +1,7 @@
-package com.log0.normalisation_service.processor;
+package com.log0.normalization_service.processor;
 
-import com.log0.normalisation_service.dto.NormalizedLogEvent;
-import com.log0.normalisation_service.dto.RawLogEvent;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.dto.RawLogEvent;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;

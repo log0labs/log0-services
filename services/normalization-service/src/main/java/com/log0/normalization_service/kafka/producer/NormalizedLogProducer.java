@@ -1,7 +1,7 @@
-package com.log0.normalisation_service.kafka.producer;
+package com.log0.normalization_service.kafka.producer;
 
-import com.log0.normalisation_service.dto.NormalizedLogEvent;
-import com.log0.normalisation_service.kafka.KafkaTopics;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.kafka.KafkaTopics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;

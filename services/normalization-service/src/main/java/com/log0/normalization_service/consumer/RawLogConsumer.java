@@ -1,11 +1,11 @@
-package com.log0.normalisation_service.consumer;
+package com.log0.normalization_service.consumer;
 
-import com.log0.normalisation_service.dto.NormalizedLogEvent;
-import com.log0.normalisation_service.kafka.producer.NormalizedLogProducer;
-import com.log0.normalisation_service.processor.LogNormalizer;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.kafka.producer.NormalizedLogProducer;
+import com.log0.normalization_service.processor.LogNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import com.log0.normalisation_service.dto.RawLogEvent;
+import com.log0.normalization_service.dto.RawLogEvent;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
@@ -26,7 +26,7 @@ public class RawLogConsumer {
     )
     public void consume(RawLogEvent event, Acknowledgment ack) {
         try {
-            NormalizedLogEvent normalized = normalizer.normalize(event)
+            NormalizedLogEvent normalized = normalizer.normalize(event);
 
             producer.publish(normalized);
 

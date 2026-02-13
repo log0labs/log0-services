@@ -1,4 +1,4 @@
-package com.log0.normalisation_service.kafka.config;
+package com.log0.normalization_service.kafka.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -1,4 +1,4 @@
-package com.log0.normalisation_service.kafka;
+package com.log0.normalization_service.kafka;
 
 public class KafkaTopics {
     private KafkaTopics() {}

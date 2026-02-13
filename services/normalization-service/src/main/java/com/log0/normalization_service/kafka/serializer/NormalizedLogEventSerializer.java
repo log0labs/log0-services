@@ -1,8 +1,8 @@
-package com.log0.normalisation_service.kafka.serializer;
+package com.log0.normalization_service.kafka.serializer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.log0.normalisation_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
 import org.apache.kafka.common.serialization.Serializer;
 
 import java.util.Map;
