@@ -1,5 +1,7 @@
 package com.log0.normalization_service.consumer;
 
+import com.log0.normalization_service.dlq.DlqEvent;
+import com.log0.normalization_service.dlq.DlqProducer;
 import com.log0.normalization_service.dto.NormalizedLogEvent;
 import com.log0.normalization_service.kafka.producer.NormalizedLogProducer;
 import com.log0.normalization_service.processor.LogNormalizer;
@@ -10,6 +12,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.Map;
 
 @Slf4j
@@ -19,6 +22,7 @@ public class RawLogConsumer {
 
     private final LogNormalizer normalizer;
     private final NormalizedLogProducer producer;
+    private final DlqProducer dlqProducer;
 
     @KafkaListener(
             topics = "raw-logs",
@@ -33,6 +37,17 @@ public class RawLogConsumer {
             ack.acknowledge();
         } catch (Exception e) {
             log.error("Error processing raw log message: {}", e.getMessage(), e);
+
+            DlqEvent dlqEvent = DlqEvent.builder()
+                    .originalEvent(event)
+                    .errorMessage(e.getMessage())
+                    .failedAt("normalization-service")
+                    .failedAtTs(Instant.now())
+                    .build();
+
+            dlqProducer.publish(event.getEventId(), dlqEvent);
+
+            ack.acknowledge();
         }
     }
 }
