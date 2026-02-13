@@ -2,6 +2,7 @@ package com.log0.normalisation_service.consumer;
 
 import com.log0.normalisation_service.dto.NormalizedLogEvent;
 import com.log0.normalisation_service.kafka.producer.NormalizedLogProducer;
+import com.log0.normalisation_service.processor.LogNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.log0.normalisation_service.dto.RawLogEvent;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RawLogConsumer {
 
+    private final LogNormalizer normalizer;
     private final NormalizedLogProducer producer;
 
     @KafkaListener(
@@ -24,20 +26,11 @@ public class RawLogConsumer {
     )
     public void consume(RawLogEvent event, Acknowledgment ack) {
         try {
-            NormalizedLogEvent normalized = NormalizedLogEvent.builder()
-                    .eventId(event.getEventId())
-                    .tenantId(event.getTenantId())
-                    .serviceName(event.getServiceName())
-                    .environment(event.getEnvironment())
-                    .timestamp(event.getLogTimestamp())
-                    .level(event.getLevel())
-                    .message(event.getMessage())
-                    .attributes(Map.of()) // Placeholder for future attribute extraction logic
-                    .traceId(event.getTrace())
-                    .schemaVersion("v1")
-                    .build();
+            NormalizedLogEvent normalized = normalizer.normalize(event)
 
             producer.publish(normalized);
+
+            ack.acknowledge();
         } catch (Exception e) {
             log.error("Error processing raw log message: {}", e.getMessage(), e);
         }
