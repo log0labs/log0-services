@@ -1,10 +1,10 @@
-package com.log0.normalisation_service;
+package com.log0.normalization_service;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class NormalisationServiceApplicationTests {
+class NormalizationServiceApplicationTests {
 
 	@Test
 	void contextLoads() {
