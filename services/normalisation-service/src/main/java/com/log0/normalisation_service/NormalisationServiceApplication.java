@@ -1,4 +1,4 @@
-package om.log0.normalisation_service;
+package com.log0.normalisation_service;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
