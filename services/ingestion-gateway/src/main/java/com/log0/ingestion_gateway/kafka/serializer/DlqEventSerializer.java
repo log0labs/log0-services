@@ -1,4 +1,4 @@
-package com.log0.normalization_service.kafka.serializer;
+package com.log0.ingestion_gateway.kafka.serializer;
 
 import java.util.Map;
 
@@ -7,7 +7,7 @@ import org.apache.kafka.common.serialization.Serializer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.log0.normalization_service.dlq.DlqEvent;
+import com.log0.ingestion_gateway.dlq.DlqEvent;
 
 public class DlqEventSerializer implements Serializer<DlqEvent> {
     private final ObjectMapper objectMapper = JsonMapper.builder()
@@ -22,13 +22,13 @@ public class DlqEventSerializer implements Serializer<DlqEvent> {
     @Override
     public byte[] serialize(String topic, DlqEvent data) {
         if (data == null) {
-            return new byte[0];
+            return null;
         }
 
         try {
             return objectMapper.writeValueAsBytes(data);
         } catch (Exception e) {
-            throw new SerializationException("Error serializing DlqEvent", e);
+            throw new SerializationException("Failed to serialize DlqEvent", e);
         }
     }
 

@@ -1,12 +1,13 @@
 package com.log0.normalization_service.processor;
 
-import com.log0.normalization_service.dto.NormalizedLogEvent;
-import com.log0.normalization_service.dto.RawLogEvent;
-import org.springframework.stereotype.Component;
-
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.springframework.stereotype.Component;
+
+import com.log0.normalization_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.dto.RawLogEvent;
 
 @Component
 public class LogNormalizer {
@@ -29,12 +30,13 @@ public class LogNormalizer {
         return raw.getLogTimestamp() != null
                 ? raw.getLogTimestamp()
                 : raw.getReceivedAt() != null
-                    ? raw.getReceivedAt()
-                    : Instant.now();
+                        ? raw.getReceivedAt()
+                        : Instant.now();
     }
 
     private String normalizeLevel(String level) {
-        if(level == null) return "INFO";
+        if (level == null)
+            return "INFO";
         return level.trim().toUpperCase();
     }
 

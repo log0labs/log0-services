@@ -1,19 +1,20 @@
 package com.log0.normalization_service.consumer;
 
-import com.log0.normalization_service.dlq.DlqEvent;
-import com.log0.normalization_service.dlq.DlqProducer;
-import com.log0.normalization_service.dto.NormalizedLogEvent;
-import com.log0.normalization_service.kafka.producer.NormalizedLogProducer;
-import com.log0.normalization_service.processor.LogNormalizer;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import com.log0.normalization_service.dto.RawLogEvent;
+import java.time.Instant;
+
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
-import java.util.Map;
+import com.log0.normalization_service.dlq.DlqEvent;
+import com.log0.normalization_service.dlq.DlqProducer;
+import com.log0.normalization_service.dto.NormalizedLogEvent;
+import com.log0.normalization_service.dto.RawLogEvent;
+import com.log0.normalization_service.kafka.producer.NormalizedLogProducer;
+import com.log0.normalization_service.processor.LogNormalizer;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -24,10 +25,7 @@ public class RawLogConsumer {
     private final NormalizedLogProducer producer;
     private final DlqProducer dlqProducer;
 
-    @KafkaListener(
-            topics = "raw-logs",
-            containerFactory = "kafkaListenerContainerFactory"
-    )
+    @KafkaListener(topics = "raw-logs", containerFactory = "kafkaListenerContainerFactory")
     public void consume(RawLogEvent event, Acknowledgment ack) {
         try {
             NormalizedLogEvent normalized = normalizer.normalize(event);

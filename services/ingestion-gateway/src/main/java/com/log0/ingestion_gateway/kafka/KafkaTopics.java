@@ -5,4 +5,5 @@ public final class KafkaTopics {
     }
 
     public static final String RAW_LOGS = "raw-logs";
+    public static final String RAW_LOGS_DLQ = "raw-logs-dlq";
 }
