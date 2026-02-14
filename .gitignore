@@ -12,3 +12,6 @@ target/
 
 # Env
 .env
+
+# Local docs, references, and generated files
+refs/
