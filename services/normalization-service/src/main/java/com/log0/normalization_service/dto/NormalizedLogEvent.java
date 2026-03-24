@@ -1,10 +1,10 @@
 package com.log0.normalization_service.dto;
 
-import lombok.Builder;
-import lombok.Getter;
-
 import java.time.Instant;
 import java.util.Map;
+
+import lombok.Builder;
+import lombok.Getter;
 
 @Getter
 @Builder
@@ -19,6 +19,8 @@ public class NormalizedLogEvent {
 
     private final String level;
     private final String message;
+    private final String messageTemplate;
+    private final String fingerprint;
 
     private final Map<String, Object> attributes;
 
