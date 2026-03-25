@@ -25,6 +25,13 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
                 com.log0.normalization_service.kafka.serializer.NormalizedLogEventSerializer.class);
 
+        // Reliability settings
+        config.put(ProducerConfig.ACKS_CONFIG, "all");
+        config.put(ProducerConfig.RETRIES_CONFIG, 3);
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        config.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, 5);
+
         return new DefaultKafkaProducerFactory<>(config);
     }
 
@@ -40,6 +47,11 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
                 com.log0.normalization_service.kafka.serializer.DlqEventSerializer.class);
+
+        // Reliability settings for DLQ
+        config.put(ProducerConfig.ACKS_CONFIG, "all");
+        config.put(ProducerConfig.RETRIES_CONFIG, 3);
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
         return new DefaultKafkaProducerFactory<>(config);
     }
