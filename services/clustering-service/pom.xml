@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.log0</groupId>
-    <artifactId>normalization-service</artifactId>
+    <artifactId>clustering-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>normalization-service</name>
-    <description>Normalization Service for log0 </description>
+    <name>clustering-service</name>                                                                                                                                      
+    <description>Clustering Service for log0</description>
     <url/>
     <licenses>
         <license/>
