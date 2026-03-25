@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: clustering-service
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    consumer:
+      group-id: clustering-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: com.log0.clustering_service.kafka.deserializer.NormalizedLogEventDeserializer
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+clustering:
+  occurrence-threshold: 10
+  window-duration-minutes: 5
+  max-top-messages: 10

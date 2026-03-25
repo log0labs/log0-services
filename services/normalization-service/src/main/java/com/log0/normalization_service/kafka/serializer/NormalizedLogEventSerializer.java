@@ -1,11 +1,13 @@
 package com.log0.normalization_service.kafka.serializer;
 
+import java.util.Map;
+
+import org.apache.kafka.common.serialization.Serializer;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.log0.normalization_service.dto.NormalizedLogEvent;
-import org.apache.kafka.common.serialization.Serializer;
-
-import java.util.Map;
 
 public class NormalizedLogEventSerializer implements Serializer<NormalizedLogEvent> {
     private final ObjectMapper objectMapper = JsonMapper.builder()
@@ -25,7 +27,7 @@ public class NormalizedLogEventSerializer implements Serializer<NormalizedLogEve
 
         try {
             return objectMapper.writeValueAsBytes(data);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize NormalizedLogEvent", e);
         }
     }

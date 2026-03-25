@@ -6,7 +6,7 @@ spring:
     bootstrap-servers: localhost:9092
 
     consumer:
-      group-id: normalisation-service
+      group-id: normalization-service
       auto-offset-reset: earliest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
