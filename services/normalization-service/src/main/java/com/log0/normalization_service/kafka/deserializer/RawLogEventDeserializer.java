@@ -1,5 +1,6 @@
 package com.log0.normalization_service.kafka.deserializer;
 
+import java.io.IOException;
 import java.util.Map;
 
 import org.apache.kafka.common.errors.SerializationException;
@@ -27,7 +28,7 @@ public class RawLogEventDeserializer implements Deserializer<RawLogEvent> {
 
         try {
             return objectMapper.readValue(data, RawLogEvent.class);
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new SerializationException("Failed to deserialize RawLogEvent", e);
         }
     }

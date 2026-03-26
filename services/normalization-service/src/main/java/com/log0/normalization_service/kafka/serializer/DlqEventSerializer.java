@@ -5,6 +5,7 @@ import java.util.Map;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Serializer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.log0.normalization_service.dlq.DlqEvent;
@@ -27,7 +28,7 @@ public class DlqEventSerializer implements Serializer<DlqEvent> {
 
         try {
             return objectMapper.writeValueAsBytes(data);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw new SerializationException("Error serializing DlqEvent", e);
         }
     }

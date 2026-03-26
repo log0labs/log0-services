@@ -7,6 +7,7 @@ import org.apache.kafka.common.serialization.Serializer;
 
 import com.log0.ingestion_gateway.dto.RawLogEvent;
 
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -29,7 +30,7 @@ public class RawLogEventSerializer implements Serializer<RawLogEvent> {
 
         try {
             return objectMapper.writeValueAsBytes(data);
-        } catch (Exception e) {
+        } catch (JacksonException e) {
             throw new SerializationException("Failed to serialize RawLogEvent", e);
         }
     }
