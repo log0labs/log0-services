@@ -31,7 +31,7 @@ services:
     container_name: log0-kafka-setup
     depends_on:
       - kafka
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: [ "/bin/sh", "-c" ]
     command: |
       "
       echo 'Waiting for Kafka to be ready...'
@@ -45,3 +45,18 @@ services:
       echo 'All topics created.'
       "
     restart: on-failure
+
+  postgres:
+    image: postgres:16
+    container_name: log0-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: log0
+      POSTGRES_USER: log0
+      POSTGRES_PASSWORD: log0
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
