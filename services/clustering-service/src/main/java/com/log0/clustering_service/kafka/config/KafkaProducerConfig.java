@@ -11,6 +11,7 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 
+import com.log0.clustering_service.dlq.DlqEvent;
 import com.log0.clustering_service.dto.IncidentEvent;
 
 @Configuration
@@ -34,5 +35,23 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, IncidentEvent> incidentEventKafkaTemplate() {
         return new KafkaTemplate<>(incidentEventProducerFactory());
+    }
+
+    @Bean
+    public ProducerFactory<String, DlqEvent> dlqProducerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+                com.log0.clustering_service.kafka.serializer.DlqEventSerializer.class);
+        config.put(ProducerConfig.ACKS_CONFIG, "all");
+        config.put(ProducerConfig.RETRIES_CONFIG, 3);
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+
+    @Bean
+    public KafkaTemplate<String, DlqEvent> dlqKafkaTemplate() {
+        return new KafkaTemplate<>(dlqProducerFactory());
     }
 }
