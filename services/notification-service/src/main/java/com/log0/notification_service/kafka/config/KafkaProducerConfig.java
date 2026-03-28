@@ -15,6 +15,11 @@ import org.springframework.kafka.core.ProducerFactory;
 import com.log0.notification_service.dto.DlqEvent;
 import com.log0.notification_service.kafka.serializer.DlqEventSerializer;
 
+/**
+ * Configures the Kafka producer used to publish failed events to the dead-letter queue.
+ * Produces to the {@code notification-events-dlq} topic with idempotent delivery
+ * ({@code acks=all}, {@code retries=3}) to prevent duplicate DLQ entries on transient broker errors.
+ */
 @Configuration
 public class KafkaProducerConfig {
 

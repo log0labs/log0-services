@@ -7,6 +7,11 @@ import com.log0.clustering_service.dto.IncidentEvent;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Publishes {@link IncidentEvent} records to the {@code incident-events} Kafka topic.
+ * Events are keyed by {@code tenantId} to ensure all incidents for the same tenant land
+ * on the same partition and are consumed in order by downstream services.
+ */
 @Component
 @RequiredArgsConstructor
 public class IncidentEventProducer {

@@ -14,6 +14,12 @@ import com.log0.clustering_service.processor.FingerprintClusterer;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Kafka consumer that drives the clustering pipeline by reading from the {@code normalized-logs}
+ * topic (consumer group {@code clustering-service}). Each record is handed to
+ * {@link com.log0.clustering_service.processor.FingerprintClusterer}; failures are forwarded
+ * to the DLQ and the offset is still acknowledged to avoid poison-pill stalls.
+ */
 @Component
 @RequiredArgsConstructor
 public class NormalizedLogConsumer {
@@ -22,6 +28,12 @@ public class NormalizedLogConsumer {
     private final FingerprintClusterer clusterer;
     private final DlqProducer dlqProducer;
 
+    /**
+     * Triggered by each record on {@code normalized-logs}. Delegates clustering to
+     * {@link com.log0.clustering_service.processor.FingerprintClusterer}; on any exception
+     * publishes a {@link DlqEvent} to {@code raw-logs-dlq} before acknowledging, so the
+     * consumer never blocks on a bad message.
+     */
     @KafkaListener(topics = "normalized-logs", groupId = "clustering-service")
     public void consume(ConsumerRecord<String, NormalizedLogEvent> record, Acknowledgment ack) {
         NormalizedLogEvent event = record.value();
@@ -29,7 +41,7 @@ public class NormalizedLogConsumer {
             clusterer.cluster(event);
             ack.acknowledge();
         } catch (Exception e) {
-            log.error("Failed to cluster event eventId={} tenantId={} fingerprint={} — sending to DLQ",
+            log.error("Failed to cluster event eventId={} tenantId={} fingerprint={} - sending to DLQ",
                     event.getEventId(), event.getTenantId(), event.getFingerprint(), e);
             dlqProducer.publish(
                     event.getEventId(),

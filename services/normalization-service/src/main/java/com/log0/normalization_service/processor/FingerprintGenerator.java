@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
  *
  * A fingerprint is a SHA-256 hash that identifies the structural pattern of an error,
  * independent of its dynamic values (timestamps, IDs, counts). Two log messages that differ
- * only in variable data — different user IDs, different timeout durations, different IP
- * addresses — will produce the same fingerprint and therefore collapse into the same incident.
+ * only in variable data - different user IDs, different timeout durations, different IP
+ * addresses - will produce the same fingerprint and therefore collapse into the same incident.
  *
  * This is the foundation of log0's deduplication. Without stable fingerprints, the
  * Clustering Service cannot group related errors, and 10,000 identical exceptions would
@@ -35,7 +35,7 @@ public class FingerprintGenerator {
     /**
      * Matches IPv4 addresses (e.g. 192.168.1.1).
      * Must be replaced before NUMBER_PATTERN because an IP address is entirely composed
-     * of digits and dots — NUMBER_PATTERN would consume the digit groups first, turning
+     * of digits and dots - NUMBER_PATTERN would consume the digit groups first, turning
      * {@code 192.168.1.1} into {@code <number>.<number>.<number>.<number>} before
      * IP_PATTERN ever gets a chance to match.
      *
@@ -65,7 +65,7 @@ public class FingerprintGenerator {
      * <number>ms", which leads to the same fingerprint and collapses all three into
      * one incident.
      *
-     * Replacement order is critical — most specific patterns must run first:
+     * Replacement order is critical - most specific patterns must run first:
      * - UUID: contains hex digit groups that NUMBER_PATTERN would partially consume
      * - IP:   contains digit groups that NUMBER_PATTERN would consume
      * - Number: catches all remaining digit sequences
@@ -99,11 +99,11 @@ public class FingerprintGenerator {
      * source file and line number removed.
      *
      * Only the first frame is used because it represents the exact call site that threw
-     * the exception — the root of the problem. Deeper frames (callers) vary across different
+     * the exception - the root of the problem. Deeper frames (callers) vary across different
      * request paths but the throw site is stable for the same bug.
      *
      * Line numbers are deliberately stripped. A refactor that shifts
-     * {@code PaymentProcessor.charge} from line 142 to line 145 does not change the bug —
+     * {@code PaymentProcessor.charge} from line 142 to line 145 does not change the bug -
      * it must still produce the same fingerprint and map to the same existing incident.
      *
      * Example:
@@ -134,7 +134,7 @@ public class FingerprintGenerator {
      *
      * Guards against null values before string concatenation in {@link #generate}.
      * Without this, a null service name would produce the literal text {@code "null"} in the
-     * hash input — {@code "null|template|..."} — which is semantically wrong and would create
+     * hash input - {@code "null|template|..."} - which is semantically wrong and would create
      * a different fingerprint than the intended {@code "|template|..."}.
      *
      * @param s any string, possibly null
@@ -209,10 +209,10 @@ public class FingerprintGenerator {
      * Without it, {@code ("ab", "c")} and {@code ("a", "bc")} would produce the same input
      * {@code "abc"} and therefore the same fingerprint despite being different error patterns.
      *
-     * All inputs are passed through {@link #safe} — null fields produce empty strings, not
+     * All inputs are passed through {@link #safe} - null fields produce empty strings, not
      * the literal text {@code "null"}.
      *
-     * Example — two log lines from the same bug produce the same fingerprint:
+     * Example - two log lines from the same bug produce the same fingerprint:
      * <pre>
      *   generate("payment-service", "Connection timeout after <number>ms", null,
      *            "at com.log0.PaymentProcessor.charge(PaymentProcessor.java:142)")

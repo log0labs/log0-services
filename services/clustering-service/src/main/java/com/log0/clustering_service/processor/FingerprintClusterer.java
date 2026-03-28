@@ -12,6 +12,13 @@ import com.log0.clustering_service.store.OccurrenceStore;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Core clustering logic: groups incoming {@link NormalizedLogEvent}s by fingerprint and
+ * time window, and emits an {@link IncidentEvent} to the {@code incident-events} topic every
+ * time a window's occurrence count reaches or exceeds the configured threshold. One incident
+ * is published per threshold crossing - there is no deduplication guard for subsequent crossings
+ * within the same window.
+ */
 @Component
 @RequiredArgsConstructor
 public class FingerprintClusterer {
@@ -20,6 +27,11 @@ public class FingerprintClusterer {
     private final ClusteringConfig config;
     private final SeverityResolver severityResolver;
 
+    /**
+     * Accumulates {@code event} into its window and publishes an {@link IncidentEvent} if the
+     * window's count has reached the occurrence threshold. Callers (the Kafka consumer) are
+     * responsible for DLQ routing on any exception thrown here.
+     */
     public void cluster(NormalizedLogEvent event) {
         ClusterKey key = ClusterKey.of(
                 event.getTenantId(),

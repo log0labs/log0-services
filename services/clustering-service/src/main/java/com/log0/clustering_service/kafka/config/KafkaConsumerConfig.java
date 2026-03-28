@@ -15,6 +15,12 @@ import org.springframework.kafka.listener.ContainerProperties;
 import com.log0.clustering_service.dto.NormalizedLogEvent;
 import com.log0.clustering_service.kafka.deserializer.NormalizedLogEventDeserializer;
 
+/**
+ * Kafka consumer infrastructure for the clustering service. Configures a
+ * {@link ConsumerFactory} that uses the custom {@link com.log0.clustering_service.kafka.deserializer.NormalizedLogEventDeserializer}
+ * and disables auto-commit so that offsets are acknowledged only after successful processing
+ * or explicit DLQ routing.
+ */
 @Configuration
 public class KafkaConsumerConfig {
 

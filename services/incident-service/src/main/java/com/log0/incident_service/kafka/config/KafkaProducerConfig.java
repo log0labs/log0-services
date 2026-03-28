@@ -17,6 +17,12 @@ import com.log0.incident_service.dto.NotificationEvent;
 import com.log0.incident_service.kafka.serializer.DlqEventSerializer;
 import com.log0.incident_service.kafka.serializer.NotificationEventSerializer;
 
+/**
+ * Kafka producer configuration for the incident-service, registering two independent
+ * producer factories: one for {@code notification-events} (idempotent, acks=all) and
+ * one for {@code raw-logs-dlq}. Keeping the factories separate prevents serializer
+ * coupling between the notification and DLQ pipelines.
+ */
 @Configuration
 public class KafkaProducerConfig {
 

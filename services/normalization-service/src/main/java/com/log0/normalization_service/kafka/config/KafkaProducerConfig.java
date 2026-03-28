@@ -14,9 +14,20 @@ import org.springframework.kafka.core.ProducerFactory;
 import com.log0.normalization_service.dlq.DlqEvent;
 import com.log0.normalization_service.dto.NormalizedLogEvent;
 
+/**
+ * Registers Kafka producer beans for the {@code normalized-logs} and {@code raw-logs-dlq} topics.
+ *
+ * Both producers are configured with {@code acks=all}, idempotence, and retries to
+ * guarantee at-least-once delivery. Separate {@link ProducerFactory} instances are used
+ * so each topic can carry a different value serializer without sharing state.
+ */
 @Configuration
 public class KafkaProducerConfig {
 
+    /**
+     * Builds a producer factory for {@link NormalizedLogEvent} values targeting
+     * {@code normalized-logs}, with {@code linger.ms=5} to batch small bursts of events.
+     */
     @Bean
     public ProducerFactory<String, NormalizedLogEvent> producerFactory() {
         Map<String, Object> config = new HashMap<>();
@@ -40,6 +51,11 @@ public class KafkaProducerConfig {
         return new KafkaTemplate<>(producerFactory());
     }
 
+    /**
+     * Builds a producer factory for {@link DlqEvent} values targeting {@code raw-logs-dlq}.
+     * No {@code linger.ms} is set here - DLQ writes are infrequent and should be flushed
+     * immediately to avoid delaying failure visibility.
+     */
     @Bean
     public ProducerFactory<String, DlqEvent> dlqProducerFactory() {
         Map<String, Object> config = new HashMap<>();

@@ -14,12 +14,15 @@ import org.springframework.kafka.core.ProducerFactory;
 import com.log0.ingestion_gateway.dlq.DlqEvent;
 import com.log0.ingestion_gateway.dto.RawLogEvent;
 
+/**
+ * Configures two independent Kafka producer pipelines: one for {@code raw-logs}
+ * (carrying {@link RawLogEvent}) and one for {@code raw-logs-dlq} (carrying
+ * {@link DlqEvent}). Both pipelines are set to {@code acks=all} with idempotent
+ * delivery to avoid duplicate or lost messages under producer retries.
+ */
 @Configuration
 public class KafkaProducerConfig {
 
-    /**
-     * Producer factory for RawLogEvent messages to raw-logs topic
-     */
     @Bean
     public ProducerFactory<String, RawLogEvent> rawLogProducerFactory() {
         Map<String, Object> config = new HashMap<>();
@@ -43,9 +46,6 @@ public class KafkaProducerConfig {
         return new KafkaTemplate<>(rawLogProducerFactory());
     }
 
-    /**
-     * Producer factory for DlqEvent messages to raw-logs-dlq topic
-     */
     @Bean
     public ProducerFactory<String, DlqEvent> dlqProducerFactory() {
         Map<String, Object> config = new HashMap<>();

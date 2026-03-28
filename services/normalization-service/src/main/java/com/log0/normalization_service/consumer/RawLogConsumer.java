@@ -16,6 +16,13 @@ import com.log0.normalization_service.processor.LogNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Kafka listener for the {@code raw-logs} topic (consumer group: {@code normalization-service}).
+ *
+ * <p>Each message is normalized and fingerprinted via {@link LogNormalizer}, then forwarded
+ * to {@code normalized-logs}. On any processing failure the original event is routed to
+ * {@code raw-logs-dlq} and the offset is always acknowledged to prevent partition blocking.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -25,6 +32,16 @@ public class RawLogConsumer {
     private final NormalizedLogProducer producer;
     private final DlqProducer dlqProducer;
 
+    /**
+     * Processes a single {@link RawLogEvent} from {@code raw-logs}.
+     *
+     * <p>Normalizes and publishes the event, then acknowledges the offset. On failure,
+     * wraps the original event in a {@link DlqEvent} keyed by {@code eventId} and
+     * acknowledges regardless - ensuring the consumer never stalls on a bad message.
+     *
+     * @param event the deserialized raw log record
+     * @param ack   manual acknowledgment handle; always called before returning
+     */
     @KafkaListener(topics = "raw-logs", containerFactory = "kafkaListenerContainerFactory")
     public void consume(RawLogEvent event, Acknowledgment ack) {
         try {

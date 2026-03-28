@@ -11,6 +11,12 @@ import com.log0.clustering_service.model.OccurrenceWindow;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * {@link OccurrenceStore} backed by a {@link ConcurrentHashMap}. State is local to the JVM,
+ * so this implementation is unsuitable for horizontally-scaled deployments without a shared
+ * external store. The map grows unboundedly - no eviction is performed - so old windows
+ * accumulate until the process restarts.
+ */
 @Component
 @RequiredArgsConstructor
 public class InMemoryOccurrenceStore implements OccurrenceStore {

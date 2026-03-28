@@ -6,6 +6,13 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 
+/**
+ * Configures the Kafka consumer container for the normalization service.
+ *
+ * Sets {@link ContainerProperties.AckMode#MANUAL} so that offsets are committed
+ * only after a message has been fully processed or routed to the DLQ, preventing
+ * data loss on consumer restart or processing failure.
+ */
 @Configuration
 public class KafkaConsumerConfig {
 

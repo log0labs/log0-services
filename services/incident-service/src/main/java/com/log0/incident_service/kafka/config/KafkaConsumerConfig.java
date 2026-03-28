@@ -16,6 +16,13 @@ import org.springframework.kafka.listener.ContainerProperties;
 import com.log0.incident_service.dto.IncidentEvent;
 import com.log0.incident_service.kafka.deserializer.IncidentEventDeserializer;
 
+/**
+ * Kafka consumer configuration for the incident-service.
+ * Creates a {@link org.springframework.kafka.core.ConsumerFactory} wired with
+ * {@link com.log0.incident_service.kafka.deserializer.IncidentEventDeserializer} and
+ * configures the listener container factory for manual offset acknowledgement, ensuring
+ * that offsets are only committed after successful processing or explicit DLQ forwarding.
+ */
 @Configuration
 public class KafkaConsumerConfig {
 

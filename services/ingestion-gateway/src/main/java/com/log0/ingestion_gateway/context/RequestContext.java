@@ -1,5 +1,10 @@
 package com.log0.ingestion_gateway.context;
 
+/**
+ * Immutable value object that carries per-request identity metadata extracted from
+ * HTTP headers, threaded through the ingestion pipeline so downstream components
+ * (service, producer) do not need to re-read the servlet request.
+ */
 public class RequestContext {
 
     private final String tenantId;

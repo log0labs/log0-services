@@ -7,6 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.log0.incident_service.dlq.DlqEvent;
 
+/**
+ * Kafka {@link Serializer} that encodes {@link DlqEvent} objects to JSON bytes for
+ * publication to the {@code raw-logs-dlq} topic. Registered in {@link
+ * com.log0.incident_service.kafka.config.KafkaProducerConfig} on the DLQ producer factory.
+ */
 public class DlqEventSerializer implements Serializer<DlqEvent> {
 
     private final ObjectMapper objectMapper = new ObjectMapper()

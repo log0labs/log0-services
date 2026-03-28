@@ -8,6 +8,12 @@ import java.util.Set;
 
 import lombok.Getter;
 
+/**
+ * Mutable accumulator for a single cluster window, tracking how many times a fingerprint
+ * has fired, the first and last observed timestamps, and a bounded sample of distinct log
+ * messages. Not thread-safe - callers must synchronise externally (e.g. via
+ * {@link java.util.concurrent.ConcurrentHashMap#computeIfAbsent}).
+ */
 @Getter
 public class OccurrenceWindow {
     private long count;
@@ -24,6 +30,11 @@ public class OccurrenceWindow {
         this.maxTopMessages = maxTopMessages;
     }
 
+    /**
+     * Records one occurrence: increments the count, updates {@code lastSeenAt}, and adds
+     * {@code message} to the sample set if capacity has not been reached. Null messages are
+     * silently ignored.
+     */
     public void record(String message, Instant timestamp) {
         count++;
         lastSeenAt = timestamp;

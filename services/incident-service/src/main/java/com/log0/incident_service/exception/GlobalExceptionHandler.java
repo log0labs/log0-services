@@ -9,9 +9,19 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+/**
+ * Centralised exception handler for all controllers in the incident-service.
+ * Maps domain-level exceptions to consistent HTTP responses: {@code 400} for
+ * validation errors, {@code 404} for unknown resources, {@code 409} for illegal
+ * state transitions, and {@code 500} for unexpected failures.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /**
+     * Translates Bean Validation failures into a {@code 400} response that lists
+     * each offending field and its constraint message.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         List<String> errors = ex.getBindingResult().getFieldErrors().stream()
@@ -22,6 +32,9 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "Validation failed", "details", errors));
     }
 
+    /**
+     * Returns {@code 404} when a requested incident does not exist for the given tenant.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(
             IllegalArgumentException ex) {
@@ -29,6 +42,10 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", ex.getMessage()));
     }
 
+    /**
+     * Returns {@code 409} when {@link com.log0.incident_service.statemachine.IncidentStateMachine}
+     * rejects a requested status transition as invalid.
+     */
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleInvalidTransition(
             IllegalStateException ex) {

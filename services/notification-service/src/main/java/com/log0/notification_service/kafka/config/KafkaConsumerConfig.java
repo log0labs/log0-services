@@ -16,6 +16,12 @@ import org.springframework.kafka.listener.ContainerProperties;
 import com.log0.notification_service.dto.NotificationEvent;
 import com.log0.notification_service.kafka.deserializer.NotificationEventDeserializer;
 
+/**
+ * Configures the Kafka consumer infrastructure for the notification-service.
+ * Consumes from the {@code notification-events} topic using {@link NotificationEventDeserializer},
+ * with auto-commit disabled so that offsets are acknowledged manually after each record is processed
+ * or routed to the DLQ.
+ */
 @Configuration
 public class KafkaConsumerConfig {
 

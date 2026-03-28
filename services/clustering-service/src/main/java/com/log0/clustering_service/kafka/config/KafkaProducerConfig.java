@@ -14,6 +14,12 @@ import org.springframework.kafka.core.ProducerFactory;
 import com.log0.clustering_service.dlq.DlqEvent;
 import com.log0.clustering_service.dto.IncidentEvent;
 
+/**
+ * Kafka producer infrastructure for the clustering service. Registers two independent
+ * {@link org.springframework.kafka.core.KafkaTemplate} beans - one for {@code incident-events}
+ * and one for {@code raw-logs-dlq} - each with idempotent delivery ({@code acks=all},
+ * {@code enable.idempotence=true}) to prevent duplicate records on retry.
+ */
 @Configuration
 public class KafkaProducerConfig {
 

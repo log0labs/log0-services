@@ -22,6 +22,13 @@ import com.log0.incident_service.statemachine.IncidentStateMachine;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Core business logic for the incident lifecycle, covering creation, state transitions,
+ * assignment, and resolution. Every mutating method is transactional and enforces
+ * allowed transitions through {@link IncidentStateMachine} before persisting changes.
+ * Downstream systems are notified of significant transitions via
+ * {@link NotificationEventPublisher} on the {@code notification-events} topic.
+ */
 @Service
 @RequiredArgsConstructor
 public class IncidentService {
@@ -31,6 +38,15 @@ public class IncidentService {
     private final IncidentStateMachine stateMachine;
     private final NotificationEventPublisher notificationPublisher;
 
+    /**
+     * Idempotent upsert: increments occurrence count and refreshes timestamps on an
+     * existing active incident with a matching fingerprint, or creates a new one in
+     * status {@code NEW} and emits an {@code INCIDENT_CREATED} notification.
+     * Resolved incidents are excluded from the lookup so that recurring errors after
+     * resolution open a fresh incident.
+     *
+     * @param event the inbound event carrying fingerprint, occurrence data, and metadata
+     */
     @Transactional
     public void createOrUpdateIncident(IncidentEvent event) {
         Optional<Incident> existing = incidentRepository.findByTenantIdAndFingerprintAndStatusNot(
@@ -66,6 +82,16 @@ public class IncidentService {
         }
     }
 
+    /**
+     * Transitions the incident to {@code ASSIGNED}, persists an {@link IncidentAssignment}
+     * record, appends a state history entry, and emits an {@code INCIDENT_ASSIGNED}
+     * notification targeted at the assignee.
+     *
+     * @param assignedToUserId the user who will own the incident
+     * @param assignedByUserId the user performing the assignment (recorded for audit)
+     * @param notes            optional context for the assignee; may be {@code null}
+     * @throws IllegalStateException if the current status does not permit assignment
+     */
     @Transactional
     public void assignIncident(UUID incidentId, UUID tenantId, UUID assignedToUserId, UUID assignedByUserId,
             String notes) {
@@ -89,6 +115,12 @@ public class IncidentService {
                 .publish(buildNotificationEvent(incident, "INCIDENT_ASSIGNED", assignedToUserId.toString()));
     }
 
+    /**
+     * Transitions the incident to {@code ACKNOWLEDGED} and records the acting user in
+     * the state history. No notification is emitted for this transition.
+     *
+     * @throws IllegalStateException if the current status does not permit acknowledgement
+     */
     @Transactional
     public void acknowledgeIncident(UUID incidentId, UUID tenantId, UUID userId) {
         Incident incident = getIncident(incidentId, tenantId);
@@ -101,6 +133,12 @@ public class IncidentService {
         recordHistory(incidentId, previousStatus, "ACKNOWLEDGED", userId);
     }
 
+    /**
+     * Transitions the incident to {@code RESOLVED}, stamps {@code resolvedAt}, appends
+     * a state history entry, and emits an {@code INCIDENT_RESOLVED} notification.
+     *
+     * @throws IllegalStateException if the current status does not permit resolution
+     */
     @Transactional
     public void resolveIncident(UUID incidentId, UUID tenantId, UUID userId) {
         Incident incident = getIncident(incidentId, tenantId);
@@ -116,15 +154,27 @@ public class IncidentService {
         notificationPublisher.publish(buildNotificationEvent(incident, "INCIDENT_RESOLVED", null));
     }
 
+    /**
+     * Fetches a tenant-scoped incident, throwing {@link IllegalArgumentException} (mapped
+     * to HTTP 404) if no matching record exists. Also used internally by all mutating
+     * methods to enforce tenant isolation before any state change.
+     */
     public Incident getIncident(UUID incidentId, UUID tenantId) {
         return incidentRepository.findByIncidentIdAndTenantId(incidentId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Incident not found: " + incidentId));
     }
 
+    /** Returns a paginated view of all incidents belonging to the given tenant. */
     public Page<Incident> listIncidents(UUID tenantId, Pageable pageable) {
         return incidentRepository.findByTenantId(tenantId, pageable);
     }
 
+    /**
+     * Appends an immutable state-history row for every status transition.
+     *
+     * @param fromStatus      the previous status; {@code null} for the initial {@code NEW} entry
+     * @param changedByUserId the acting user; {@code null} for system-driven transitions
+     */
     private void recordHistory(UUID incidentId, String fromStatus, String toStatus, UUID changedByUserId) {
         IncidentStateHistory history = new IncidentStateHistory();
         history.setIncidentId(incidentId);

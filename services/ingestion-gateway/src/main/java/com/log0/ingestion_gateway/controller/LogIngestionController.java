@@ -15,6 +15,12 @@ import com.log0.ingestion_gateway.utils.RequestHeaderExtractor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
+/**
+ * REST entry point for the log ingestion pipeline, exposed at {@code POST /api/v1/logs}.
+ * Extracts the four required identity headers, builds a {@link RequestContext}, and
+ * delegates to {@link LogIngestionService}; returns {@code 202 Accepted} on success
+ * so callers are not blocked waiting for Kafka acknowledgement.
+ */
 @RestController
 @RequestMapping("/api/v1/logs")
 public class LogIngestionController {
@@ -24,6 +30,17 @@ public class LogIngestionController {
         this.logIngestionService = logIngestionService;
     }
 
+    /**
+     * Accepts a single log event, validates it, and hands it off to the ingestion
+     * service for async publication to the {@code raw-logs} Kafka topic.
+     * Throws {@link IllegalArgumentException} (mapped to 400) if any required header
+     * is absent; bean-validation failures are handled by
+     * {@link com.log0.ingestion_gateway.exception.GlobalExceptionHandler}.
+     *
+     * @param request    the raw servlet request used to read identity headers
+     * @param logRequest the validated log payload from the request body
+     * @return {@code 202 Accepted} with an empty body
+     */
     @PostMapping
     public ResponseEntity<Void> ingestLog(
             HttpServletRequest request,

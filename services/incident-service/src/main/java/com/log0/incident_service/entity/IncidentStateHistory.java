@@ -7,6 +7,11 @@ import lombok.Setter;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * JPA entity providing an append-only audit trail of incident status transitions
+ * in the {@code incident_state_history} table. {@code fromStatus} is nullable to
+ * accommodate the initial {@code NEW} entry where no prior state exists.
+ */
 @Entity
 @Table(name = "incident_state_history")
 @Getter

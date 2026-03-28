@@ -10,6 +10,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * JPA entity representing a grouped incident record in the {@code incident} table.
+ * A single incident aggregates repeated occurrences of the same error fingerprint
+ * within a tenant, tracking its lifecycle from {@code NEW} through to {@code RESOLVED}.
+ * The {@code topMessages} field is stored as {@code jsonb} and holds a sample of
+ * representative log messages for the incident.
+ */
 @Entity
 @Table(name = "incident")
 @Getter

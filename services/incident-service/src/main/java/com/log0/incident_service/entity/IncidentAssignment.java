@@ -7,6 +7,11 @@ import lombok.Setter;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * JPA entity recording a single assignment action in the {@code incident_assignment} table.
+ * Each row is immutable after creation ({@code assignedAt} is non-updatable); reassigning
+ * an incident appends a new row rather than mutating an existing one.
+ */
 @Entity
 @Table(name = "incident_assignment")
 @Getter

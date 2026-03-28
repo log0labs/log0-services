@@ -8,6 +8,12 @@ import com.log0.normalization_service.kafka.KafkaTopics;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Publishes {@link NormalizedLogEvent} records to the {@code normalized-logs} topic.
+ *
+ * Uses {@code tenantId} as the Kafka message key so that all events for the same tenant
+ * are routed to the same partition, preserving per-tenant ordering for downstream consumers.
+ */
 @Component
 @RequiredArgsConstructor
 public class NormalizedLogProducer {

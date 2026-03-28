@@ -7,6 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.log0.clustering_service.dto.IncidentEvent;
 
+/**
+ * Kafka {@link Serializer} that converts an {@link IncidentEvent} to JSON bytes for the
+ * {@code incident-events} topic. Registers {@link com.fasterxml.jackson.datatype.jsr310.JavaTimeModule}
+ * to handle {@code Instant} fields; propagates serialization failures as unchecked exceptions.
+ */
 public class IncidentEventSerializer implements Serializer<IncidentEvent> {
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
