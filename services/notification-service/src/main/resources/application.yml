@@ -13,8 +13,8 @@ server:
   port: 8084
 
 slack:
-  bot-token: ${SLACK_BOT_TOKEN:xoxb-your-token-here}
-  channel-id: ${SLACK_CHANNEL_ID:C00000000}
+  bot-token: ${SLACK_BOT_TOKEN}
+  channel-id: ${SLACK_CHANNEL_ID}
 
 management:
   endpoints:

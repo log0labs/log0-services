@@ -4,13 +4,12 @@ import java.io.IOException;
 
 import org.apache.kafka.common.serialization.Deserializer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.log0.notification_service.dto.NotificationEvent;
 
 public class NotificationEventDeserializer implements Deserializer<NotificationEvent> {
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule());
+    private final JsonMapper objectMapper = JsonMapper.builder().addModule(new JavaTimeModule()).build();
 
     @Override
     public NotificationEvent deserialize(String topic, byte[] data) {
