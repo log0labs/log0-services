@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,6 +40,15 @@ public class GlobalExceptionHandler {
                                 List.of(ex.getMessage()));
 
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        @ExceptionHandler(NoResourceFoundException.class)
+        public ResponseEntity<ErrorResponse> handleNoResourceFoundException(NoResourceFoundException ex) {
+                ErrorResponse response = new ErrorResponse(
+                                "Not Found",
+                                List.of(ex.getMessage()));
+
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
 
         @ExceptionHandler(Exception.class)

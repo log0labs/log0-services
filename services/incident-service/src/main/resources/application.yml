@@ -9,13 +9,15 @@ spring:
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   datasource:
-    url: jdbc:postgresql://localhost:5432/log0
+    url: jdbc:postgresql://localhost:5433/log0
     username: log0
     password: log0
     driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: false
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     show-sql: false
     properties:
       hibernate:
