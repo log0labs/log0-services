@@ -3,7 +3,7 @@ spring:
     name: ai-service
 
 server:
-  port: 8086
+  port: 8085
 
 ai:
   provider: groq   # swap to: openai | gemini | anthropic
