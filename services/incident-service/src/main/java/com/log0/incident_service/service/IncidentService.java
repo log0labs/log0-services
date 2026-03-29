@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.log0.incident_service.async.AiSummarizer;
 import com.log0.incident_service.dto.IncidentEvent;
 import com.log0.incident_service.dto.NotificationEvent;
 import com.log0.incident_service.entity.Incident;
@@ -37,6 +38,7 @@ public class IncidentService {
     private final IncidentStateHistoryRepository stateHistoryRepository;
     private final IncidentStateMachine stateMachine;
     private final NotificationEventPublisher notificationPublisher;
+    private final AiSummarizer aiSummarizer;
 
     /**
      * Idempotent upsert: increments occurrence count and refreshes timestamps on an
@@ -76,7 +78,7 @@ public class IncidentService {
 
             recordHistory(incident.getIncidentId(), null, "NEW", null);
 
-            // TODO [Phase 6]: trigger AISummaryService.generateSummary(incident) async here
+            aiSummarizer.requestSummary(incident);
 
             notificationPublisher.publish(buildNotificationEvent(incident, "INCIDENT_CREATED", null));
         }
@@ -162,6 +164,23 @@ public class IncidentService {
     public Incident getIncident(UUID incidentId, UUID tenantId) {
         return incidentRepository.findByIncidentIdAndTenantId(incidentId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Incident not found: " + incidentId));
+    }
+
+    /**
+     * Persists the AI-generated summary text onto the incident. Called by
+     * {@link com.log0.incident_service.controller.IncidentController} when
+     * the AI Summary Service delivers a completed summary via its callback.
+     *
+     * @param incidentId the incident to update
+     * @param aiSummary  the generated summary text from the LLM
+     * @throws IllegalArgumentException if no incident exists with the given ID
+     */
+    @Transactional
+    public void updateAiSummary(UUID incidentId, String aiSummary) {
+        Incident incident = incidentRepository.findById(incidentId)
+                .orElseThrow(() -> new IllegalArgumentException("Incident not found: " + incidentId));
+        incident.setAiSummary(aiSummary);
+        incidentRepository.save(incident);
     }
 
     /** Returns a paginated view of all incidents belonging to the given tenant. */

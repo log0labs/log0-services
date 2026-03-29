@@ -1,5 +1,6 @@
 package com.log0.incident_service.controller;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -96,6 +97,22 @@ public class IncidentController {
             @RequestParam UUID tenantId,
             @Valid @RequestBody ActorRequest request) {
         incidentService.resolveIncident(incidentId, tenantId, request.getUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Receives the AI-generated summary from the AI Summary Service and persists it
+     * on the incident. Called as a callback after the LLM completes its analysis.
+     * Returns 204 on success.
+     *
+     * @param incidentId the incident to update
+     * @param body       JSON object with a single {@code aiSummary} string field
+     */
+    @PatchMapping("/{incidentId}/ai-summary")
+    public ResponseEntity<Void> updateAiSummary(
+            @PathVariable UUID incidentId,
+            @RequestBody Map<String, String> body) {
+        incidentService.updateAiSummary(incidentId, body.get("aiSummary"));
         return ResponseEntity.noContent().build();
     }
 }
