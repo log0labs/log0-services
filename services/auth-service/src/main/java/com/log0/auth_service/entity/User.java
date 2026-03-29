@@ -24,7 +24,7 @@ import lombok.Setter;
  * what they can see and do in the frontend.
  *
  * <p>
- * Passwords are stored as BCrypt hashes — the plaintext password is never
+ * Passwords are stored as BCrypt hashes - the plaintext password is never
  * persisted. Authentication is handled by {@code AuthService}, which compares
  * the provided password against {@code passwordHash} using BCrypt.
  */

@@ -18,7 +18,7 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
     /**
      * Finds an active API key by its SHA-256 hash.
      * Called by the validation endpoint when the ingestion gateway presents a key.
-     * Only active keys are returned — revoked keys are ignored.
+     * Only active keys are returned - revoked keys are ignored.
      *
      * @param keyHash the SHA-256 hash of the raw API key
      * @return the matching active key, or empty if not found or revoked

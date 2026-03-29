@@ -27,11 +27,11 @@ import lombok.extern.slf4j.Slf4j;
  * <p>
  * Claims included in every token:
  * <ul>
- * <li>{@code sub} — userId (standard JWT subject claim)</li>
- * <li>{@code tenantId} — UUID of the user's tenant</li>
- * <li>{@code role} — the user's role (ADMIN, ENGINEER, VIEWER)</li>
- * <li>{@code iat} — issued-at timestamp</li>
- * <li>{@code exp} — expiry timestamp</li>
+ * <li>{@code sub} - userId (standard JWT subject claim)</li>
+ * <li>{@code tenantId} - UUID of the user's tenant</li>
+ * <li>{@code role} - the user's role (ADMIN, ENGINEER, VIEWER)</li>
+ * <li>{@code iat} - issued-at timestamp</li>
+ * <li>{@code exp} - expiry timestamp</li>
  * </ul>
  */
 @Slf4j

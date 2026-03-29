@@ -13,7 +13,7 @@ import lombok.Getter;
  * Returned by key creation and key listing endpoints.
  *
  * <p>
- * The {@code rawKey} field is only populated at creation time — it contains the
+ * The {@code rawKey} field is only populated at creation time - it contains the
  * plaintext key the client must copy immediately. On all subsequent requests
  * (e.g. listing keys), {@code rawKey} is {@code null} because the raw key is
  * never stored and cannot be recovered.
@@ -29,7 +29,7 @@ public class ApiKeyResponse {
 
     /**
      * The plaintext API key. Non-null only when the key is first created.
-     * {@code null} on all subsequent reads — the raw key is shown once and
+     * {@code null} on all subsequent reads - the raw key is shown once and
      * never stored.
      */
     private String rawKey;

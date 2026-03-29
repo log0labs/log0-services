@@ -10,7 +10,7 @@ import lombok.Setter;
 /**
  * Request body for {@code POST /api/v1/tenants/register}.
  * Creates a new tenant and its first ADMIN user in a single operation.
- * The slug must be globally unique — registration fails if it is already taken.
+ * The slug must be globally unique - registration fails if it is already taken.
  */
 @Getter
 @Setter

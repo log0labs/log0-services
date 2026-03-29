@@ -22,7 +22,7 @@ import lombok.Setter;
  * machine-to-machine requests on behalf of a tenant.
  *
  * <p>
- * Only the SHA-256 hash of the raw key is stored — the plaintext key is shown
+ * Only the SHA-256 hash of the raw key is stored - the plaintext key is shown
  * to the user exactly once at creation time and is never persisted. Validation
  * is performed by hashing the incoming key and comparing against
  * {@code keyHash}.

@@ -12,7 +12,7 @@ import lombok.Getter;
 /**
  * Response body representing a user.
  * Returned by user creation and user listing endpoints.
- * The {@code passwordHash} field from the entity is intentionally excluded —
+ * The {@code passwordHash} field from the entity is intentionally excluded -
  * password data must never appear in API responses.
  */
 @Getter

@@ -10,7 +10,7 @@ import lombok.Getter;
 /**
  * Response body representing a tenant.
  * Returned by tenant registration and tenant info endpoints.
- * Raw JPA entities are never returned directly from controllers —
+ * Raw JPA entities are never returned directly from controllers -
  * this DTO controls exactly which fields are exposed in the API.
  */
 @Getter

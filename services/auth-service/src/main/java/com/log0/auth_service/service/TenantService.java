@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Handles tenant registration — the entry point for a new organisation
+ * Handles tenant registration - the entry point for a new organisation
  * joining the platform. Registration creates both the {@link Tenant} record
  * and the first {@link User} with role {@code ADMIN} in a single transaction,
  * so either both are created or neither is.

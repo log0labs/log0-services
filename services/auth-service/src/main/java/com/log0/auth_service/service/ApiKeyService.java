@@ -47,7 +47,7 @@ public class ApiKeyService {
      *
      * @param tenantId the tenant to generate the key for, from the caller's JWT
      * @param request  contains the human-readable label for the key
-     * @return an {@link ApiKeyResponse} with the raw key populated — this is the
+     * @return an {@link ApiKeyResponse} with the raw key populated - this is the
      *         only time the raw key will ever be visible
      * @throws ResourceNotFoundException if the tenant does not exist
      */
@@ -72,7 +72,7 @@ public class ApiKeyService {
 
     /**
      * Returns all API keys belonging to the given tenant.
-     * The raw key is not included — it is never stored and cannot be recovered.
+     * The raw key is not included - it is never stored and cannot be recovered.
      *
      * @param tenantId the tenant whose keys to list, from the caller's JWT
      * @return list of API keys for the tenant, active and revoked

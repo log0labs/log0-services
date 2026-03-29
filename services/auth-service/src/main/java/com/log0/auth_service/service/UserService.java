@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Handles user management within a tenant — creating new users and listing
+ * Handles user management within a tenant - creating new users and listing
  * existing ones. All operations are tenant-scoped: a user can only be created
  * under their own tenant, and listing returns only users within that tenant.
  *
@@ -40,7 +40,7 @@ public class UserService {
     /**
      * Creates a new user under the given tenant.
      * The caller's tenantId (extracted from their JWT) is used to scope the
-     * new user — it is not taken from the request body.
+     * new user - it is not taken from the request body.
      *
      * @param tenantId the tenant to create the user under, from the caller's JWT
      * @param request  the new user's email, password, and role
@@ -71,7 +71,7 @@ public class UserService {
 
     /**
      * Returns all users belonging to the given tenant.
-     * Each user is mapped to a {@link UserResponse} — password hashes are
+     * Each user is mapped to a {@link UserResponse} - password hashes are
      * never included in the response.
      *
      * @param tenantId the tenant whose users to list, from the caller's JWT

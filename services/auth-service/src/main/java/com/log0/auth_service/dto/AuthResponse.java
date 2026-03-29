@@ -19,7 +19,7 @@ public class AuthResponse {
 
     /**
      * Long-lived refresh token (30 days).
-     * Store securely — presenting this token issues a new access token.
+     * Store securely - presenting this token issues a new access token.
      * Each use rotates this token; the previous value is immediately invalidated.
      */
     private String refreshToken;
