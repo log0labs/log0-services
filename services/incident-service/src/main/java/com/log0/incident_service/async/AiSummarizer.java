@@ -64,7 +64,7 @@ public class AiSummarizer {
      * <p>
      * All fields required by the AI service's {@code SummaryRequest} are mapped from
      * the {@link Incident} entity. Any exception during the HTTP call or JSON serialisation
-     * is caught and logged — failure here must not propagate to the caller.
+     * is caught and logged - failure here must not propagate to the caller.
      *
      * @param incident the newly created incident to generate a summary for
      */
