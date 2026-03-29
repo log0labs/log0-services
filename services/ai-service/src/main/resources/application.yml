@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: ai-service
+
+server:
+  port: 8086
+
+ai:
+  provider: groq   # swap to: openai | gemini | anthropic
+  incident-service-base-url: http://localhost:8083
+  groq:
+    api-key: ${GROQ_API_KEY}
+    model: llama-3.3-70b-versatile
+    timeout-seconds: 30
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-4o
+    timeout-seconds: 30
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: gemini-1.5-flash
+    timeout-seconds: 30
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-3-5-haiku-20241022
+    timeout-seconds: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
