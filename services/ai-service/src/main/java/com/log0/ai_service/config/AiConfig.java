@@ -14,7 +14,7 @@ import lombok.Setter;
  * The active LLM provider is selected by {@code ai.provider}. Each provider
  * has its own nested config block ({@code ai.groq}, {@code ai.openai}, etc.)
  * holding its API key, model name, and timeout. Only the active provider's
- * block needs to be filled in — the others can remain empty.
+ * block needs to be filled in - the others can remain empty.
  */
 @Getter
 @Setter
@@ -39,7 +39,7 @@ public class AiConfig {
     private ProviderConfig anthropic = new ProviderConfig();
 
     /**
-     * Shared config block for a single LLM provider — API key, model name,
+     * Shared config block for a single LLM provider - API key, model name,
      * and request timeout. Each provider (Groq, OpenAI, etc.) has its own
      * instance of this class under the {@code ai.<provider>} prefix.
      */
@@ -55,7 +55,7 @@ public class AiConfig {
 
         /**
          * Maximum seconds to wait for the LLM response before giving up.
-         * Defaults to 30. LLM APIs can be slow — don't set this too low.
+         * Defaults to 30. LLM APIs can be slow - don't set this too low.
          */
         private int timeoutSeconds = 30;
     }
