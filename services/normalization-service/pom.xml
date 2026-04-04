@@ -56,6 +56,19 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
+        <dependency>                                                                                                                                             
+            <groupId>com.clickhouse</groupId>                                                                                                                
+            <artifactId>clickhouse-jdbc</artifactId>
+            <version>0.6.5</version>
+            <classifier>http</classifier>
+        </dependency>
+        <!-- Apache HttpClient 5 - used by ClickHouse JDBC driver for HTTP transport.
+        Without this, the driver falls back to HttpURLConnection and logs a
+        full WARN stack trace on every connection attempt. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator-test</artifactId>

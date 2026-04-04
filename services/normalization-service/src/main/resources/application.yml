@@ -20,3 +20,9 @@ spring:
       web:
         exposure:
           include: health,info,metrics
+  
+
+clickhouse:
+  url: jdbc:ch://localhost:8123/log0
+  username: log0
+  password: log0

@@ -6,6 +6,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
+import com.log0.normalization_service.clickhouse.LogEventRepository;
 import com.log0.normalization_service.dlq.DlqEvent;
 import com.log0.normalization_service.dlq.DlqProducer;
 import com.log0.normalization_service.dto.NormalizedLogEvent;
@@ -31,6 +32,7 @@ public class RawLogConsumer {
     private final LogNormalizer normalizer;
     private final NormalizedLogProducer producer;
     private final DlqProducer dlqProducer;
+    private final LogEventRepository logEventRepository;
 
     /**
      * Processes a single {@link RawLogEvent} from {@code raw-logs}.
@@ -48,7 +50,7 @@ public class RawLogConsumer {
             NormalizedLogEvent normalized = normalizer.normalize(event);
 
             producer.publish(normalized);
-
+            logEventRepository.save(normalized);
             ack.acknowledge();
         } catch (Exception e) {
             log.error("Error processing raw log message: {}", e.getMessage(), e);
