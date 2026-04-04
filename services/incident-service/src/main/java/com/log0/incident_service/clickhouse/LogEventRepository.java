@@ -4,6 +4,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -122,5 +124,159 @@ public class LogEventRepository {
         }
 
         return results;
+    }
+
+    /**
+     * Returns a page of log events for a tenant with optional filters on service name,
+     * log level, and time range. Ordered newest-first.
+     *
+     * <p>All filter parameters are optional — passing {@code null} skips that filter.
+     *
+     * @param tenantId    the tenant whose logs to query (required)
+     * @param serviceName optional filter on exact service name
+     * @param level       optional filter on log level (e.g. ERROR, WARN)
+     * @param from        optional lower bound (inclusive) on timestamp
+     * @param to          optional upper bound (inclusive) on timestamp
+     * @param limit       maximum rows to return
+     * @param offset      rows to skip for pagination
+     * @return matching log events newest-first; empty list on ClickHouse error
+     */
+    public List<LogEventDto> findByTenantIdWithFilters(
+            UUID tenantId,
+            String serviceName,
+            String level,
+            Instant from,
+            Instant to,
+            int limit,
+            int offset) {
+
+        // LIMIT/OFFSET are controlled ints — safe to inline; avoids ClickHouse JDBC
+        // quirks with setObject(Integer) for non-WHERE positions.
+        StringBuilder sql = new StringBuilder(
+                "SELECT event_id, tenant_id, service_name, environment, timestamp," +
+                " level, message, message_template, fingerprint, trace_id, schema_version" +
+                " FROM log0.log_events WHERE tenant_id = ?");
+
+        // Collect only the WHERE-clause params (strings + timestamps); LIMIT/OFFSET inlined
+        List<Object> params = new ArrayList<>();
+        params.add(tenantId.toString());
+
+        if (serviceName != null && !serviceName.isBlank()) {
+            sql.append(" AND service_name = ?");
+            params.add(serviceName);
+        }
+        if (level != null && !level.isBlank()) {
+            sql.append(" AND level = ?");
+            params.add(level.toUpperCase());
+        }
+        if (from != null) {
+            sql.append(" AND timestamp >= ?");
+            params.add(Timestamp.from(from));
+        }
+        if (to != null) {
+            sql.append(" AND timestamp <= ?");
+            params.add(Timestamp.from(to));
+        }
+
+        sql.append(String.format(" ORDER BY timestamp DESC LIMIT %d OFFSET %d", limit, offset));
+
+        List<LogEventDto> results = new ArrayList<>();
+
+        try (Connection conn = clickHouseDataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Timestamp ts) {
+                    stmt.setTimestamp(i + 1, ts);
+                } else {
+                    stmt.setString(i + 1, (String) p);
+                }
+            }
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String traceId = rs.getString("trace_id");
+                    results.add(LogEventDto.builder()
+                            .eventId(rs.getString("event_id"))
+                            .tenantId(rs.getString("tenant_id"))
+                            .serviceName(rs.getString("service_name"))
+                            .environment(rs.getString("environment"))
+                            .timestamp(rs.getTimestamp("timestamp").toInstant())
+                            .level(rs.getString("level"))
+                            .message(rs.getString("message"))
+                            .messageTemplate(rs.getString("message_template"))
+                            .fingerprint(rs.getString("fingerprint"))
+                            .traceId(traceId != null && !traceId.isEmpty() ? traceId : null)
+                            .schemaVersion(rs.getString("schema_version"))
+                            .build());
+                }
+            }
+
+            log.debug("Fetched {} log events for tenant {} (service={}, level={})",
+                    results.size(), tenantId, serviceName, level);
+        } catch (SQLException e) {
+            log.error("Failed to query log events for tenant {}: {}", tenantId, e.getMessage(), e);
+        }
+
+        return results;
+    }
+
+    /**
+     * Returns the total count of log events for a tenant matching the given filters.
+     * Used for pagination metadata on the {@code GET /api/v1/logs} endpoint.
+     */
+    public long countByTenantIdWithFilters(
+            UUID tenantId,
+            String serviceName,
+            String level,
+            Instant from,
+            Instant to) {
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT count() FROM log0.log_events WHERE tenant_id = ?");
+
+        List<Object> params = new ArrayList<>();
+        params.add(tenantId.toString());
+
+        if (serviceName != null && !serviceName.isBlank()) {
+            sql.append(" AND service_name = ?");
+            params.add(serviceName);
+        }
+        if (level != null && !level.isBlank()) {
+            sql.append(" AND level = ?");
+            params.add(level.toUpperCase());
+        }
+        if (from != null) {
+            sql.append(" AND timestamp >= ?");
+            params.add(Timestamp.from(from));
+        }
+        if (to != null) {
+            sql.append(" AND timestamp <= ?");
+            params.add(Timestamp.from(to));
+        }
+
+        try (Connection conn = clickHouseDataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
+
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Timestamp ts) {
+                    stmt.setTimestamp(i + 1, ts);
+                } else {
+                    stmt.setString(i + 1, (String) p);
+                }
+            }
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong(1);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to count log events for tenant {}: {}", tenantId, e.getMessage(), e);
+        }
+
+        return 0;
     }
 }
