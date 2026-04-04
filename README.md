@@ -31,7 +31,7 @@ Incidents are summarized and routed directly to **Slack** or **WhatsApp**, enabl
 ## Repository Structure
 
 ```text
-log0-platform/
+log0-services/
 ├── services/
 │   ├── ingestion-gateway/
 │   ├── normalization-service/
