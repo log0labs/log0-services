@@ -1,6 +1,7 @@
 package com.log0.incident_service.service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.log0.incident_service.async.AiSummarizer;
+import com.log0.incident_service.clickhouse.LogEventDto;
+import com.log0.incident_service.clickhouse.LogEventRepository;
 import com.log0.incident_service.dto.IncidentEvent;
 import com.log0.incident_service.dto.NotificationEvent;
 import com.log0.incident_service.entity.Incident;
@@ -39,6 +42,7 @@ public class IncidentService {
     private final IncidentStateMachine stateMachine;
     private final NotificationEventPublisher notificationPublisher;
     private final AiSummarizer aiSummarizer;
+    private final LogEventRepository logEventRepository;
 
     /**
      * Idempotent upsert: increments occurrence count and refreshes timestamps on an
@@ -181,6 +185,29 @@ public class IncidentService {
                 .orElseThrow(() -> new IllegalArgumentException("Incident not found: " + incidentId));
         incident.setAiSummary(aiSummary);
         incidentRepository.save(incident);
+    }
+
+    /**
+     * Returns a page of raw log events that contributed to the given incident,
+     * ordered newest-first. The incident is fetched first to resolve its fingerprint
+     * and to enforce tenant isolation - a call with a mismatched tenant throws 404
+     * before any ClickHouse query is made.
+     *
+     * <p>
+     * Pagination uses {@code page} (0-based) and {@code size}; defaults to
+     * page 0 with 50 rows when not supplied by the caller.
+     *
+     * @param incidentId the incident whose logs to retrieve
+     * @param tenantId   the tenant performing the request
+     * @param page       0-based page index
+     * @param size       maximum number of log events per page (capped at 200)
+     * @return list of log events newest-first; empty list if ClickHouse is unavailable
+     */
+    public List<LogEventDto> getLogsForIncident(UUID incidentId, UUID tenantId, int page, int size) {
+        Incident incident = getIncident(incidentId, tenantId);
+        int effectiveSize = Math.min(size, 200);
+        int offset = page * effectiveSize;
+        return logEventRepository.findByTenantIdAndFingerprint(tenantId, incident.getFingerprint(), effectiveSize, offset);
     }
 
     /** Returns a paginated view of all incidents belonging to the given tenant. */
