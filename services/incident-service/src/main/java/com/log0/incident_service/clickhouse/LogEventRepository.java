@@ -130,7 +130,7 @@ public class LogEventRepository {
      * Returns a page of log events for a tenant with optional filters on service name,
      * log level, and time range. Ordered newest-first.
      *
-     * <p>All filter parameters are optional — passing {@code null} skips that filter.
+     * <p>All filter parameters are optional - passing {@code null} skips that filter.
      *
      * @param tenantId    the tenant whose logs to query (required)
      * @param serviceName optional filter on exact service name
@@ -150,7 +150,7 @@ public class LogEventRepository {
             int limit,
             int offset) {
 
-        // LIMIT/OFFSET are controlled ints — safe to inline; avoids ClickHouse JDBC
+        // LIMIT/OFFSET are controlled ints - safe to inline; avoids ClickHouse JDBC
         // quirks with setObject(Integer) for non-WHERE positions.
         StringBuilder sql = new StringBuilder(
                 "SELECT event_id, tenant_id, service_name, environment, timestamp," +
