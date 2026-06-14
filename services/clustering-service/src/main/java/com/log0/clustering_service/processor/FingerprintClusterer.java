@@ -14,10 +14,12 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Core clustering logic: groups incoming {@link NormalizedLogEvent}s by fingerprint and
- * time window, and emits an {@link IncidentEvent} to the {@code incident-events} topic every
- * time a window's occurrence count reaches or exceeds the configured threshold. One incident
- * is published per threshold crossing - there is no deduplication guard for subsequent crossings
- * within the same window.
+ * time window, and emits a single {@link IncidentEvent} to the {@code incident-events} topic
+ * the first time a window's occurrence count reaches the configured threshold. Subsequent
+ * messages in the same window do NOT re-emit - the window's {@code markIncidentEmitted} guard
+ * ensures one event per (fingerprint, window). The authoritative occurrence count lives in
+ * ClickHouse and is computed by the incident service on read, so the event carries only a
+ * threshold-crossing signal, not a running total.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,7 +43,7 @@ public class FingerprintClusterer {
 
         OccurrenceWindow window = occurrenceStore.increment(key, event.getMessage());
 
-        if (window.getCount() >= config.getOccurrenceThreshold()) {
+        if (window.getCount() >= config.getOccurrenceThreshold() && window.markIncidentEmitted()) {
             IncidentEvent incidentEvent = buildIncidentEvent(event, window);
             incidentEventProducer.publish(incidentEvent);
         }

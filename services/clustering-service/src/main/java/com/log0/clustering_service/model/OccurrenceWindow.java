@@ -21,6 +21,7 @@ public class OccurrenceWindow {
     private Instant lastSeenAt;
     private final Set<String> topMessages;
     private final int maxTopMessages;
+    private boolean incidentEmitted;
 
     public OccurrenceWindow(Instant firstSeenAt, int maxTopMessages) {
         this.count = 0;
@@ -28,6 +29,23 @@ public class OccurrenceWindow {
         this.lastSeenAt = firstSeenAt;
         this.topMessages = new LinkedHashSet<>();
         this.maxTopMessages = maxTopMessages;
+        this.incidentEmitted = false;
+    }
+
+    /**
+     * Returns {@code true} exactly once - the first time this window is asked to emit after
+     * crossing the occurrence threshold - and {@code false} on every subsequent call. This
+     * lets the clusterer publish a single {@link com.log0.clustering_service.dto.IncidentEvent}
+     * per window instead of one per message; downstream the authoritative occurrence count is
+     * derived from ClickHouse, so the event is only a "this fingerprint became an incident"
+     * signal rather than a running total.
+     */
+    public synchronized boolean markIncidentEmitted() {
+        if (incidentEmitted) {
+            return false;
+        }
+        incidentEmitted = true;
+        return true;
     }
 
     /**
