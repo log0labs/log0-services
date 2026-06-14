@@ -9,12 +9,15 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Centralised exception handler for all controllers in the incident-service.
  * Maps domain-level exceptions to consistent HTTP responses: {@code 400} for
  * validation errors, {@code 404} for unknown resources, {@code 409} for illegal
  * state transitions, and {@code 500} for unexpected failures.
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -55,6 +58,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneric(Exception ex) {
+        log.error("Unhandled exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Internal server error"));
     }
