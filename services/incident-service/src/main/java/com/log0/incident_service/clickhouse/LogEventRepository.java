@@ -7,8 +7,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
@@ -220,6 +223,76 @@ public class LogEventRepository {
         }
 
         return results;
+    }
+
+    /**
+     * Returns the authoritative occurrence count for a single incident: the total number of
+     * raw log events sharing the given {@code fingerprint} within the tenant. ClickHouse is the
+     * source of truth for this number - the incident row's {@code occurrence_count} is only a
+     * cache. Computing it here (rather than accumulating from at-least-once Kafka events) makes
+     * the count idempotent and immune to event redelivery.
+     *
+     * @return the count, or 0 if ClickHouse is unavailable (caller should fall back to the cache)
+     */
+    public long countByTenantIdAndFingerprint(UUID tenantId, String fingerprint) {
+        final String sql = "SELECT count() FROM log0.log_events WHERE tenant_id = ? AND fingerprint = ?";
+
+        try (Connection conn = clickHouseDataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, tenantId.toString());
+            stmt.setString(2, fingerprint);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong(1);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to count log events for fingerprint {} (tenant {}): {}",
+                    fingerprint, tenantId, e.getMessage(), e);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Batch variant of {@link #countByTenantIdAndFingerprint}: returns occurrence counts for
+     * many fingerprints in a single GROUP BY query, so the incident list endpoint can refresh a
+     * whole page of counts with one ClickHouse round-trip instead of one query per row.
+     *
+     * @return map of fingerprint to count; fingerprints with no logs (or on error) are absent
+     */
+    public Map<String, Long> countByTenantIdAndFingerprints(UUID tenantId, List<String> fingerprints) {
+        Map<String, Long> counts = new HashMap<>();
+        if (fingerprints == null || fingerprints.isEmpty()) {
+            return counts;
+        }
+
+        String placeholders = fingerprints.stream().map(f -> "?").collect(Collectors.joining(","));
+        String sql = "SELECT fingerprint, count() FROM log0.log_events"
+                + " WHERE tenant_id = ? AND fingerprint IN (" + placeholders + ")"
+                + " GROUP BY fingerprint";
+
+        try (Connection conn = clickHouseDataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, tenantId.toString());
+            for (int i = 0; i < fingerprints.size(); i++) {
+                stmt.setString(i + 2, fingerprints.get(i));
+            }
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    counts.put(rs.getString(1), rs.getLong(2));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to batch-count log events for {} fingerprints (tenant {}): {}",
+                    fingerprints.size(), tenantId, e.getMessage(), e);
+        }
+
+        return counts;
     }
 
     /**

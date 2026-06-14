@@ -2,6 +2,7 @@ package com.log0.incident_service.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,36 +46,43 @@ public class IncidentService {
     private final LogEventRepository logEventRepository;
 
     /**
-     * Idempotent upsert: increments occurrence count and refreshes timestamps on an
-     * existing active incident with a matching fingerprint, or creates a new one in
-     * status {@code NEW} and emits an {@code INCIDENT_CREATED} notification.
-     * Resolved incidents are excluded from the lookup so that recurring errors after
-     * resolution open a fresh incident.
+     * Idempotent upsert keyed on (tenant, fingerprint) for active incidents: refreshes the
+     * occurrence count, timestamps, and message samples on an existing active incident, or
+     * creates a new one in status {@code NEW} and emits an {@code INCIDENT_CREATED} notification.
+     * Resolved incidents are excluded from the lookup so that recurring errors after resolution
+     * open a fresh incident.
      *
-     * @param event the inbound event carrying fingerprint, occurrence data, and metadata
+     * <p>The occurrence count is read from ClickHouse (the source of truth) rather than
+     * accumulated from the event, so the operation is fully idempotent: redelivered or duplicate
+     * events cannot inflate the count. {@code Math.max} guards against a transient ClickHouse
+     * read lagging behind the cached value.
+     *
+     * @param event the inbound event carrying fingerprint and metadata (its occurrenceCount is
+     *              only a fallback used when ClickHouse is unavailable)
      */
     @Transactional
     public void createOrUpdateIncident(IncidentEvent event) {
+        UUID tenantId = UUID.fromString(event.getTenantId());
+        long liveCount = logEventRepository.countByTenantIdAndFingerprint(tenantId, event.getFingerprint());
+
         Optional<Incident> existing = incidentRepository.findByTenantIdAndFingerprintAndStatusNot(
-                UUID.fromString(event.getTenantId()),
-                event.getFingerprint(),
-                "RESOLVED");
+                tenantId, event.getFingerprint(), "RESOLVED");
 
         if (existing.isPresent()) {
             Incident incident = existing.get();
-            incident.setOccurrenceCount(incident.getOccurrenceCount() + event.getOccurrenceCount());
+            incident.setOccurrenceCount(Math.max(liveCount, incident.getOccurrenceCount()));
             incident.setLastSeenAt(event.getLastSeenAt());
             incident.setTopMessages(event.getTopMessages());
             incidentRepository.save(incident);
         } else {
             Incident incident = new Incident();
-            incident.setTenantId(UUID.fromString(event.getTenantId()));
+            incident.setTenantId(tenantId);
             incident.setFingerprint(event.getFingerprint());
             incident.setServiceName(event.getServiceName());
             incident.setEnvironment(event.getEnvironment());
             incident.setSeverity(event.getSeverity());
             incident.setStatus("NEW");
-            incident.setOccurrenceCount(event.getOccurrenceCount());
+            incident.setOccurrenceCount(liveCount > 0 ? liveCount : event.getOccurrenceCount());
             incident.setFirstSeenAt(event.getFirstSeenAt());
             incident.setLastSeenAt(event.getLastSeenAt());
             incident.setTopMessages(event.getTopMessages());
@@ -165,9 +173,15 @@ public class IncidentService {
      * to HTTP 404) if no matching record exists. Also used internally by all mutating
      * methods to enforce tenant isolation before any state change.
      */
+    @Transactional(readOnly = true)
     public Incident getIncident(UUID incidentId, UUID tenantId) {
-        return incidentRepository.findByIncidentIdAndTenantId(incidentId, tenantId)
+        Incident incident = incidentRepository.findByIncidentIdAndTenantId(incidentId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Incident not found: " + incidentId));
+        long liveCount = logEventRepository.countByTenantIdAndFingerprint(tenantId, incident.getFingerprint());
+        if (liveCount > 0) {
+            incident.setOccurrenceCount(liveCount);
+        }
+        return incident;
     }
 
     /**
@@ -210,9 +224,30 @@ public class IncidentService {
         return logEventRepository.findByTenantIdAndFingerprint(tenantId, incident.getFingerprint(), effectiveSize, offset);
     }
 
-    /** Returns a paginated view of all incidents belonging to the given tenant. */
+    /**
+     * Returns a paginated view of all incidents belonging to the given tenant, with each
+     * incident's occurrence count refreshed from ClickHouse (source of truth) in a single
+     * batch query. Read-only transaction so the overlaid counts are not flushed back as
+     * UPDATEs on every list call.
+     */
+    @Transactional(readOnly = true)
     public Page<Incident> listIncidents(UUID tenantId, Pageable pageable) {
-        return incidentRepository.findByTenantId(tenantId, pageable);
+        Page<Incident> page = incidentRepository.findByTenantId(tenantId, pageable);
+
+        List<String> fingerprints = page.getContent().stream()
+                .map(Incident::getFingerprint)
+                .distinct()
+                .toList();
+        Map<String, Long> liveCounts = logEventRepository.countByTenantIdAndFingerprints(tenantId, fingerprints);
+
+        for (Incident incident : page.getContent()) {
+            Long liveCount = liveCounts.get(incident.getFingerprint());
+            if (liveCount != null && liveCount > 0) {
+                incident.setOccurrenceCount(liveCount);
+            }
+        }
+
+        return page;
     }
 
     /**
