@@ -3,6 +3,7 @@ package com.log0.incident_service.repository;
 import com.log0.incident_service.entity.IncidentStateHistory;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -11,4 +12,10 @@ import java.util.UUID;
  * forming an immutable audit log.
  */
 public interface IncidentStateHistoryRepository extends JpaRepository<IncidentStateHistory, UUID> {
+
+    /**
+     * Returns the full status-transition timeline for an incident, oldest first - the order the
+     * console renders the detail timeline in.
+     */
+    List<IncidentStateHistory> findByIncidentIdOrderByChangedAtAsc(UUID incidentId);
 }

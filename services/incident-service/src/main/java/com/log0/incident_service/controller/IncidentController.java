@@ -1,6 +1,5 @@
 package com.log0.incident_service.controller;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -16,9 +15,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.log0.incident_service.clickhouse.LogEventDto;
 import com.log0.incident_service.dto.ActorRequest;
 import com.log0.incident_service.dto.AssignRequest;
+import com.log0.incident_service.dto.IncidentDetailResponse;
+import com.log0.incident_service.dto.IncidentLogsResponse;
 import com.log0.incident_service.entity.Incident;
 import com.log0.incident_service.service.IncidentService;
 
@@ -52,8 +52,9 @@ public class IncidentController {
      * Returns 404 if the incident does not exist or belongs to a different tenant.
      */
     @GetMapping("/{incidentId}")
-    public ResponseEntity<Incident> getIncident(@PathVariable UUID incidentId, @RequestParam UUID tenantId) {
-        return ResponseEntity.ok(incidentService.getIncident(incidentId, tenantId));
+    public ResponseEntity<IncidentDetailResponse> getIncident(
+            @PathVariable UUID incidentId, @RequestParam UUID tenantId) {
+        return ResponseEntity.ok(incidentService.getIncidentDetail(incidentId, tenantId));
     }
 
     /**
@@ -116,7 +117,7 @@ public class IncidentController {
      * @param size       rows per page (default 50, max 200)
      */
     @GetMapping("/{incidentId}/logs")
-    public ResponseEntity<List<LogEventDto>> getLogsForIncident(
+    public ResponseEntity<IncidentLogsResponse> getLogsForIncident(
             @PathVariable UUID incidentId,
             @RequestParam UUID tenantId,
             @RequestParam(defaultValue = "0") int page,

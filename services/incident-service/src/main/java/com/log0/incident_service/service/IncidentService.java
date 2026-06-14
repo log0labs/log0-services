@@ -12,10 +12,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.log0.incident_service.async.AiSummarizer;
-import com.log0.incident_service.clickhouse.LogEventDto;
 import com.log0.incident_service.clickhouse.LogEventRepository;
+import com.log0.incident_service.dto.AssignmentDto;
+import com.log0.incident_service.dto.IncidentDetailResponse;
 import com.log0.incident_service.dto.IncidentEvent;
+import com.log0.incident_service.dto.IncidentLogDto;
+import com.log0.incident_service.dto.IncidentLogsResponse;
 import com.log0.incident_service.dto.NotificationEvent;
+import com.log0.incident_service.dto.StatusHistoryDto;
 import com.log0.incident_service.entity.Incident;
 import com.log0.incident_service.entity.IncidentAssignment;
 import com.log0.incident_service.entity.IncidentStateHistory;
@@ -185,6 +189,30 @@ public class IncidentService {
     }
 
     /**
+     * Returns the full incident detail for {@code GET /api/v1/incidents/{id}}: the incident (with
+     * its occurrence count refreshed from ClickHouse) plus the current assignment and the ordered
+     * status-history timeline. The console relies on the {@code assignment} and {@code statusHistory}
+     * fields to render the assignee and timeline and to gate engineer acknowledge/resolve actions.
+     */
+    @Transactional(readOnly = true)
+    public IncidentDetailResponse getIncidentDetail(UUID incidentId, UUID tenantId) {
+        Incident incident = getIncident(incidentId, tenantId);
+
+        AssignmentDto assignment = assignmentRepository
+                .findFirstByIncidentIdOrderByAssignedAtDesc(incidentId)
+                .map(AssignmentDto::from)
+                .orElse(null);
+
+        List<StatusHistoryDto> statusHistory = stateHistoryRepository
+                .findByIncidentIdOrderByChangedAtAsc(incidentId)
+                .stream()
+                .map(StatusHistoryDto::from)
+                .toList();
+
+        return IncidentDetailResponse.from(incident, assignment, statusHistory);
+    }
+
+    /**
      * Persists the AI-generated summary text onto the incident. Called by
      * {@link com.log0.incident_service.controller.IncidentController} when
      * the AI Summary Service delivers a completed summary via its callback.
@@ -215,13 +243,24 @@ public class IncidentService {
      * @param tenantId   the tenant performing the request
      * @param page       0-based page index
      * @param size       maximum number of log events per page (capped at 200)
-     * @return list of log events newest-first; empty list if ClickHouse is unavailable
+     * @return paged log events newest-first; empty content if ClickHouse is unavailable
      */
-    public List<LogEventDto> getLogsForIncident(UUID incidentId, UUID tenantId, int page, int size) {
+    @Transactional(readOnly = true)
+    public IncidentLogsResponse getLogsForIncident(UUID incidentId, UUID tenantId, int page, int size) {
         Incident incident = getIncident(incidentId, tenantId);
         int effectiveSize = Math.min(size, 200);
         int offset = page * effectiveSize;
-        return logEventRepository.findByTenantIdAndFingerprint(tenantId, incident.getFingerprint(), effectiveSize, offset);
+
+        List<IncidentLogDto> content = logEventRepository
+                .findByTenantIdAndFingerprint(tenantId, incident.getFingerprint(), effectiveSize, offset)
+                .stream()
+                .map(IncidentLogDto::from)
+                .toList();
+
+        long total = logEventRepository.countByTenantIdAndFingerprint(tenantId, incident.getFingerprint());
+        int totalPages = effectiveSize == 0 ? 0 : (int) Math.ceil((double) total / effectiveSize);
+
+        return new IncidentLogsResponse(content, total, totalPages, page);
     }
 
     /**
