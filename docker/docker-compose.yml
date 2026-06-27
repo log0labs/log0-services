@@ -1,62 +1,79 @@
+# log0 full stack - infra + all 7 services in one file.
+# Run from this dir:  docker compose up -d --build
+#
+# Host-host networking is NEVER used between containers; they talk by service
+# name (postgres, redpanda, clickhouse, <service>-service) on the compose net.
+# Per-service host overrides are injected via SPRING_APPLICATION_JSON so the
+# source application.yml stays untouched (its localhost values are dev defaults).
+#
+# Plug-and-play: the edge (cloudflared) lives in docker-compose.tunnel.yml so the
+# exposure layer is swappable without touching this file. To run with the tunnel:
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  mem_limit: 512m
+
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: log0-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+  # ---------------- infra ----------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: log0-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --mode=dev-container
+      - --smp=1
+      - --default-log-level=warn
     ports:
-      - "2181:2181"
+      - "19092:19092"   # external Kafka API for host tools (e.g. seed-logs)
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: log0-kafka
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: log0-redpanda-init
     depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-
-  kafka-setup:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: log0-kafka-setup
-    depends_on:
-      - kafka
-    entrypoint: [ "/bin/sh", "-c" ]
-    command: |
-      "
-      echo 'Waiting for Kafka to be ready...'
-      cub kafka-ready -b kafka:29092 1 30
-      echo 'Creating topics...'
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic raw-logs            --partitions 3 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic normalized-logs     --partitions 3 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic raw-logs-dlq        --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic incident-events     --partitions 3 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification-events --partitions 3 --replication-factor 1
-      echo 'All topics created.'
-      "
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        B=redpanda:9092
+        rpk topic create raw-logs            -p 3 -r 1 --brokers $$B || true
+        rpk topic create normalized-logs     -p 3 -r 1 --brokers $$B || true
+        rpk topic create raw-logs-dlq        -p 1 -r 1 --brokers $$B || true
+        rpk topic create incident-events     -p 3 -r 1 --brokers $$B || true
+        rpk topic create notification-events -p 3 -r 1 --brokers $$B || true
+        echo "topics ready"
     restart: on-failure
 
   postgres:
     image: postgres:16
     container_name: log0-postgres
     ports:
-      - "5433:5432"
+      - "5433:5432"   # host 5433 for local DB tools; containers use postgres:5432
     environment:
       POSTGRES_DB: log0
       POSTGRES_USER: log0
       POSTGRES_PASSWORD: log0
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U log0 -d log0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
@@ -75,7 +92,117 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------------- services ----------------
+  auth-service:
+    <<: *service-defaults
+    build:
+      context: ../services/auth-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-auth
+    env_file: ../services/auth-service/.env   # JWT_SECRET
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.datasource.url":"jdbc:postgresql://postgres:5432/log0"}'
+    ports:
+      - "8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  incident-service:
+    <<: *service-defaults
+    build:
+      context: ../services/incident-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-incident
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.datasource.url":"jdbc:postgresql://postgres:5432/log0","spring.kafka.bootstrap-servers":"redpanda:9092","clickhouse.url":"jdbc:ch://clickhouse:8123/log0","ai-service.base-url":"http://ai-service:8085"}'
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+  ai-service:
+    <<: *service-defaults
+    build:
+      context: ../services/ai-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-ai
+    env_file: ../services/ai-service/.env     # GROQ_API_KEY
+    environment:
+      SPRING_APPLICATION_JSON: '{"ai.incident-service-base-url":"http://incident-service:8083"}'
+    ports:
+      - "8085:8085"
+
+  clustering-service:
+    <<: *service-defaults
+    build:
+      context: ../services/clustering-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-clustering
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092"}'
+    ports:
+      - "8082:8082"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  ingestion-gateway:
+    <<: *service-defaults
+    build:
+      context: ../services/ingestion-gateway
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-ingestion
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092"}'
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  normalization-service:
+    <<: *service-defaults
+    build:
+      context: ../services/normalization-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-normalization
+    # pure Kafka consumer, no published host port (defaults to 8080 internally)
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092","clickhouse.url":"jdbc:ch://clickhouse:8123/log0"}'
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: ../services/notification-service
+      dockerfile: ../../docker/Dockerfile
+    container_name: log0-notification
+    env_file: ../services/notification-service/.env   # SLACK_BOT_TOKEN, SLACK_CHANNEL_ID
+    environment:
+      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092"}'
+    ports:
+      - "8084:8084"
+    depends_on:
+      redpanda:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   clickhouse_data:
+  redpanda_data:

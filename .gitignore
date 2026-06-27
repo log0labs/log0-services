@@ -13,6 +13,11 @@ target/
 # Env
 .env
 
+# Cloudflare Tunnel credentials (secret)
+docker/cloudflared/*.json
+*.pem
+
 # Local docs, references, and generated files
 refs/
 docs/asyncapi/generated/
+local/

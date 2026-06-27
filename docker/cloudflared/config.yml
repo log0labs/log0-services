@@ -1,0 +1,14 @@
+# Cloudflare Tunnel ingress for log0 (named tunnel "log0", credentials-file mode).
+# cloudflared runs inside the compose network, so services are reached by name.
+tunnel: b64f13b2-8a34-423c-9517-739e69402d3d
+credentials-file: /etc/cloudflared/b64f13b2-8a34-423c-9517-739e69402d3d.json
+
+ingress:
+  - hostname: api.log0.in
+    service: http://incident-service:8083
+  - hostname: auth.log0.in
+    service: http://auth-service:8086
+  - hostname: ingest.log0.in
+    service: http://ingestion-gateway:8080
+  # catch-all (required last rule)
+  - service: http_status:404

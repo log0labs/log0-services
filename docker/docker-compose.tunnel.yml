@@ -1,0 +1,21 @@
+# Edge / exposure layer - SWAPPABLE.
+# The only file that knows the backend is reached via Cloudflare Tunnel.
+# Switch providers later (e.g. Caddy/nginx on Oracle Ampere) by replacing this
+# file + cloudflared/; the base docker-compose.yml never changes.
+#
+# Run base + tunnel together:
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+#
+# Named tunnel "log0" (created via `cloudflared tunnel login` + `tunnel create`),
+# no Cloudflare card / Zero Trust dashboard needed. Routing lives in
+# cloudflared/config.yml; credentials in cloudflared/<tunnel-id>.json (gitignored).
+# DNS CNAMEs api.log0.in / auth.log0.in already point at this tunnel.
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: log0-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro

@@ -46,7 +46,7 @@ const JITTER_MS   = 60_000; // spread each log's timestamp up to 60s into the pa
 const INGEST_URL = `${BASE_URL.replace(/\/$/, '')}/api/v1/logs`;
 
 // ---------------------------------------------------------------------------
-// Curated scenarios — each entry becomes ONE incident (count >= 10) or a sub-threshold
+// Curated scenarios - each entry becomes ONE incident (count >= 10) or a sub-threshold
 // burst (count < 10, raw-logs only). Vary service / message / frame to keep them
 // distinct. `count` controls occurrenceCount in the console.
 // ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ const SCENARIOS = [
     frame: null },
 ];
 
-// Stack-trace builder — distinct first frame => distinct fingerprint.
+// Stack-trace builder - distinct first frame => distinct fingerprint.
 function buildTrace(frame, message) {
   if (!frame) return null;
   const exType = /timeout/i.test(message) ? 'java.net.SocketTimeoutException'
@@ -136,7 +136,7 @@ function buildTrace(frame, message) {
 }
 
 // ---------------------------------------------------------------------------
-// Noise generator — fills raw-logs page to reach TOTAL. High message cardinality
+// Noise generator - fills raw-logs page to reach TOTAL. High message cardinality
 // keeps most of it under the incident threshold.
 // ---------------------------------------------------------------------------
 const NOISE_SERVICES = ['payment-service', 'auth-service', 'api-gateway', 'order-service',
@@ -210,7 +210,7 @@ for (let i = 0; i < noiseCount; i++) tasks.push(makeNoiseLog());
 // Send
 // ---------------------------------------------------------------------------
 function nowJittered() {
-  // timestamp up to JITTER_MS in the past — keeps the burst inside one clustering window
+  // timestamp up to JITTER_MS in the past - keeps the burst inside one clustering window
   return new Date(Date.now() - Math.floor(nextRand() * JITTER_MS)).toISOString();
 }
 
