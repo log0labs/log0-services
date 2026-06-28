@@ -1,2 +1,4 @@
 # Generated load-test artifacts (k6 summaries, run logs). Not committed.
 results/
+# Node deps for the JS harness - regenerable from package.json.
+node_modules/
