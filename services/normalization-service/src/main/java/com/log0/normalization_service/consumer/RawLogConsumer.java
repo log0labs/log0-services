@@ -2,6 +2,7 @@ package com.log0.normalization_service.consumer;
 
 import java.time.Instant;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
@@ -35,6 +36,14 @@ public class RawLogConsumer {
     private final LogEventRepository logEventRepository;
 
     /**
+     * Fault-injection marker for chaos/DLQ testing. Empty by default (no effect). When set,
+     * any raw log whose message contains this token is failed deliberately, exercising the
+     * DLQ routing path without taking a real dependency down. Set via {@code fault.inject-marker}.
+     */
+    @Value("${fault.inject-marker:}")
+    private String faultInjectMarker;
+
+    /**
      * Processes a single {@link RawLogEvent} from {@code raw-logs}.
      *
      * <p>Normalizes and publishes the event, then acknowledges the offset. On failure,
@@ -47,6 +56,10 @@ public class RawLogConsumer {
     @KafkaListener(topics = "raw-logs", containerFactory = "kafkaListenerContainerFactory")
     public void consume(RawLogEvent event, Acknowledgment ack) {
         try {
+            if (!faultInjectMarker.isBlank() && event.getMessage() != null
+                    && event.getMessage().contains(faultInjectMarker)) {
+                throw new IllegalStateException("fault-injection: poisoned message routed to DLQ");
+            }
             NormalizedLogEvent normalized = normalizer.normalize(event);
 
             producer.publish(normalized);

@@ -180,7 +180,9 @@ services:
     container_name: log0-normalization
     # pure Kafka consumer, no published host port (defaults to 8080 internally)
     environment:
-      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092","clickhouse.url":"jdbc:ch://clickhouse:8123/log0"}'
+      # clickhouse.batch-size default 500 (batched). Override CLICKHOUSE_BATCH_SIZE=1 at
+      # recreate time to reproduce the pre-optimization single-row-insert path (before/after bench).
+      SPRING_APPLICATION_JSON: '{"spring.kafka.bootstrap-servers":"redpanda:9092","clickhouse.url":"jdbc:ch://clickhouse:8123/log0","clickhouse.batch-size":${CLICKHOUSE_BATCH_SIZE:-500},"fault.inject-marker":"${FAULT_MARKER:-}"}'
     depends_on:
       redpanda:
         condition: service_healthy
