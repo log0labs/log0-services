@@ -1,4 +1,4 @@
-# start-log0.ps1 — ensure the log0 backend (services + Cloudflare tunnel) is up.
+# start-log0.ps1 - ensure the log0 backend (services + Cloudflare tunnel) is up.
 # Idempotent: safe to run anytime. `docker compose up -d` is a no-op for already-
 # running containers and (re)starts any that are stopped. Meant to run at logon.
 
@@ -17,7 +17,7 @@ for ($i = 0; $i -lt 60; $i++) {          # up to ~5 min
   if ($LASTEXITCODE -eq 0) { $ready = $true; break }
   Start-Sleep -Seconds 5
 }
-if (-not $ready) { Log 'docker engine not ready after 5 min — aborting'; exit 1 }
+if (-not $ready) { Log 'docker engine not ready after 5 min - aborting'; exit 1 }
 Log 'docker engine ready'
 
 # 2) Bring the stack up WITH the tunnel overlay (idempotent).

@@ -10,8 +10,9 @@
 # Output: results/window-boundary.csv (ratio_a,trial,incident,detect_ms)
 set -u
 cd "$(dirname "$0")"
-URL="http://host.docker.internal:8080/api/v1/logs"
-TENANT="6b1cd754-a35c-491a-9ee8-0e98dfd7b5a8"
+URL="${URL:-http://host.docker.internal:8080/api/v1/logs}"
+# gateway now derives the tenant from a validated key; mint a real one
+API_KEY="$(bash "$(dirname "$0")/bench-seed.sh")"
 TRIALS="${TRIALS:-8}"
 TS_A="2026-06-28T00:04:30Z"   # bucket floor 00:00 (min 4 -> 4/5*5 = 0)
 TS_B="2026-06-28T00:05:30Z"   # bucket floor 00:05 (min 5 -> 5/5*5 = 5)
@@ -20,8 +21,8 @@ now_ms(){ date +%s%3N; }
 
 post(){ # $1=service $2=event-timestamp
   curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST "$URL" \
-    -H 'Content-Type: application/json' -H "X-TENANT-ID: $TENANT" \
-    -H "X-SERVICE-NAME: $1" -H 'X-ENVIRONMENT: production' -H 'X-API-KEY: bench-key' \
+    -H 'Content-Type: application/json' \
+    -H "X-SERVICE-NAME: $1" -H 'X-ENVIRONMENT: production' -H "X-API-KEY: $API_KEY" \
     --data "{\"timestamp\":\"$2\",\"level\":\"ERROR\",\"message\":\"BoundaryException: window split probe\",\"trace\":\"com.log0.Boundary.run(Boundary.java:1)\"}" >/dev/null
 }
 found(){ docker exec log0-postgres psql -U log0 -d log0 -t -A \

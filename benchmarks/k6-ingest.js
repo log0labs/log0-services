@@ -14,21 +14,34 @@
 import http from "k6/http";
 import { check } from "k6";
 
+// --- inline API-key seeding (self-contained: the run-*.sh wrappers pipe this
+// file to the k6 container via stdin, which cannot resolve local imports) ---
+const AUTH_URL = __ENV.AUTH_URL || "http://host.docker.internal:8086";
+const SEED_PASS = "BenchPass123!";
+function seedTenant(label) {
+  const uniq = `${label}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const email = `bench+${uniq}@log0.test`;
+  const reg = http.post(`${AUTH_URL}/api/v1/tenants/register`,
+    JSON.stringify({ tenantName: `Bench ${uniq}`, slug: `bench-${uniq}`, adminEmail: email, adminPassword: SEED_PASS }),
+    { headers: { "Content-Type": "application/json" } });
+  if (reg.status !== 201) throw new Error(`seed register failed (${reg.status}): ${reg.body}`);
+  const login = http.post(`${AUTH_URL}/api/v1/auth/login`,
+    JSON.stringify({ email, password: SEED_PASS }), { headers: { "Content-Type": "application/json" } });
+  const jwt = login.json("accessToken");
+  const key = http.post(`${AUTH_URL}/api/v1/api-keys`, JSON.stringify({ name: `bench-${label}` }),
+    { headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` } });
+  const rawKey = key.json("rawKey");
+  if (!rawKey) throw new Error(`seed create-key failed (${key.status}): ${key.body}`);
+  return { apiKey: rawKey, tenantId: reg.json("tenantId") };
+}
+function seedTenants(n) { const out = []; for (let i = 0; i < n; i++) out.push(seedTenant(`t${i}`)); return out; }
+
 const URL = __ENV.URL || "http://localhost:8080/api/v1/logs";
 const VUS = parseInt(__ENV.VUS || "50");
 const DURATION = __ENV.DURATION || "60s";
 const TEMPLATES = parseInt(__ENV.TEMPLATES || "20");
 const TENANTS = parseInt(__ENV.TENANTS || "1");
 const SKEW = __ENV.SKEW === "1";
-
-// A fixed pool of tenant UUIDs (first one is the real seeded tenant).
-const TENANT_IDS = [
-  "6b1cd754-a35c-491a-9ee8-0e98dfd7b5a8",
-  "11111111-1111-1111-1111-111111111111",
-  "22222222-2222-2222-2222-222222222222",
-  "33333333-3333-3333-3333-333333333333",
-  "44444444-4444-4444-4444-444444444444",
-];
 
 // Distinct error "shapes". Each becomes one fingerprint family; the {n} varies
 // per request so the template collapses many lines into one incident.
@@ -56,13 +69,20 @@ export const options = {
   summaryTrendStats: ["avg", "min", "med", "p(95)", "p(99)", "max"],
 };
 
-function pickTenant() {
-  if (TENANTS <= 1) return TENANT_IDS[0];
-  if (SKEW && Math.random() < 0.9) return TENANT_IDS[0];
-  return TENANT_IDS[Math.floor(Math.random() * Math.min(TENANTS, TENANT_IDS.length))];
+// Seed one real API key per distinct tenant once, before the load starts.
+// The tenant is derived from the key by the gateway, so multi-tenant / skew
+// runs pick among keys (not client-supplied tenant ids).
+export function setup() {
+  return { keys: seedTenants(Math.max(TENANTS, 1)).map((t) => t.apiKey) };
 }
 
-export default function () {
+function pickKey(keys) {
+  if (keys.length <= 1) return keys[0];
+  if (SKEW && Math.random() < 0.9) return keys[0];
+  return keys[Math.floor(Math.random() * keys.length)];
+}
+
+export default function (data) {
   const shape = SHAPES[Math.floor(Math.random() * Math.min(TEMPLATES, SHAPES.length))];
   const n = Math.floor(Math.random() * 100000);
   const body = JSON.stringify({
@@ -75,10 +95,9 @@ export default function () {
   const res = http.post(URL, body, {
     headers: {
       "Content-Type": "application/json",
-      "X-TENANT-ID": pickTenant(),
       "X-SERVICE-NAME": "payment-service",
       "X-ENVIRONMENT": "production",
-      "X-API-KEY": "bench-key",
+      "X-API-KEY": pickKey(data.keys),
     },
   });
 

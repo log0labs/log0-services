@@ -6,8 +6,9 @@
 # Emits results/dlq.csv.
 set -u
 cd "$(dirname "$0")"
-URL="http://host.docker.internal:8080/api/v1/logs"
-TENANT="6b1cd754-a35c-491a-9ee8-0e98dfd7b5a8"
+URL="${URL:-http://host.docker.internal:8080/api/v1/logs}"
+# gateway now derives the tenant from a validated key; mint a real one
+API_KEY="$(bash "$(dirname "$0")/bench-seed.sh")"
 MARKER="__LOG0_FAULT__"
 N_POISON="${N_POISON:-300}"; N_CLEAN="${N_CLEAN:-300}"
 NONCE="$(date +%s)"; SVC="dlq_${NONCE}"
@@ -16,8 +17,8 @@ dlq_hw(){ docker exec log0-redpanda rpk topic describe raw-logs-dlq -p 2>/dev/nu
   | awk 'NR>1{s+=$6} END{print s+0}'; }   # sum HIGH-WATERMARK across partitions
 
 post(){ curl -s -m 8 -o /dev/null -w '%{http_code}' -X POST "$URL" \
-  -H 'Content-Type: application/json' -H "X-TENANT-ID: $TENANT" \
-  -H "X-SERVICE-NAME: $SVC" -H 'X-ENVIRONMENT: production' -H 'X-API-KEY: bench-key' \
+  -H 'Content-Type: application/json' \
+  -H "X-SERVICE-NAME: $SVC" -H 'X-ENVIRONMENT: production' -H "X-API-KEY: $API_KEY" \
   --data "$1"; }
 
 d0=$(dlq_hw)

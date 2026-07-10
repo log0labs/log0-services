@@ -11,8 +11,11 @@
  *   node seed-logs.js
  *
  * Override anything via env vars:
- *   BASE_URL=http://localhost:8080  TENANT_ID=<uuid>  API_KEY=<any-string>
+ *   BASE_URL=http://localhost:8080  API_KEY=<raw key from console -> Settings -> API keys>
  *   TOTAL=10000  CONCURRENCY=40  node seed-logs.js
+ *
+ * The gateway derives the tenant from the API key, so pass the real key of the
+ * tenant whose dashboard you want to populate (do NOT invent a tenant id).
  *
  * How incidents form (must understand to read the output):
  *   - Gateway -> raw-logs -> normalization (fingerprint) -> clustering -> incident.
@@ -37,8 +40,10 @@
 // Config
 // ---------------------------------------------------------------------------
 const BASE_URL    = process.env.BASE_URL    || 'http://localhost:8080';
-const TENANT_ID   = process.env.TENANT_ID   || '6b1cd754-a35c-491a-9ee8-0e98dfd7b5a8';
-const API_KEY     = process.env.API_KEY     || 'seed-script-key'; // gateway does not validate; any non-empty value works
+// Real API key of the target tenant. The gateway validates it and derives the
+// tenant from it, so there is no tenant header. Create one in the console under
+// Settings -> API keys.
+const API_KEY     = process.env.API_KEY;
 const TOTAL       = parseInt(process.env.TOTAL || '10000', 10);
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '40', 10);
 const JITTER_MS   = 60_000; // spread each log's timestamp up to 60s into the past (stays inside the 5-min window)
@@ -219,7 +224,6 @@ async function postLog(t) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-TENANT-ID': TENANT_ID,
       'X-SERVICE-NAME': t.service,
       'X-ENVIRONMENT': t.env,
       'X-API-KEY': API_KEY,
@@ -257,9 +261,12 @@ async function runPool(items, concurrency, worker) {
 // Main
 // ---------------------------------------------------------------------------
 (async () => {
+  if (!API_KEY) {
+    console.error('seed-logs: set API_KEY=<raw key> (console -> Settings -> API keys)');
+    process.exit(1);
+  }
   console.log('log0 seed-logs');
   console.log(`  target   : ${INGEST_URL}`);
-  console.log(`  tenant   : ${TENANT_ID}`);
   console.log(`  total    : ${tasks.length} logs (${curated} curated + ${noiseCount} noise), concurrency ${CONCURRENCY}`);
   console.log('');
   console.log('Expected incidents (after the ~5-min clustering window closes):');

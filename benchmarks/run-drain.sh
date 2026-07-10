@@ -4,7 +4,9 @@
 # (t_s,total_lag). The "before-batching" series needs a batching revert+redeploy (flagged).
 set -u
 cd "$(dirname "$0")"
-URL="http://host.docker.internal:8080/api/v1/logs"
+URL="${URL:-http://host.docker.internal:8080/api/v1/logs}"
+# gateway now derives the tenant from a validated key; mint a real one
+API_KEY="$(bash "$(dirname "$0")/bench-seed.sh")"
 OUT="${OUT:-results/drain-after.csv}"
 GROUP="${GROUP:-normalization-service}"
 BURST_VUS="${BURST_VUS:-400}"; BURST_DUR="${BURST_DUR:-20s}"
@@ -12,8 +14,8 @@ SAMPLES="${SAMPLES:-90}"
 
 # Confirm the gateway can publish before we start (producer reconnect after any restart).
 code=$(curl -s -m 8 -o /dev/null -w '%{http_code}' -X POST "$URL" \
-  -H 'Content-Type: application/json' -H 'X-TENANT-ID: 6b1cd754-a35c-491a-9ee8-0e98dfd7b5a8' \
-  -H 'X-SERVICE-NAME: drainprobe' -H 'X-ENVIRONMENT: production' -H 'X-API-KEY: bench-key' \
+  -H 'Content-Type: application/json' \
+  -H 'X-SERVICE-NAME: drainprobe' -H 'X-ENVIRONMENT: production' -H "X-API-KEY: $API_KEY" \
   --data '{"timestamp":"2026-06-28T00:00:00Z","level":"ERROR","message":"probe","trace":"a.b.C(C.java:1)"}')
 echo "[drain] gateway probe=$code"; [ "$code" = "202" ] || { echo "[drain] gateway not ready, abort"; exit 1; }
 

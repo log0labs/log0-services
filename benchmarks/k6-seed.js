@@ -5,7 +5,11 @@
 import http from "k6/http";
 
 const URL = __ENV.URL || "http://host.docker.internal:8080/api/v1/logs";
-const TENANT = __ENV.TENANT;
+// The gateway derives the tenant from the API key, so to populate a SPECIFIC
+// tenant's dashboard (e.g. the account you log into the console with), pass that
+// tenant's raw API key: create one in the console under Settings -> API keys and
+// run with -e API_KEY=log0_...  (do NOT use a throwaway seeded tenant here).
+const API_KEY = __ENV.API_KEY;
 const VUS = parseInt(__ENV.VUS || "40");
 const DURATION = __ENV.DURATION || "45s";
 
@@ -28,6 +32,12 @@ export const options = {
   scenarios: { seed: { executor: "constant-vus", vus: VUS, duration: DURATION } },
 };
 
+export function setup() {
+  if (!API_KEY) {
+    throw new Error("k6-seed: set -e API_KEY=<raw key> (console -> Settings -> API keys)");
+  }
+}
+
 export default function () {
   const svc = SERVICES[Math.floor(Math.random() * SERVICES.length)];
   const level = LEVELS[Math.floor(Math.random() * LEVELS.length)];
@@ -40,8 +50,8 @@ export default function () {
   });
   http.post(URL, body, {
     headers: {
-      "Content-Type": "application/json", "X-TENANT-ID": TENANT,
-      "X-SERVICE-NAME": svc, "X-ENVIRONMENT": "production", "X-API-KEY": "bench-key",
+      "Content-Type": "application/json",
+      "X-SERVICE-NAME": svc, "X-ENVIRONMENT": "production", "X-API-KEY": API_KEY,
     },
   });
 }
