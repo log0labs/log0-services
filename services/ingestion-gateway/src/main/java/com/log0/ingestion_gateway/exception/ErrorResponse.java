@@ -12,9 +12,9 @@ public class ErrorResponse {
     private final String error;
     private final List<String> details;
 
-    public ErrorResponse(String error, List<String> details) {
+    public ErrorResponse(String error) {
         this.error = error;
-        this.details = details;
+        this.details = null;
     }
 
     public String getError() {

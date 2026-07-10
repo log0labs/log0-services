@@ -14,6 +14,10 @@ spring:
 server:
   port: 8080
 
+auth-service:
+  base-url: ${AUTH_SERVICE_URL:http://auth-service:8086}
+  api-key-cache-ttl-seconds: ${API_KEY_CACHE_TTL:60}
+
 logging:
   level:
     root: INFO

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.log0.ingestion_gateway.constant.HeaderConstants;
 import com.log0.ingestion_gateway.context.RequestContext;
 import com.log0.ingestion_gateway.dto.LogIngestionRequest;
+import com.log0.ingestion_gateway.filter.ApiKeyAuthFilter;
 import com.log0.ingestion_gateway.service.LogIngestionService;
 import com.log0.ingestion_gateway.utils.RequestHeaderExtractor;
 
@@ -17,9 +18,11 @@ import jakarta.validation.Valid;
 
 /**
  * REST entry point for the log ingestion pipeline, exposed at {@code POST /api/v1/logs}.
- * Extracts the four required identity headers, builds a {@link RequestContext}, and
- * delegates to {@link LogIngestionService}; returns {@code 202 Accepted} on success
- * so callers are not blocked waiting for Kafka acknowledgement.
+ * The tenant is resolved from the validated API key by {@link ApiKeyAuthFilter} (never
+ * trusted from a client header); the remaining service/environment headers are read here,
+ * a {@link RequestContext} is built, and the event is delegated to
+ * {@link LogIngestionService}. Returns {@code 202 Accepted} on success so callers are not
+ * blocked waiting for Kafka acknowledgement.
  */
 @RestController
 @RequestMapping("/api/v1/logs")
@@ -45,7 +48,8 @@ public class LogIngestionController {
     public ResponseEntity<Void> ingestLog(
             HttpServletRequest request,
             @Valid @RequestBody LogIngestionRequest logRequest) {
-        String tenantId = RequestHeaderExtractor.getRequiredHeader(request, HeaderConstants.TENANT_ID);
+        // tenantId now comes from the validated API key, never from the client header
+        String tenantId = (String) request.getAttribute(ApiKeyAuthFilter.TENANT_ATTRIBUTE);
         String serviceName = RequestHeaderExtractor.getRequiredHeader(request, HeaderConstants.SERVICE_NAME);
         String environment = RequestHeaderExtractor.getRequiredHeader(request, HeaderConstants.ENVIRONMENT);
         String apiKey = RequestHeaderExtractor.getRequiredHeader(request, HeaderConstants.API_KEY);
