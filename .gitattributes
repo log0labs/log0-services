@@ -1,0 +1,16 @@
+# Normalize line endings to LF in the repo, regardless of contributor OS.
+* text=auto eol=lf
+
+# Windows scripts must stay CRLF; the Maven wrapper shell script must stay LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf
+mvnw  text eol=lf
+
+# Binary assets - never normalize.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

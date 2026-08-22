@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/services/ingestion-gateway"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/normalization-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/clustering-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/incident-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/notification-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/ai-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "maven"
+    directory: "/services/auth-service"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies", "ci"]
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule: { interval: "weekly" }
+    labels: ["dependencies", "docker"]

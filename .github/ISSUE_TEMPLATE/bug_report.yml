@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a problem with log0 services
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. **Do not report security vulnerabilities here** -
+        especially tenant-isolation or auth issues. See
+        [SECURITY.md](../blob/main/SECURITY.md).
+  - type: dropdown
+    id: service
+    attributes:
+      label: Affected service
+      options:
+        - ingestion-gateway
+        - normalization-service
+        - clustering-service
+        - incident-service
+        - notification-service
+        - ai-service
+        - auth-service
+        - infra / docker-compose
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Java version (`java -version`), how you ran it (Docker vs bare metal), commit.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      description: Relevant service logs. Redact any secrets, tokens, or tenant data.
+      render: shell
+    validations:
+      required: false
