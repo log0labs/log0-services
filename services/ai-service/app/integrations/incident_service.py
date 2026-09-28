@@ -20,5 +20,5 @@ def patch_ai_summary(settings: Settings, incident_id: UUID, ai_summary: str) -> 
         headers["X-Internal-Token"] = settings.internal_service_token.get_secret_value()
 
     with httpx.Client(timeout=30.0) as client:
-        response = client.patch(url, json={"ai_summary": ai_summary}, headers=headers)
+        response = client.patch(url, json={"aiSummary": ai_summary}, headers=headers)
         response.raise_for_status()
