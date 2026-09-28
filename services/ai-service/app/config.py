@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     
     service_name: str = "ai-service"
     incident_service_url: str = "http://localhost:8083"
+    internal_service_token: SecretStr | None = None
     
     # Per-purpose models: change any line to swap provider/model for testing.
     # Env names: LLM_SUMMARY, LLM_TRIAGE, LLM_INVESTIGATION, LLM_EVALUATION
