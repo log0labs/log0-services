@@ -1,13 +1,12 @@
 package com.log0.incident_service.async;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
-
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import com.log0.incident_service.dto.AiSummaryRequest;
 import com.log0.incident_service.entity.Incident;
@@ -38,33 +37,21 @@ public class AiSummarizer {
     @Value("${ai-service.base-url}")
     private String aiServiceBaseUrl;
 
-    private RestClient restClient;
+    private RestTemplate restTemplate;
 
     /**
-     * Initialises the {@link RestClient} with the AI service base URL after
-     * the {@code @Value} field has been injected by Spring.
+     * {@link RestTemplate} with Boot's default Jackson converters (unlike {@code RestClient},
+     * which was posting an empty body for {@link AiSummaryRequest}).
      */
     @PostConstruct
     private void init() {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-
-        this.restClient = RestClient.builder()
-                .baseUrl(aiServiceBaseUrl)
-                .requestFactory(new JdkClientHttpRequestFactory(httpClient))
-                .build();
+        this.restTemplate = new RestTemplate();
     }
 
     /**
      * Submits an AI summary request to the AI Summary Service for the given incident.
      * Executes asynchronously on a separate thread so the incident creation transaction
      * can commit without waiting for the LLM response.
-     *
-     * <p>
-     * All fields required by the AI service's {@code SummaryRequest} are mapped from
-     * the {@link Incident} entity. Any exception during the HTTP call or JSON serialisation
-     * is caught and logged - failure here must not propagate to the caller.
      *
      * @param incident the newly created incident to generate a summary for
      */
@@ -73,23 +60,25 @@ public class AiSummarizer {
         try {
             log.info("Requesting AI summary for incident {}", incident.getIncidentId());
 
-            AiSummaryRequest request = AiSummaryRequest.builder()
-                    .incidentId(incident.getIncidentId())
-                    .tenantId(incident.getTenantId().toString())
-                    .serviceName(incident.getServiceName())
-                    .environment(incident.getEnvironment())
-                    .severity(incident.getSeverity())
-                    .occurrenceCount(incident.getOccurrenceCount())
-                    .firstSeenAt(incident.getFirstSeenAt())
-                    .lastSeenAt(incident.getLastSeenAt())
-                    .topMessages(incident.getTopMessages())
-                    .build();
+            AiSummaryRequest request = new AiSummaryRequest(
+                    incident.getIncidentId(),
+                    incident.getTenantId().toString(),
+                    incident.getServiceName(),
+                    incident.getEnvironment(),
+                    incident.getSeverity(),
+                    incident.getOccurrenceCount(),
+                    incident.getFirstSeenAt(),
+                    incident.getLastSeenAt(),
+                    incident.getTopMessages());
 
-            restClient.post()
-                    .uri("/api/v1/summaries")
-                    .body(request)
-                    .retrieve()
-                    .toBodilessEntity();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<AiSummaryRequest> entity = new HttpEntity<>(request, headers);
+
+            restTemplate.postForEntity(
+                    aiServiceBaseUrl + "/api/v1/summaries",
+                    entity,
+                    Void.class);
 
             log.info("AI summary requested for incident {}", incident.getIncidentId());
         } catch (Exception e) {
