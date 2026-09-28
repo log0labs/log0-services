@@ -136,13 +136,17 @@ services:
     <<: *service-defaults
     build:
       context: ../services/ai-service
-      dockerfile: ../../docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: log0-ai
-    env_file: ../services/ai-service/.env     # GROQ_API_KEY
+    env_file: ../services/ai-service/.env
     environment:
-      SPRING_APPLICATION_JSON: '{"ai.incident-service-base-url":"http://incident-service:8083"}'
+      INCIDENT_SERVICE_URL: http://incident-service:8083
     ports:
       - "8085:8085"
+    mem_limit: 768m
+    depends_on:
+      incident-service:
+        condition: service_started
 
   clustering-service:
     <<: *service-defaults
