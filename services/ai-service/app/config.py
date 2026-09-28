@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     google_api_key: SecretStr | None = None
 
-    # LangSmith (exported to os.environ in step 0.15)
+    # LangSmith (mirrored to os.environ via app.observability.configure_tracing)
     langchain_tracing_v2: bool = False
     langchain_api_key: SecretStr | None = None
     langchain_endpoint: str = "https://api.smith.langchain.com"
