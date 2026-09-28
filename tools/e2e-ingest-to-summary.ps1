@@ -136,7 +136,7 @@ function Get-ApiKey {
     $k = $env:API_KEY
     if (-not [string]::IsNullOrWhiteSpace($k)) { return $k.Trim() }
     Write-Err 'Pass -ApiKey "log0_..." or:  $env:API_KEY = "log0_..."; .\e2e-ingest-to-summary.ps1'
-    Write-Err 'In PowerShell, API_KEY=... ./script.sh does not work — use Git Bash for that syntax.'
+    Write-Err 'In PowerShell, API_KEY=... ./script.sh does not work - use Git Bash for that syntax.'
     exit 1
 }
 

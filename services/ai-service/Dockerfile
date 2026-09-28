@@ -1,4 +1,4 @@
-# Python ai-service — multi-stage via uv (replaces Java jar build for this service only).
+# Python ai-service - multi-stage via uv (replaces Java jar build for this service only).
 
 FROM python:3.13-slim-bookworm AS base
 # Install uv from PyPI (avoids ghcr.io auth/rate-limit issues on some Docker setups).

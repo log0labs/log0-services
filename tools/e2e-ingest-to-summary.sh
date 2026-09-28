@@ -48,13 +48,13 @@ check_env_files() {
   echo "== .env preflight =="
 
   if [[ ! -f "$AUTH_ENV" ]]; then
-    red "MISSING $AUTH_ENV — copy from services/auth-service/.env.example and set JWT_SECRET (32+ chars)"
+    red "MISSING $AUTH_ENV - copy from services/auth-service/.env.example and set JWT_SECRET (32+ chars)"
     ok=0
   else
     local jwt
     jwt="$(env_val "$AUTH_ENV" JWT_SECRET || true)"
     if [[ -z "${jwt:-}" ]] || [[ "$jwt" == *your-secret* ]]; then
-      red "FIX $AUTH_ENV — JWT_SECRET must be set (not placeholder)"
+      red "FIX $AUTH_ENV - JWT_SECRET must be set (not placeholder)"
       ok=0
     else
       grn "OK auth-service/.env (JWT_SECRET set)"
@@ -62,13 +62,13 @@ check_env_files() {
   fi
 
   if [[ ! -f "$AI_ENV" ]]; then
-    red "MISSING $AI_ENV — copy from services/ai-service/.env.example"
+    red "MISSING $AI_ENV - copy from services/ai-service/.env.example"
     ok=0
   else
     local groq
     groq="$(env_val "$AI_ENV" GROQ_API_KEY || true)"
     if [[ -z "${groq:-}" ]]; then
-      ylw "WARN $AI_ENV — GROQ_API_KEY empty (needed if LLM_* use groq, the default)"
+      ylw "WARN $AI_ENV - GROQ_API_KEY empty (needed if LLM_* use groq, the default)"
       ok=0
     else
       grn "OK ai-service/.env (GROQ_API_KEY set)"
@@ -76,18 +76,18 @@ check_env_files() {
     local inc_url
     inc_url="$(env_val "$AI_ENV" INCIDENT_SERVICE_URL || true)"
     if [[ -n "${inc_url:-}" ]] && [[ "$inc_url" != *incident-service* ]] && [[ "$inc_url" != *localhost:8083* ]]; then
-      ylw "WARN ai-service INCIDENT_SERVICE_URL=$inc_url — in Docker use http://incident-service:8083 (compose overrides)"
+      ylw "WARN ai-service INCIDENT_SERVICE_URL=$inc_url - in Docker use http://incident-service:8083 (compose overrides)"
     fi
   fi
 
   if [[ ! -f "$NOTIF_ENV" ]]; then
-    ylw "SKIP notification-service/.env — Slack optional; pipeline works without it"
+    ylw "SKIP notification-service/.env - Slack optional; pipeline works without it"
   else
     local tok ch
     tok="$(env_val "$NOTIF_ENV" SLACK_BOT_TOKEN || true)"
     ch="$(env_val "$NOTIF_ENV" SLACK_CHANNEL_ID || true)"
     if [[ -z "${tok:-}" ]] || [[ "$tok" == *your-bot* ]] || [[ -z "${ch:-}" ]] || [[ "$ch" == C0XXXX* ]]; then
-      ylw "WARN notification-service/.env — Slack placeholders; incidents + AI still work"
+      ylw "WARN notification-service/.env - Slack placeholders; incidents + AI still work"
     else
       grn "OK notification-service/.env (Slack configured)"
     fi
@@ -221,7 +221,7 @@ wait_for_incident() {
     fi
     sleep 2
   done
-  red "No incident with marker ${RUN_ID} within 90s — check: docker logs log0-clustering log0-incident"
+  red "No incident with marker ${RUN_ID} within 90s - check: docker logs log0-clustering log0-incident"
   exit 1
 }
 
@@ -242,7 +242,7 @@ wait_for_summary() {
       echo "$summary" | head -c 400
       echo ""
       echo ""
-      grn "E2E OK — open console Incidents or check Slack if configured."
+      grn "E2E OK - open console Incidents or check Slack if configured."
       return 0
     fi
     sleep 2
