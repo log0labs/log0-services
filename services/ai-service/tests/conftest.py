@@ -13,6 +13,8 @@ from app.config import get_settings
 def _test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Minimal env so Settings validates without a real .env."""
     monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("JWT_SECRET","test-jwt-secret-at-least-32-characters-long",)
+    monkeypatch.setenv("INTERNAL_SERVICE_TOKEN", "test-internal-token-at-least-16-characters-long")
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "false")
     get_settings.cache_clear()
     yield

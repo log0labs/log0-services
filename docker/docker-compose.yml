@@ -120,6 +120,7 @@ services:
       context: ../services/incident-service
       dockerfile: ../../docker/Dockerfile
     container_name: log0-incident
+    env_file: ../services/incident-service/.env   # INTERNAL_SERVICE_TOKEN (must match ai-service)
     environment:
       SPRING_APPLICATION_JSON: '{"spring.datasource.url":"jdbc:postgresql://postgres:5432/log0","spring.kafka.bootstrap-servers":"redpanda:9092","clickhouse.url":"jdbc:ch://clickhouse:8123/log0","ai-service.base-url":"http://ai-service:8085"}'
     ports:

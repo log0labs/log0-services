@@ -37,6 +37,9 @@ public class AiSummarizer {
     @Value("${ai-service.base-url}")
     private String aiServiceBaseUrl;
 
+    @Value("${internal-service.token:}")
+    private String internalServiceToken;
+
     private RestTemplate restTemplate;
 
     /**
@@ -73,6 +76,9 @@ public class AiSummarizer {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            if (internalServiceToken != null && !internalServiceToken.isBlank()) {
+                headers.set("X-Internal-Token", internalServiceToken);
+            }
             HttpEntity<AiSummaryRequest> entity = new HttpEntity<>(request, headers);
 
             restTemplate.postForEntity(

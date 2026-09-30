@@ -34,6 +34,9 @@ server:
 ai-service:
   base-url: http://localhost:8085
 
+internal-service:
+  token: ${INTERNAL_SERVICE_TOKEN:}
+
 management:
   endpoints:
     web:

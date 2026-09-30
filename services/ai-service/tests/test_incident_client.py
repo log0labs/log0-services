@@ -19,6 +19,7 @@ def test_patch_ai_summary_sends_camel_case_body():
     patch_ai_summary(settings, incident_id, "Summary: ok\nPossible Cause: x\nRecommended Actions:\n- y")
 
     assert route.called
+    assert route.calls.last.request.headers["x-internal-token"] == "test-internal-token-at-least-16-characters-long"
     assert route.calls.last.request.content
     body = route.calls.last.request.content.decode()
     assert "aiSummary" in body

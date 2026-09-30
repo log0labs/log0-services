@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     service_name: str = "ai-service"
     incident_service_url: str = "http://localhost:8083"
     internal_service_token: SecretStr | None = None
+    jwt_secret: SecretStr | None = None
     
     # Per-purpose models: change any line to swap provider/model for testing.
     # Env names: LLM_SUMMARY, LLM_TRIAGE, LLM_INVESTIGATION, LLM_EVALUATION
@@ -87,6 +88,26 @@ class Settings(BaseSettings):
                 missing.append(f"{purpose.value} → {spec.format()} needs {key_name.upper()}")
         if missing:
             raise ValueError("Missing LLM API keys:\n  " + "\n  ".join(missing))
+        return self
+    
+    @model_validator(mode="after")
+    def _require_jwt_secret(self) -> Self:
+        """Investigations verify JWT locally; secret must match auth-service."""
+        if self.jwt_secret is None:
+            raise ValueError(
+                "JWT_SECRET is required (same value as auth-service/.env)"
+            )
+        raw = self.jwt_secret.get_secret_value()
+        if len(raw) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters (HS256)")
+        return self
+    
+    @model_validator(mode="after")
+    def _require_internal_service_token(self) -> Self:
+        if self.internal_service_token is None:
+            raise ValueError("INTERNAL_SERVICE_TOKEN is required (shared with incident-service)")
+        if len(self.internal_service_token.get_secret_value()) < 16:
+            raise ValueError("INTERNAL_SERVICE_TOKEN must be at least 16 characters")
         return self
 
 @lru_cache
