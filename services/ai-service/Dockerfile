@@ -20,4 +20,7 @@ RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8085
 
+COPY alembic.ini ./
+COPY alembic ./alembic
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8085"]
