@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     )
     
     service_name: str = "ai-service"
+    database_url: str = "postgresql+psycopg://log0:log0@localhost:5433/log0"
     incident_service_url: str = "http://localhost:8083"
     internal_service_token: SecretStr | None = None
     jwt_secret: SecretStr | None = None
