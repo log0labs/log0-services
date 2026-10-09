@@ -14,13 +14,14 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",
-    "sqlalchemy>=2.1.1",
+    "sqlalchemy[asyncio]>=2.1.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "respx>=0.23.1",
     "ruff>=0.16.9",
 ]

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.api import health, summaries
 from app.config import get_settings
+from app.db.session import create_db_engine, create_session_factory
 from app.observability import configure_tracing
 
 logging.basicConfig(
@@ -17,8 +18,13 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    configure_tracing(get_settings())
+    settings = get_settings()
+    configure_tracing(settings)
+    engine = create_db_engine(settings)
+    app.state.db_engine = engine
+    app.state.async_session_factory = create_session_factory(engine)
     yield
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:

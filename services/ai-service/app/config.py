@@ -78,6 +78,19 @@ class Settings(BaseSettings):
             Purpose.EVALUATION: self.llm_evaluation,
         }
     
+    @property
+    def database_url_async(self) -> str:
+        url = self.database_url
+        if url.startswith("postgresql+psycopg://"):
+            return url.replace(
+                "postgresql+psycopg://",
+                "postgresql+psycopg_async://",
+                1,
+            )
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg_async://", 1)
+        return url
+    
     @model_validator(mode="after")
     def _require_keys_for_configured_models(self) -> Self:
         """Every configured purpose must have an API key for its provider."""
