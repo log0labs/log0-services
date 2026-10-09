@@ -1,13 +1,47 @@
 """Shared fixtures: fake env for Settings, clear lru_cache between tests."""
 
-from collections.abc import Generator
+import asyncio
+import os
+import sys
+
+# psycopg async requires SelectorEventLoop on Windows (not ProactorEventLoop).
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.config import get_settings
+from app.db.session import create_session_factory
 
+
+def _postgres_reachable() -> bool:
+    return os.getenv("SKIP_INTEGRATION_TESTS", "").lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+requires_postgres = pytest.mark.skipif(
+    not _postgres_reachable(),
+    reason="Postgres integration tests (set SKIP_INTEGRATION_TESTS=1 to skip)",
+)
+
+
+@pytest_asyncio.fixture
+async def db_session() -> AsyncGenerator[AsyncSession]:
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url_async, pool_pre_ping=True)
+    factory = create_session_factory(engine)
+    async with factory() as session:
+        yield session
+        await session.rollback()
+    await engine.dispose()
 
 @pytest.fixture(autouse=True)
 def _test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
