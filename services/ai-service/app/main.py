@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import health, summaries
+from app.api import health, investigations, summaries
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
 from app.observability import configure_tracing
@@ -17,7 +17,7 @@ logging.basicConfig(
 
 
 @asynccontextmanager
-async def _lifespan(_app: FastAPI):
+async def _lifespan(app: FastAPI):
     settings = get_settings()
     configure_tracing(settings)
     engine = create_db_engine(settings)
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(summaries.router)
+    app.include_router(investigations.router)
     return app
 
 

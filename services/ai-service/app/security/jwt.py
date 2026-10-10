@@ -70,3 +70,15 @@ def get_current_user(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
+
+
+def require_investigation_writer(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> CurrentUser:
+    """Start/cancel/resume investigations: ADMIN or ENGINEER only (VIEWER read-only)."""
+    if user.role == Role.VIEWER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role",
+        )
+    return user

@@ -57,3 +57,13 @@ class Investigation(CamelModel):
     created_at: datetime
     updated_at: datetime
 
+
+class CreateInvestigationRequest(CamelModel):
+    incident_id: UUID
+    question: str | None = None
+    scope: InvestigationScope = Field(default_factory=InvestigationScope)
+
+
+class CreateInvestigationResponse(CamelModel):
+    investigation_id: UUID
+    status: InvestigationStatus
