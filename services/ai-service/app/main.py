@@ -9,6 +9,7 @@ from app.api import health, investigations, summaries
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
 from app.observability import configure_tracing
+from app.runner import InvestigationRunner
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,9 +22,17 @@ async def _lifespan(app: FastAPI):
     settings = get_settings()
     configure_tracing(settings)
     engine = create_db_engine(settings)
+    session_factory = create_session_factory(engine)
     app.state.db_engine = engine
-    app.state.async_session_factory = create_session_factory(engine)
+    app.state.async_session_factory = session_factory
+    runner = InvestigationRunner(
+        session_factory,
+        max_concurrent=settings.investigation_max_concurrent,
+    )
+    app.state.investigation_runner = runner
+    await runner.recover_on_startup()
     yield
+    await runner.shutdown()
     await engine.dispose()
 
 

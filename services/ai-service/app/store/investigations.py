@@ -1,8 +1,9 @@
 """Persistence for ai.investigation."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -112,3 +113,53 @@ async def list_by_incident(
     )
     result = await session.execute(stmt)
     return [_row_to_investigation(row) for row in result.all()]
+
+
+async def list_pending_for_runner(session: AsyncSession) -> list[tuple[UUID, UUID]]:
+    """Investigation ids to schedule on startup (QUEUED or RUNNING)."""
+    active = (InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value)
+    stmt = select(investigation.c.id, investigation.c.tenant_id).where(investigation.c.status.in_(active))
+    result = await session.execute(stmt)
+    return [(row.id, row.tenant_id) for row in result.all()]
+
+
+async def mark_running(session: AsyncSession, *, investigation_id: UUID, tenant_id: UUID) -> bool:
+    """QUEUED or RUNNING → RUNNING; set started_at if unset."""
+    now = datetime.now(tz=UTC)
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.status.in_((InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value)),
+        )
+        .values(status=InvestigationStatus.RUNNING.value, started_at=func.coalesce(investigation.c.started_at, now), updated_at=now)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount > 0
+
+
+
+async def transition_status(session: AsyncSession, *, investigation_id: UUID, tenant_id: UUID, status: InvestigationStatus, error: str | None = None, set_completed: bool = False) -> None:
+    now = datetime.now(tz=UTC)
+    values: dict = {
+        "status": status.value,
+        "updated_at": now,
+    }
+    if error is not None:
+        values["error"] = error
+    if set_completed:
+        values["completed_at"] = now
+        
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+        )
+        .values(**values)
+    )
+    await session.execute(stmt)
+    await session.commit()
+    

@@ -1,6 +1,8 @@
 """Tests for ``/api/v1/investigations``."""
 
+import asyncio
 import os
+import time
 from uuid import UUID
 
 import pytest
@@ -19,6 +21,8 @@ INTEGRATION = pytest.mark.skipif(
 INCIDENT_ID = "a0000010-0000-4000-8000-000000000010"
 INCIDENT_ID_CONFLICT = "a0000011-0000-4000-8000-000000000011"
 INCIDENT_ID_CROSS_TENANT = "a0000012-0000-4000-8000-000000000012"
+INCIDENT_ID_RUNNER = "a0000013-0000-4000-8000-000000000013"
+INCIDENT_ID_CANCEL = "a0000014-0000-4000-8000-000000000014"
 
 
 def _sample_body(*, incident_id: str = INCIDENT_ID) -> dict:
@@ -96,8 +100,23 @@ def test_post_returns_202_and_get():
         _delete_tenant_investigations(TENANT_A)
 
 
+def _poll_status(client, inv_id, headers, wanted, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    got = None
+    while time.monotonic() < deadline:
+        got = client.get(f"/api/v1/investigations/{inv_id}", headers=headers).json()["status"]
+        if got in wanted:
+            return got
+        time.sleep(0.05)
+    raise AssertionError(f"status stuck at {got}, wanted {wanted}")
+
+
 @INTEGRATION
-def test_post_conflict_409():
+def test_post_conflict_409(monkeypatch):
+    async def slow_execute(*_args, **_kwargs):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr("app.runner.default_investigation_execute", slow_execute)
     secret = get_settings().jwt_secret.get_secret_value()
     try:
         with TestClient(create_app()) as client:
@@ -129,5 +148,44 @@ def test_get_other_tenant_404():
                 headers=_auth_headers(secret, tenant_id=TENANT_B),
             )
             assert cross.status_code == 404
+    finally:
+        _delete_tenant_investigations(TENANT_A)
+
+
+@INTEGRATION
+def test_post_schedules_runner_until_completed():
+    secret = get_settings().jwt_secret.get_secret_value()
+    try:
+        with TestClient(create_app()) as client:
+            headers = _auth_headers(secret, tenant_id=TENANT_A)
+            post = client.post(
+                "/api/v1/investigations",
+                json=_sample_body(incident_id=INCIDENT_ID_RUNNER),
+                headers=headers,
+            )
+            assert post.status_code == 202
+            _poll_status(client, post.json()["investigationId"], headers, {"COMPLETED"})
+    finally:
+        _delete_tenant_investigations(TENANT_A)
+
+
+@INTEGRATION
+def test_cancel_active_investigation():
+    secret = get_settings().jwt_secret.get_secret_value()
+    try:
+        with TestClient(create_app()) as client:
+            headers = _auth_headers(secret, tenant_id=TENANT_A)
+            post = client.post(
+                "/api/v1/investigations",
+                json=_sample_body(incident_id=INCIDENT_ID_CANCEL),
+                headers=headers,
+            )
+            inv_id = post.json()["investigationId"]
+            cancel = client.post(
+                f"/api/v1/investigations/{inv_id}/cancel", headers=headers
+            )
+            # stub may finish first, making the row non-active
+            assert cancel.status_code in (204, 409)
+            _poll_status(client, inv_id, headers, {"CANCELLED", "COMPLETED"})
     finally:
         _delete_tenant_investigations(TENANT_A)

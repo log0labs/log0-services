@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     langchain_api_key: SecretStr | None = None
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langchain_project: str = "log0-ai-service"
+    
+    investigation_max_concurrent: int = 4
 
     @property
     def llm_models(self) -> dict[Purpose, ModelSpec]:
