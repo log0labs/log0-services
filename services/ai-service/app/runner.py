@@ -71,7 +71,20 @@ class InvestigationRunner:
         return task is not None and not task.done()
 
     async def cancel(self, investigation_id: UUID, *, tenant_id: UUID) -> None:
-        """Cancel a running investigation."""
+        """Cancel a running investigation (only if it belongs to ``tenant_id``)."""
+        async with self._session_factory() as session:
+            owned = await investigation_store.get_by_id(
+                session,
+                tenant_id=tenant_id,
+                investigation_id=investigation_id,
+            )
+        if owned is None:
+            logger.warning(
+                "Cancel refused: investigation %s not found for tenant %s",
+                investigation_id,
+                tenant_id,
+            )
+            return
         task = self._tasks.get(investigation_id)
         if task is not None and not task.done():
             task.cancel()
