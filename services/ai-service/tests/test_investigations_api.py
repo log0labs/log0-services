@@ -23,6 +23,7 @@ INCIDENT_ID_CONFLICT = "a0000011-0000-4000-8000-000000000011"
 INCIDENT_ID_CROSS_TENANT = "a0000012-0000-4000-8000-000000000012"
 INCIDENT_ID_RUNNER = "a0000013-0000-4000-8000-000000000013"
 INCIDENT_ID_CANCEL = "a0000014-0000-4000-8000-000000000014"
+INCIDENT_ID_STREAM = "a0000016-0000-4000-8000-000000000016"
 
 
 def _sample_body(*, incident_id: str = INCIDENT_ID) -> dict:
@@ -189,3 +190,78 @@ def test_cancel_active_investigation():
             _poll_status(client, inv_id, headers, {"CANCELLED", "COMPLETED"})
     finally:
         _delete_tenant_investigations(TENANT_A)
+
+
+def _parse_sse(text: str) -> list[dict[str, str]]:
+    """Turn a text/event-stream body into [{event, data, id}, ...]; skips keep-alive comments."""
+    out = []
+    for block in text.split("\n\n"):
+        fields = {}
+        for line in block.splitlines():
+            if line and not line.startswith(":"):
+                key, _, value = line.partition(": ")
+                fields[key] = value
+        if fields:
+            out.append(fields)
+    return out
+
+
+def test_stream_requires_auth():
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/api/v1/investigations/00000000-0000-4000-8000-000000000000/stream"
+        )
+    assert response.status_code == 401
+
+
+@INTEGRATION
+def test_stream_replays_events_and_closes_on_terminal():
+    secret = get_settings().jwt_secret.get_secret_value()
+    try:
+        with TestClient(create_app()) as client:
+            headers = _auth_headers(secret, tenant_id=TENANT_A)
+            post = client.post(
+                "/api/v1/investigations",
+                json=_sample_body(incident_id=INCIDENT_ID_STREAM),
+                headers=headers,
+            )
+            inv_id = post.json()["investigationId"]
+
+            resp = client.get(f"/api/v1/investigations/{inv_id}/stream", headers=headers)
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith("text/event-stream")
+            events = _parse_sse(resp.text)
+            assert [e["event"] for e in events] == [
+                "investigation.started",
+                "investigation.completed",
+            ]
+            assert [e["id"] for e in events] == ["1", "2"]
+
+            resumed = client.get(
+                f"/api/v1/investigations/{inv_id}/stream",
+                headers={**headers, "Last-Event-ID": "1"},
+            )
+            assert [e["id"] for e in _parse_sse(resumed.text)] == ["2"]
+    finally:
+        _delete_tenant_investigations(TENANT_A)
+
+
+@INTEGRATION
+def test_stream_other_tenant_404():
+    secret = get_settings().jwt_secret.get_secret_value()
+    try:
+        with TestClient(create_app()) as client:
+            post = client.post(
+                "/api/v1/investigations",
+                json=_sample_body(incident_id=INCIDENT_ID_STREAM),
+                headers=_auth_headers(secret, tenant_id=TENANT_A),
+            )
+            inv_id = post.json()["investigationId"]
+            cross = client.get(
+                f"/api/v1/investigations/{inv_id}/stream",
+                headers=_auth_headers(secret, tenant_id=TENANT_B),
+            )
+            assert cross.status_code == 404
+    finally:
+        _delete_tenant_investigations(TENANT_A)
+

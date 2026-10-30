@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     langchain_project: str = "log0-ai-service"
     
     investigation_max_concurrent: int = 4
+    investigation_stream_poll_seconds: float = 0.5
 
     @property
     def llm_models(self) -> dict[Purpose, ModelSpec]:
