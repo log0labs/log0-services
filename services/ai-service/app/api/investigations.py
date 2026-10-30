@@ -11,9 +11,11 @@ from app.schemas.investigation import (
     CreateInvestigationRequest,
     CreateInvestigationResponse,
     Investigation,
+    InvestigationEvent,
     InvestigationStatus,
 )
 from app.security.jwt import CurrentUser, get_current_user, require_investigation_writer
+from app.store import events as event_store
 from app.store import investigations as investigation_store
 from app.store.exceptions import ActiveInvestigationError
 
@@ -111,3 +113,28 @@ async def cancel_investigation(
         )
     runner = request.app.state.investigation_runner
     await runner.cancel(investigation_id, tenant_id=user.tenant_id)
+
+
+@router.get("/{investigation_id}/events", response_model=list[InvestigationEvent])
+async def list_investigation_events(
+    investigation_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    after: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+) -> list[InvestigationEvent]:
+    """List all events for an investigation, in order of increasing seq."""
+    row = await investigation_store.get_by_id(
+        session,
+        tenant_id=user.tenant_id,
+        investigation_id=investigation_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return await event_store.list_after(
+        session,
+        tenant_id=user.tenant_id,
+        investigation_id=investigation_id,
+        after_seq=after,
+        limit=limit,
+    )

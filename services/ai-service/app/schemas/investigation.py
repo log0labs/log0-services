@@ -11,6 +11,8 @@ from app.schemas.base import CamelModel
 
 
 class InvestigationStatus(StrEnum):
+    """Investigation status values."""
+    
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     AWAITING_REVIEW = "AWAITING_REVIEW"
@@ -59,11 +61,25 @@ class Investigation(CamelModel):
 
 
 class CreateInvestigationRequest(CamelModel):
+    """Request body for creating a new investigation."""
+    
     incident_id: UUID
     question: str | None = None
     scope: InvestigationScope = Field(default_factory=InvestigationScope)
 
 
 class CreateInvestigationResponse(CamelModel):
+    """Response to a create investigation request."""
+    
     investigation_id: UUID
     status: InvestigationStatus
+
+
+class InvestigationEvent(CamelModel):
+    """One row of the investigation event log (what the UI/SSE consume)."""
+
+    investigation_id: UUID
+    seq: int
+    type: str
+    payload: dict
+    created_at: datetime

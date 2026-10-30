@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.investigation import InvestigationStatus
+from app.store import events as event_store
 from app.store import investigations as investigation_store
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class InvestigationRunner:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._execute = execute or default_investigation_execute
         self._tasks: dict[UUID, asyncio.Task[None]] = {}
+        self._shutting_down = False
     
     def schedule(self, investigation_id: UUID, tenant_id: UUID) -> None:
         """Schedule an investigation to run in the background."""
@@ -94,6 +96,7 @@ class InvestigationRunner:
                 status=InvestigationStatus.CANCELLED,
                 set_completed=True,
             )
+            await self._emit(investigation_id, "investigation.cancelled")
     
     async def recover_on_startup(self) -> None:
         """Recover any investigations that were running when the service stopped."""
@@ -113,12 +116,32 @@ class InvestigationRunner:
             self.schedule(investigation_id, tenant_id)
     
     async def shutdown(self) -> None:
+        """Stop all tasks but leave their rows RUNNING so recover_on_startup resumes them."""
+        self._shutting_down = True
         tasks = list(self._tasks.values())
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
+    
+    async def _emit(
+        self,
+        investigation_id: UUID,
+        event_type: str,
+        payload: dict | None = None,
+    ) -> None:
+        """Best-effort event write; a failed event must never fail the investigation."""
+        try:
+            async with self._session_factory() as session:
+                await event_store.append_event(
+                    session,
+                    investigation_id=investigation_id,
+                    type=event_type,
+                    payload=payload,
+                )
+        except Exception:
+            logger.exception("Could not write event %s for %s", event_type, investigation_id)
     
     async def _run(self, investigation_id: UUID, *, tenant_id: UUID) -> None: 
         async with self._semaphore:
@@ -136,7 +159,7 @@ class InvestigationRunner:
                         tenant_id,
                     )
                     return
-                
+                await self._emit(investigation_id, "investigation.started")
                 await self._execute(
                     self._session_factory,
                     investigation_id,
@@ -157,7 +180,14 @@ class InvestigationRunner:
                             status=InvestigationStatus.COMPLETED,
                             set_completed=True,
                         )
+                        await self._emit(investigation_id, "investigation.completed")
             except asyncio.CancelledError:
+                if self._shutting_down:
+                    logger.info(
+                        "Investigation %s interrupted by shutdown; left for recovery",
+                        investigation_id,
+                    )
+                    raise
                 logger.info(
                     "Investigation %s (tenant %s) was canceled",
                     investigation_id,
@@ -171,6 +201,7 @@ class InvestigationRunner:
                         status=InvestigationStatus.CANCELLED,
                         set_completed=True,
                     )
+                await self._emit(investigation_id, "investigation.cancelled")
                 raise
             except Exception as exc:
                 logger.exception("Investigation %s failed", investigation_id)
@@ -183,4 +214,5 @@ class InvestigationRunner:
                         error=str(exc),
                         set_completed=True,
                     )
+                await self._emit(investigation_id, "investigation.failed", {"error": str(exc)})
         

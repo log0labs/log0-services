@@ -1,8 +1,10 @@
 """SQLAlchemy Core tables for the ai schema (mirrors Alembic migration)."""
 
 from sqlalchemy import (
+    BigInteger,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     MetaData,
     Numeric,
@@ -60,6 +62,31 @@ investigation = Table(
     ),
     Column(
         "updated_at",
+        DateTime(timezone=True),
+        server_default=text("now()"),
+        nullable=False,
+    ),
+)
+
+investigation_event = Table(
+    "investigation_event",
+    metadata,
+    Column(
+        "investigation_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("ai.investigation.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("seq", BigInteger(), primary_key=True),
+    Column("type", String(128), nullable=False),
+    Column(
+        "payload",
+        JSONB(astext_type=Text()),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
+    Column(
+        "created_at",
         DateTime(timezone=True),
         server_default=text("now()"),
         nullable=False,

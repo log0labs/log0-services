@@ -105,3 +105,25 @@ async def test_runner_recovers_queued_on_startup(session_factory: SessionFactory
     await runner.recover_on_startup()
     await _wait_until(session_factory, row.id, InvestigationStatus.COMPLETED)
     await runner.shutdown()
+
+
+async def test_runner_shutdown_leaves_running_for_recovery(
+    session_factory: SessionFactory,
+) -> None:
+    row = await _create(session_factory, UUID("a0000024-0000-4000-8000-000000000024"))
+    started = asyncio.Event()
+
+    async def hang(_factory, _investigation_id, _tenant_id) -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    runner = InvestigationRunner(session_factory, execute=hang)
+    runner.schedule(row.id, tenant_id=TENANT)
+    await asyncio.wait_for(started.wait(), timeout=5)
+    await runner.shutdown()
+    await _wait_until(session_factory, row.id, InvestigationStatus.RUNNING)
+
+    recovered = InvestigationRunner(session_factory)
+    await recovered.recover_on_startup()
+    await _wait_until(session_factory, row.id, InvestigationStatus.COMPLETED)
+    await recovered.shutdown()
