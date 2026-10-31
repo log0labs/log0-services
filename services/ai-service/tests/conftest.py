@@ -50,6 +50,7 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
         "DATABASE_URL",
         "postgresql+psycopg://log0:log0@localhost:5433/log0",
     )
+    monkeypatch.setenv("CLICKHOUSE_PASSWORD", "ai_reader_dev")
     monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
     monkeypatch.setenv("JWT_SECRET","test-jwt-secret-at-least-32-characters-long",)
     monkeypatch.setenv("INTERNAL_SERVICE_TOKEN", "test-internal-token-at-least-16-characters-long")

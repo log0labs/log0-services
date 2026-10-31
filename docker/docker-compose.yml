@@ -143,11 +143,14 @@ services:
     environment:
       INCIDENT_SERVICE_URL: http://incident-service:8083
       DATABASE_URL: postgresql+psycopg://log0:log0@postgres:5432/log0
+      CLICKHOUSE_URL: http://clickhouse:8123
     ports:
       - "8085:8085"
     mem_limit: 768m
     depends_on:
       postgres:
+        condition: service_healthy
+      clickhouse:
         condition: service_healthy
       incident-service:
         condition: service_started

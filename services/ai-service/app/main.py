@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.api import health, investigations, summaries
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
+from app.integrations.clickhouse import LogStore
 from app.observability import configure_tracing
 from app.runner import InvestigationRunner
 
@@ -30,9 +31,12 @@ async def _lifespan(app: FastAPI):
         max_concurrent=settings.investigation_max_concurrent,
     )
     app.state.investigation_runner = runner
+    log_store = LogStore(settings)
+    app.state.log_store = log_store
     await runner.recover_on_startup()
     yield
     await runner.shutdown()
+    await log_store.close()
     await engine.dispose()
 
 

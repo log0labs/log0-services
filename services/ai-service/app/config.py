@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     
     investigation_max_concurrent: int = 4
     investigation_stream_poll_seconds: float = 0.5
+    
+    # ClickHouse (read-only ai_reader user)
+    clickhouse_url: str = "http://localhost:8123"
+    clickhouse_database: str = "log0"
+    clickhouse_user: str = "ai_reader"
+    clickhouse_password: SecretStr | None = None
+    clickhouse_timeout_seconds: int = 15
 
     @property
     def llm_models(self) -> dict[Purpose, ModelSpec]:
