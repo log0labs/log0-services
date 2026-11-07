@@ -8,6 +8,7 @@ from typing import Annotated, Self
 
 from pydantic import BeforeValidator, SecretStr, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 from app.llm.model_spec import ModelSpec
 from app.llm.providers import get_provider
@@ -19,6 +20,15 @@ def _coerce_model_spec(value: str | ModelSpec) -> ModelSpec:
 
 
 ModelSpecField = Annotated[ModelSpec, NoDecode, BeforeValidator(_coerce_model_spec)]
+
+
+def _to_async_url(url: str) -> str:
+    """Swap a sync Postgres driver prefix for the async psycopg one."""
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql+psycopg_async://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg_async://", 1)
+    return url
 
 
 class Settings(BaseSettings):
@@ -77,6 +87,11 @@ class Settings(BaseSettings):
     clickhouse_user: str = "ai_reader"
     clickhouse_password: SecretStr | None = None
     clickhouse_timeout_seconds: int = 15
+    
+    # Postgres public.incident, read through the SELECT-only ai_incident_reader role (2.4).
+    # Host/port/database come from DATABASE_URL; only the credentials differ.
+    incident_db_user: str = "ai_incident_reader"
+    incident_db_password: SecretStr | None = None
 
     @property
     def llm_models(self) -> dict[Purpose, ModelSpec]:
@@ -89,17 +104,19 @@ class Settings(BaseSettings):
         }
     
     @property
+    def incident_database_url_async(self) -> str:
+        """DATABASE_URL's host/port/db with the read-only reader credentials."""
+        if self.incident_db_password is None:
+            raise RuntimeError("INCIDENT_DB_PASSWORD is not set (see step 2.4-a)")
+        url = make_url(self.database_url).set(
+            username=self.incident_db_user,
+            password=self.incident_db_password.get_secret_value(),
+        )
+        return _to_async_url(url.render_as_string(hide_password=False))
+
+    @property
     def database_url_async(self) -> str:
-        url = self.database_url
-        if url.startswith("postgresql+psycopg://"):
-            return url.replace(
-                "postgresql+psycopg://",
-                "postgresql+psycopg_async://",
-                1,
-            )
-        if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+psycopg_async://", 1)
-        return url
+        return _to_async_url(self.database_url)
     
     @model_validator(mode="after")
     def _require_keys_for_configured_models(self) -> Self:

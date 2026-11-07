@@ -9,6 +9,8 @@ from app.api import health, investigations, summaries
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
 from app.integrations.clickhouse import LogStore
+from app.integrations.incident_db import IncidentReader
+from app.integrations.incident_service import IncidentApiClient
 from app.observability import configure_tracing
 from app.runner import InvestigationRunner
 
@@ -33,10 +35,14 @@ async def _lifespan(app: FastAPI):
     app.state.investigation_runner = runner
     log_store = LogStore(settings)
     app.state.log_store = log_store
+    incident_reader = IncidentReader(settings)
+    app.state.incident_reader = incident_reader
+    app.state.incident_api = IncidentApiClient(settings)
     await runner.recover_on_startup()
     yield
     await runner.shutdown()
     await log_store.close()
+    await incident_reader.close()
     await engine.dispose()
 
 
