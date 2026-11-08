@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 EvidenceKind = Literal["log", "timeline", "incident", "code", "commit", "runbook", "doc", "memory"]
+GatherBranch = Literal["logs", "history", "code", "runbooks"]
 
 
 def make_evidence_id(kind: str, source_ref: str) -> str:
@@ -63,11 +64,29 @@ class CodeChange(BaseModel):
 
 
 class Triage(BaseModel):
-    """What the cheap first LLM pass decides (finalised in step 2.8)."""
+    """What the cheap first LLM pass decides. It is also the schema the model must fill in,
+    so every field carries a description the model reads."""
 
-    category: Literal["dependency", "deployment", "resource", "code_bug", "config", "unknown"]
-    summary: str
-    gather: list[Literal["logs", "history", "code", "runbooks"]]  # which fan-out branches to run
+    category: Literal["dependency", "deployment", "resource", "code_bug", "config", "unknown"] = Field(
+        description=(
+            "Most likely kind of problem: dependency (a downstream service or database), "
+            "deployment (a recent release or rollout), resource (memory, CPU, disk, "
+            "connections, rate limits), code_bug (a defect in this service's code), "
+            "config (settings or secrets), unknown (cannot tell from the facts)"
+        )
+    )
+    summary: str = Field(description="One or two plain sentences: what seems to be happening")
+    gather: list[GatherBranch] = Field(
+        description=(
+            "Which evidence sources are worth searching: logs (log timeline and samples), "
+            "history (earlier incidents with the same fingerprint), code (the repository: "
+            "needs an application stack frame or a clear code symptom), runbooks (team docs)"
+        )
+    )
+    initial_hypotheses: list[str] = Field(
+        default_factory=list,
+        description="Up to three short, competing explanations to test; each one sentence",
+    )
 
 
 class ReviewDecision(BaseModel):

@@ -10,8 +10,10 @@ def generation_for_purpose(settings: Settings, purpose: Purpose) -> GenerationCo
         if purpose == Purpose.SUMMARY
         else settings.llm_default_max_tokens
     )
+    # Triage is a classification: the same facts should give the same routing.
+    temperature = 0.0 if purpose == Purpose.TRIAGE else settings.llm_temperature
     return GenerationConfig(
-        temperature=settings.llm_temperature,
+        temperature=temperature,
         max_tokens=max_tokens,
         timeout_seconds=settings.llm_timeout_seconds,
     )

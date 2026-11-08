@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from typing import Annotated, Protocol, TypedDict
 from uuid import UUID
 
+from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+from app.llm.purpose import Purpose
 from app.parsing.stacktrace import StackFrame
 from app.schemas.domain import (
     CodeChange,
@@ -138,6 +140,12 @@ def new_state(
 # ------------------------------------------------------------------------- context
 
 
+class ChatModels(Protocol):
+    """Hands out the chat model for a purpose. ``PurposeChatModels`` in production, a fake in tests."""
+
+    def for_purpose(self, purpose: Purpose) -> BaseChatModel: ...
+
+
 @dataclass(frozen=True)
 class InvestigationContext:
     """Read-only, per-run. Nodes get it as ``runtime.context``."""
@@ -146,6 +154,7 @@ class InvestigationContext:
     logs: LogBackend  # LogStore in production, a fixture in evals
     incidents: IncidentApi
     history: RelatedIncidentSource
+    models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
 
 
 # ------------------------------------------------------------------------ checkpoints
