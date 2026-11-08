@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     langchain_project: str = "log0-ai-service"
     
     investigation_max_concurrent: int = 4
+    # False runs the old no-op stub instead of the graph (kill switch; the tests use it too)
+    investigation_graph_enabled: bool = True
     investigation_stream_poll_seconds: float = 0.5
     
     # ClickHouse (read-only ai_reader user)

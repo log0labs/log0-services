@@ -145,16 +145,12 @@ class InvestigationRunner:
         payload: dict | None = None,
     ) -> None:
         """Best-effort event write; a failed event must never fail the investigation."""
-        try:
-            async with self._session_factory() as session:
-                await event_store.append_event(
-                    session,
-                    investigation_id=investigation_id,
-                    type=event_type,
-                    payload=payload,
-                )
-        except Exception:
-            logger.exception("Could not write event %s for %s", event_type, investigation_id)
+        await event_store.append_event_safely(
+            self._session_factory,
+            investigation_id=investigation_id,
+            type=event_type,
+            payload=payload,
+        )
     
     async def _run(self, investigation_id: UUID, *, tenant_id: UUID) -> None: 
         async with self._semaphore:

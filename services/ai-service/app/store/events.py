@@ -1,13 +1,16 @@
 """Persistence for ai.investigation_event (append-only, ordered by seq)."""
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.tables import investigation, investigation_event
 from app.schemas.investigation import InvestigationEvent
+
+logger = logging.getLogger(__name__)
 
 _MAX_APPEND_ATTEMPTS = 3
 
@@ -62,6 +65,21 @@ async def append_event(
             if attempt == _MAX_APPEND_ATTEMPTS - 1:
                 raise
     raise RuntimeError("unreachable")
+
+
+async def append_event_safely(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    investigation_id: UUID,
+    type: str,
+    payload: dict | None = None,
+) -> None:
+    """Best-effort ``append_event`` on its own session: a lost event must never fail a run."""
+    try:
+        async with session_factory() as session:
+            await append_event(session, investigation_id=investigation_id, type=type, payload=payload)
+    except Exception:
+        logger.exception("Could not write event %s for %s", type, investigation_id)
 
 
 async def list_after(

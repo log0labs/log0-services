@@ -43,6 +43,7 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         await session.rollback()
     await engine.dispose()
 
+
 @pytest.fixture(autouse=True)
 def _test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Minimal env so Settings validates without a real .env."""
@@ -54,6 +55,7 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setenv("JWT_SECRET","test-jwt-secret-at-least-32-characters-long",)
     monkeypatch.setenv("INTERNAL_SERVICE_TOKEN", "test-internal-token-at-least-16-characters-long")
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "false")
+    monkeypatch.setenv("INVESTIGATION_GRAPH_ENABLED", "false")  # tests opt in to the real graph
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

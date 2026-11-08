@@ -140,7 +140,6 @@ async def mark_running(session: AsyncSession, *, investigation_id: UUID, tenant_
     return result.rowcount > 0
 
 
-
 async def transition_status(session: AsyncSession, *, investigation_id: UUID, tenant_id: UUID, status: InvestigationStatus, error: str | None = None, set_completed: bool = False) -> None:
     now = datetime.now(tz=UTC)
     values: dict = {
@@ -162,4 +161,28 @@ async def transition_status(session: AsyncSession, *, investigation_id: UUID, te
     )
     await session.execute(stmt)
     await session.commit()
-    
+
+
+async def record_run_result(
+    session: AsyncSession,
+    *,
+    investigation_id: UUID,
+    tenant_id: UUID,
+    graph_version: str,
+    tool_call_count: int,
+) -> None:
+    """Store which graph produced the run and how many tool calls it made."""
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+        )
+        .values(
+            graph_version=graph_version,
+            tool_call_count=tool_call_count,
+            updated_at=datetime.now(tz=UTC),
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
