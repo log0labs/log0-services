@@ -78,6 +78,22 @@ class LogSearchResult(BaseModel):
     limit_reached: bool  # True: more matching lines exist than were returned
 
 
+class ServiceLogCount(BaseModel):
+    service_name: str
+    count: int
+
+
+class LogStats(BaseModel):
+    fingerprint: str
+    start: datetime
+    end: datetime
+    total: int
+    first_seen: datetime | None
+    last_seen: datetime | None
+    services: list[ServiceLogCount]  # busiest first
+    levels: dict[str, int]  # e.g. {"ERROR": 40, "WARN": 2}
+
+
 def _utc(value: datetime) -> datetime:
     """Naive datetimes are taken as UTC; aware ones are converted to UTC."""
     if value.tzinfo is None:
@@ -257,3 +273,94 @@ async def search_logs(
         for r in rows[:limit]
     ]
     return LogSearchResult(lines=lines, limit_reached=limit_reached)
+
+
+_STATS_SQL = """
+SELECT service_name, level, count() AS n, min(timestamp) AS first_ts, max(timestamp) AS last_ts
+FROM log_events
+WHERE tenant_id = {tenant_id:String}
+  AND fingerprint = {fingerprint:String}
+  AND timestamp >= {start:DateTime64(3)}
+  AND timestamp < {end:DateTime64(3)}
+GROUP BY service_name, level
+ORDER BY n DESC
+LIMIT {max_rows:UInt32}
+"""
+
+MAX_STATS_GROUPS = 200
+
+
+async def get_log_stats(
+    backend: LogBackend,
+    *,
+    tenant_id: UUID,
+    fingerprint: str,
+    start: datetime,
+    end: datetime,
+) -> LogStats:
+    """How many log events carry this fingerprint, in which services, at which levels."""
+    start, end = _check_window(start, end)
+    rows = await backend.query(
+        _STATS_SQL,
+        tenant_id=tenant_id,
+        parameters={
+            "fingerprint": fingerprint,
+            "start": start,
+            "end": end,
+            "max_rows": MAX_STATS_GROUPS,
+        },
+    )
+    per_service: dict[str, int] = {}
+    levels: dict[str, int] = {}
+    for r in rows:
+        count = int(r["n"])
+        per_service[r["service_name"]] = per_service.get(r["service_name"], 0) + count
+        levels[r["level"]] = levels.get(r["level"], 0) + count
+    return LogStats(
+        fingerprint=fingerprint,
+        start=start,
+        end=end,
+        total=sum(per_service.values()),
+        first_seen=min((_utc(r["first_ts"]) for r in rows), default=None),
+        last_seen=max((_utc(r["last_ts"]) for r in rows), default=None),
+        services=[
+            ServiceLogCount(service_name=name, count=n)
+            for name, n in sorted(per_service.items(), key=lambda item: -item[1])
+        ],
+        levels=dict(sorted(levels.items(), key=lambda item: -item[1])),
+    )
+
+
+# The one place that reads log0's misnamed trace_id column: it holds the stack trace.
+_STACK_TRACE_SQL = """
+SELECT trace_id AS stack_trace, count() AS n
+FROM log_events
+WHERE tenant_id = {tenant_id:String}
+  AND fingerprint = {fingerprint:String}
+  AND timestamp >= {start:DateTime64(3)}
+  AND timestamp < {end:DateTime64(3)}
+  AND trace_id != ''
+GROUP BY stack_trace
+ORDER BY n DESC
+LIMIT 1
+"""
+
+MAX_STACK_TRACE_CHARS = 8000
+
+
+async def get_sample_stack_trace(
+    backend: LogBackend,
+    *,
+    tenant_id: UUID,
+    fingerprint: str,
+    start: datetime,
+    end: datetime,
+) -> str | None:
+    """The most common stack trace for this fingerprint in the window, or None."""
+    start, end = _check_window(start, end)
+    rows = await backend.query(
+        _STACK_TRACE_SQL,
+        tenant_id=tenant_id,
+        parameters={"fingerprint": fingerprint, "start": start, "end": end},
+    )
+    return rows[0]["stack_trace"][:MAX_STACK_TRACE_CHARS] if rows else None

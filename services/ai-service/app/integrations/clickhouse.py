@@ -68,8 +68,8 @@ class LogStore:
         params = dict(parameters or {})
         _check_query(sql, params)
         params["tenant_id"] = str(tenant_id)
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             result = await client.query(sql, parameters=params)
         except _DriverError as exc:
             raise ClickHouseError(str(exc)) from exc

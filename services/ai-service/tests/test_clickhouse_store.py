@@ -87,3 +87,17 @@ async def test_driver_errors_become_clickhouse_error() -> None:
     store = _store(FakeClient(error=DatabaseError("boom")))
     with pytest.raises(ClickHouseError, match="boom"):
         await store.query(SQL, tenant_id=TENANT)
+
+
+@pytest.mark.asyncio
+async def test_connection_failures_also_become_clickhouse_error() -> None:
+    from clickhouse_connect.driver.exceptions import OperationalError
+
+    store = LogStore(get_settings())
+
+    async def refuse() -> None:
+        raise OperationalError("Network Error: connection refused")
+
+    store._get_client = refuse  # type: ignore[method-assign]
+    with pytest.raises(ClickHouseError, match="connection refused"):
+        await store.query(SQL, tenant_id=TENANT)
