@@ -220,8 +220,6 @@ async def stream_investigation_events(
                     session, 
                     tenant_id=user.tenant_id, 
                     investigation_id=investigation.id,
-                    after_seq=cursor,
-                    limit=_STREAM_BATCH,
                 )
             )
         for ev in events:

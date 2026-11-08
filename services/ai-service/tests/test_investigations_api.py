@@ -265,3 +265,32 @@ def test_stream_other_tenant_404():
     finally:
         _delete_tenant_investigations(TENANT_A)
 
+
+@INTEGRATION
+def test_stream_waits_through_quiet_periods(monkeypatch):
+    """A run that is silent for a moment must not break the stream (the idle poll branch)."""
+
+    async def slow_execute(*_args, **_kwargs):
+        await asyncio.sleep(0.4)
+
+    monkeypatch.setattr("app.runner.default_investigation_execute", slow_execute)
+    monkeypatch.setenv("INVESTIGATION_STREAM_POLL_SECONDS", "0.05")
+    get_settings.cache_clear()
+    secret = get_settings().jwt_secret.get_secret_value()
+    try:
+        with TestClient(create_app()) as client:
+            headers = _auth_headers(secret, tenant_id=TENANT_A)
+            post = client.post(
+                "/api/v1/investigations",
+                json=_sample_body(incident_id=INCIDENT_ID_STREAM),
+                headers=headers,
+            )
+            inv_id = post.json()["investigationId"]
+            resp = client.get(f"/api/v1/investigations/{inv_id}/stream", headers=headers)
+            assert resp.status_code == 200
+            assert [e["event"] for e in _parse_sse(resp.text)] == [
+                "investigation.started",
+                "investigation.completed",
+            ]
+    finally:
+        _delete_tenant_investigations(TENANT_A)
