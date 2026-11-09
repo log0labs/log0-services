@@ -12,9 +12,11 @@ from app.graph.builder import build_graph
 from app.graph.checkpoint import open_checkpointer
 from app.graph.executor import GraphExecutor
 from app.integrations.clickhouse import LogStore
+from app.integrations.code_access import DbCodeAccess
 from app.integrations.github import GitHubClient
 from app.integrations.incident_db import IncidentReader
 from app.integrations.incident_service import IncidentApiClient
+from app.integrations.repo_cache import RepoCache
 from app.llm.connection_check import check_connection
 from app.llm.models import PurposeChatModels
 from app.observability import configure_tracing
@@ -61,6 +63,13 @@ async def _lifespan(app: FastAPI):
                 history=incident_reader,
                 models=PurposeChatModels(settings),
                 prices=settings.llm_prices,
+                code=DbCodeAccess(
+                    session_factory,
+                    app.state.secret_box,
+                    RepoCache(settings),
+                    git_binary=settings.git_binary,
+                    rg_binary=settings.rg_binary,
+                ),
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(

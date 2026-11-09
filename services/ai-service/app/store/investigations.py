@@ -175,6 +175,7 @@ async def record_run_result(
     root_cause: dict[str, Any] | None = None,
     recommendation: dict[str, Any] | None = None,
     confidence_band: str | None = None,
+    repo_sha: str | None = None,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     cost_usd: Decimal | None = None,
@@ -190,6 +191,7 @@ async def record_run_result(
             ("root_cause", root_cause),
             ("recommendation", recommendation),
             ("confidence_band", confidence_band),
+            ("repo_sha", repo_sha),
         )
         if value is not None
     }

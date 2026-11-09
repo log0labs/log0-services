@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from app.runner import InvestigationRunner, SessionFactory
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from app.store import events as event_store
 from app.store import investigations as store
+from tests.code_graph_support import FakeCode, Repo, checkout_for
 from tests.graph_fakes import (
     FakeApi,
     FakeHistory,
@@ -33,6 +35,7 @@ from tests.graph_fakes import (
     synthesis_answer,
     triage_answer,
 )
+from tests.test_gather_code import tool_model
 
 pytestmark = [
     pytest.mark.skipif(
@@ -71,13 +74,14 @@ class Backends:
         api: FakeApi | None = None,
         logs: FakeLogs | None = None,
         models: FakeModels | None = None,
+        code: Any = None,
     ) -> None:
         self.api = api or FakeApi(incident_payload(tenantId=str(TENANT)))
         self.logs = logs or FakeLogs()
         self.history = FakeHistory()
         self.models = models or FakeModels(FakeModel(triage_answer()))
         self.executor = GraphExecutor(
-            graph, logs=self.logs, incidents=self.api, history=self.history, models=self.models
+            graph, logs=self.logs, incidents=self.api, history=self.history, models=self.models, code=code
         )
 
 
@@ -144,6 +148,7 @@ async def test_a_run_completes_and_leaves_a_progress_trail(session_factory: Sess
     done = await _row(session_factory, row.id)
     assert done.graph_version == GRAPH_VERSION and done.tool_call_count == 3 + 3 + 1
     assert done.error is None and done.completed_at is not None
+    assert done.repo_sha is None  # the code was not read, so no commit is pinned
 
     events = await _events(session_factory, row.id)
     types = [e.type for e in events]
@@ -181,6 +186,27 @@ async def test_the_root_cause_and_recommendation_are_stored_on_the_row(session_f
     assert [e.type for e in events].index("root_cause.identified") > max(
         i for i, e in enumerate(events) if e.type == "hypothesis.proposed"
     )
+
+
+async def test_the_commit_the_code_was_read_at_is_stored_and_code_evidence_is_in_the_trail(
+    session_factory: SessionFactory, tmp_path: Path
+) -> None:
+    repo = Repo(tmp_path / "repo")
+    models = FakeModels(FakeModel(triage_answer(gather=["logs", "history", "code"])), investigation=tool_model(repo))
+    backends = Backends(build_graph(InMemorySaver()), models=models, code=FakeCode(checkout_for(repo)))
+    row = await _create(session_factory)
+
+    await backends.executor.run(session_factory, row.id, TENANT)
+
+    done = await _row(session_factory, row.id)
+    assert done.repo_sha == repo.c2  # the exact code the investigation read, for the report and for later steps
+    assert done.graph_version == GRAPH_VERSION == "m3-code-v1"
+    assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2)
+    events = await _events(session_factory, row.id)
+    kinds = [e.payload["kind"] for e in events if e.type == "evidence.added"]
+    assert kinds.count("code") == 1 and kinds.count("commit") == 1
+    assert any(e.type == "gap.recorded" and "left open" in e.payload["message"] for e in events)
+    assert repo.c2 not in str([e.payload for e in events])  # events carry summaries, never the pinned sha or excerpts
 
 
 async def test_tokens_and_cost_are_added_to_what_the_row_already_holds(session_factory: SessionFactory) -> None:

@@ -14,6 +14,7 @@ from uuid import UUID
 from langgraph.graph.state import CompiledStateGraph
 
 from app.graph.builder import GRAPH_VERSION
+from app.graph.code_access import CodeAccess
 from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
@@ -51,6 +52,7 @@ class GraphExecutor:
         history: RelatedIncidentSource,
         models: ChatModels,
         prices: Prices | None = None,
+        code: CodeAccess | None = None,
     ) -> None:
         self._graph = graph
         self._logs = logs
@@ -58,6 +60,7 @@ class GraphExecutor:
         self._history = history
         self._models = models
         self._prices = prices or {}
+        self._code = code
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         # The row is the authority on who owns this investigation and what was asked.
@@ -80,6 +83,7 @@ class GraphExecutor:
             incidents=self._incidents,
             history=self._history,
             models=self._models,
+            code=self._code,
         )
 
         snapshot = await self._graph.aget_state(config)

@@ -14,11 +14,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer
 
+from app.graph.nodes.gather_code import gather_code
 from app.graph.nodes.gather_followup import gather_followup
 from app.graph.nodes.gather_history import gather_history
 from app.graph.nodes.gather_logs import gather_logs
 from app.graph.nodes.load_context import load_context
-from app.graph.nodes.pending import gather_code, search_runbooks
+from app.graph.nodes.pending import search_runbooks
 from app.graph.nodes.root_cause import root_cause
 from app.graph.nodes.synthesize import synthesize
 from app.graph.nodes.triage import triage
@@ -26,7 +27,7 @@ from app.graph.nodes.verify import verify
 from app.graph.routing import BRANCH_NODES, after_load_context, after_verify, fan_out
 from app.graph.state import InvestigationContext, InvestigationState
 
-GRAPH_VERSION = "m2-root-cause-v1"
+GRAPH_VERSION = "m3-code-v1"
 
 
 def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:

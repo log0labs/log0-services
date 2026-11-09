@@ -33,4 +33,6 @@ def result_for_row(state: InvestigationState) -> dict[str, Any]:
         result["recommendation"] = _camel(state["recommendation"].model_dump())
     if state.get("confidence_band") is not None:
         result["confidence_band"] = state["confidence_band"]
+    if state.get("repo") is not None:
+        result["repo_sha"] = state["repo"].sha  # the exact code the investigation read
     return result

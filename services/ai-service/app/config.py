@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     repo_cache_dir: str = ".repo-cache"
     repo_clone_base_url: str = "https://github.com"  # clone URL = <base>/<owner>/<name>.git
     git_binary: str = "git"
+    rg_binary: str = "rg"  # ripgrep, for the code search tool
     git_timeout_seconds: float = 120
     git_allowed_protocols: str = "https"  # GIT_ALLOW_PROTOCOL; tests add "file" to clone from a local folder
     repo_fresh_seconds: float = 60  # a checkout synced more recently than this is reused without fetching

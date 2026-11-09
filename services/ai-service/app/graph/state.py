@@ -16,6 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from app.graph.budget import Budget
+from app.graph.code_access import CodeAccess
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
 from app.schemas.domain import (
@@ -166,6 +167,7 @@ class InvestigationContext:
     incidents: IncidentApi
     history: RelatedIncidentSource
     models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
+    code: CodeAccess | None = None  # the tenant's repositories; None: no code investigation on this server
     budget: Budget = field(default_factory=Budget)
     # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
     # so its clock starts again: the limit is per process run, not across restarts.

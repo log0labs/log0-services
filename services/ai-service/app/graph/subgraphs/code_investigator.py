@@ -409,8 +409,10 @@ async def finalize(state: CodeInvestigationState, runtime: Runtime[CodeInvestiga
 
 
 def build_code_investigator():
-    """Compile the subgraph. It has no checkpointer: a code investigation is short and is simply
-    run again if the process restarts."""
+    """Compile the subgraph. ``checkpointer=False`` is deliberate: left at its default, a subgraph run
+    inside a node of the parent inherits the parent's checkpointer and would save its whole tool
+    conversation into the investigation's checkpoint. A code investigation is short and is simply run
+    again if the process restarts."""
     builder = StateGraph(CodeInvestigationState, context_schema=CodeInvestigatorContext)
     builder.add_node("seed", seed)
     builder.add_node("agent", agent)
@@ -421,7 +423,7 @@ def build_code_investigator():
     builder.add_conditional_edges("agent", after_agent, ["tools", "finalize", END])
     builder.add_edge("tools", "agent")
     builder.add_edge("finalize", END)
-    return builder.compile()
+    return builder.compile(checkpointer=False)
 
 
 @dataclass(frozen=True)
