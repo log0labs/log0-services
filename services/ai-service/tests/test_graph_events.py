@@ -10,7 +10,14 @@ from app.graph.events import MAX_TEXT, events_from_update
 from app.graph.nodes.synthesize import hypothesis_id
 from app.graph.state import new_state
 from app.parsing.stacktrace import StackFrame
-from app.schemas.domain import Evidence, Hypothesis, Triage, Verification
+from app.schemas.domain import (
+    Evidence,
+    Hypothesis,
+    Recommendation,
+    RootCause,
+    Triage,
+    Verification,
+)
 from app.schemas.investigation import InvestigationScope
 from app.tools.incidents import IncidentContext
 from tests.graph_fakes import (
@@ -155,6 +162,45 @@ def test_hypotheses_from_any_other_node_are_not_reported() -> None:
     assert events_from_update({"gather_logs": {"hypotheses": [hypothesis]}}) == []
 
 
+def test_the_root_cause_is_reported_without_the_models_own_confidence() -> None:
+    cause = RootCause(
+        statement="Gateway down.",
+        evidence_ids=["ev_1"],
+        hypothesis_id="hyp_1",
+        contributing_factors=["no breaker"],
+        unresolved_questions=["why?"],
+        model_confidence=0.93,
+    )
+    update = {
+        "root_cause": {
+            "root_cause": cause,
+            "recommendation": Recommendation(summary="Add a breaker."),
+            "confidence_band": "medium",
+            "gaps": ["The model gave no recommendation"],
+        }
+    }
+    assert events_from_update(update) == [
+        (
+            "root_cause.identified",
+            {
+                "statement": "Gateway down.",
+                "evidenceIds": ["ev_1"],
+                "hypothesisId": "hyp_1",
+                "confidenceBand": "medium",
+                "contributingFactors": ["no breaker"],
+                "unresolvedQuestions": ["why?"],
+                "recommendation": "Add a breaker.",
+            },
+        ),
+        ("gap.recorded", {"message": "The model gave no recommendation"}),
+    ]
+
+
+def test_a_root_cause_node_that_found_nothing_reports_only_its_gap() -> None:
+    update = {"root_cause": {"root_cause": None, "gaps": ["No root cause was stated"]}}
+    assert events_from_update(update) == [("gap.recorded", {"message": "No root cause was stated"})]
+
+
 def test_a_failed_load_context_reports_nothing() -> None:
     # status/error/tool_calls only: the executor reports the failure once, at the end
     update = {"load_context": {"status": "FAILED", "error": "Incident not found", "tool_calls": 1}}
@@ -197,7 +243,14 @@ async def test_the_real_graph_streams_progress_as_each_node_finishes() -> None:
     last_evidence = max(i for i, t in enumerate(types) if t == "evidence.added")
     assert types.index("hypothesis.proposed") > last_evidence
     assert types.count("hypothesis.proposed") == 2
-    assert set(types) == {"context.loaded", "triage.completed", "evidence.added", "hypothesis.proposed"}
+    assert types.count("root_cause.identified") == 1 and types.index("root_cause.identified") > types.index("hypothesis.proposed")
+    assert set(types) == {
+        "context.loaded",
+        "triage.completed",
+        "evidence.added",
+        "hypothesis.proposed",
+        "root_cause.identified",
+    }
 
 
 @pytest.mark.asyncio

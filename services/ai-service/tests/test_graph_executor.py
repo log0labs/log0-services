@@ -29,6 +29,7 @@ from tests.graph_fakes import (
     FakeModel,
     FakeModels,
     incident_payload,
+    synthesis_answer,
     triage_answer,
 )
 
@@ -62,11 +63,18 @@ class HangingLogs(FakeLogs):
 class Backends:
     """One set of fakes, with the calls they received, plus an executor built on them."""
 
-    def __init__(self, graph: Any, *, api: FakeApi | None = None, logs: FakeLogs | None = None) -> None:
+    def __init__(
+        self,
+        graph: Any,
+        *,
+        api: FakeApi | None = None,
+        logs: FakeLogs | None = None,
+        models: FakeModels | None = None,
+    ) -> None:
         self.api = api or FakeApi(incident_payload(tenantId=str(TENANT)))
         self.logs = logs or FakeLogs()
         self.history = FakeHistory()
-        self.models = FakeModels(FakeModel(triage_answer()))
+        self.models = models or FakeModels(FakeModel(triage_answer()))
         self.executor = GraphExecutor(
             graph, logs=self.logs, incidents=self.api, history=self.history, models=self.models
         )
@@ -148,6 +156,43 @@ async def test_a_run_completes_and_leaves_a_progress_trail(session_factory: Sess
     triage_event = next(e for e in events if e.type == "triage.completed")
     assert triage_event.payload["category"] == "dependency"
     assert triage_event.payload["gather"] == ["logs", "history"]
+
+
+async def test_the_root_cause_and_recommendation_are_stored_on_the_row(session_factory: SessionFactory) -> None:
+    row = await _create(session_factory)
+    backends = Backends(build_graph(InMemorySaver()))
+
+    await backends.executor.run(session_factory, row.id, TENANT)
+
+    done = await _row(session_factory, row.id)
+    assert done.graph_version == GRAPH_VERSION
+    assert done.root_cause is not None and done.root_cause["statement"].startswith("The payment gateway stopped")
+    assert len(done.root_cause["evidenceIds"]) == 2 and done.root_cause["contributingFactors"]
+    assert done.recommendation is not None and done.recommendation["verificationSteps"]
+    assert done.confidence_band == "low"  # the default fake verify settles nothing: no supported hypothesis
+    assert "modelConfidence" not in str(done.root_cause)  # the model's own number never reaches the row
+
+    events = await _events(session_factory, row.id)
+    identified = [e for e in events if e.type == "root_cause.identified"]
+    assert len(identified) == 1 and identified[0].payload["confidenceBand"] == "low"
+    assert "modelConfidence" not in str(identified[0].payload)
+    assert [e.type for e in events].index("root_cause.identified") > max(
+        i for i, e in enumerate(events) if e.type == "hypothesis.proposed"
+    )
+
+
+async def test_a_run_without_hypotheses_leaves_the_result_columns_empty(session_factory: SessionFactory) -> None:
+    row = await _create(session_factory)
+    nothing = synthesis_answer(hypotheses=[])
+    models = FakeModels(FakeModel(triage_answer()), investigation=FakeModel(nothing))
+    backends = Backends(build_graph(InMemorySaver()), models=models)
+
+    await backends.executor.run(session_factory, row.id, TENANT)
+
+    done = await _row(session_factory, row.id)
+    assert done.root_cause is None and done.recommendation is None and done.confidence_band is None
+    types = [e.type for e in await _events(session_factory, row.id)]
+    assert "root_cause.identified" not in types
 
 
 async def test_tenant_and_scope_come_from_the_investigation_row(session_factory: SessionFactory) -> None:
@@ -251,7 +296,7 @@ async def test_a_run_interrupted_by_shutdown_resumes_without_repeating_finished_
 
     assert second.api.calls == []  # load_context was not redone
     # triage was not redone either, but synthesize (the node after the interruption) ran, once
-    assert second.models.purposes == [Purpose.INVESTIGATION, Purpose.INVESTIGATION]  # synthesize, then verify
+    assert second.models.purposes == [Purpose.INVESTIGATION] * 3  # synthesize, verify, root_cause
     done = await _row(session_factory, row.id)
     assert done.tool_call_count == 3 + 3 + 1
     types = [e.type for e in await _events(session_factory, row.id)]
@@ -272,4 +317,4 @@ async def test_a_graph_that_already_finished_is_not_run_again(session_factory: S
 
     assert len(backends.api.calls) == calls_after_first == 1
     assert len(await _events(session_factory, row.id)) == events_after_first
-    assert backends.models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION, Purpose.INVESTIGATION]  # nothing asked twice
+    assert backends.models.purposes == [Purpose.TRIAGE] + [Purpose.INVESTIGATION] * 3  # nothing asked twice

@@ -84,8 +84,14 @@ def main(incident_id: UUID, tenant_id: UUID) -> None:
 
             final = client.get(f"{base}/{investigation_id}", headers=headers).json()
             print("--- final record ---")
-            for key in ("status", "graphVersion", "toolCallCount", "error", "startedAt", "completedAt"):
+            for key in ("status", "graphVersion", "toolCallCount", "confidenceBand", "error", "startedAt", "completedAt"):
                 print(f"{key}: {final[key]}")
+            cause, advice = final.get("rootCause"), final.get("recommendation")
+            if cause:
+                print(f"rootCause: {cause['statement']}")
+                print(f"  evidenceIds: {cause['evidenceIds']} | unresolved: {cause['unresolvedQuestions']}")
+            if advice:
+                print(f"recommendation: {advice['summary']}")
     finally:
         if investigation_id:
             _clean_up(investigation_id)

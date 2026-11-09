@@ -15,6 +15,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.graph.builder import GRAPH_VERSION
 from app.graph.events import events_from_update
+from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
@@ -90,6 +91,7 @@ class GraphExecutor:
                 tenant_id=tenant_id,
                 graph_version=GRAPH_VERSION,
                 tool_call_count=final["tool_calls"],
+                **result_for_row(final),
             )
 
         if final["status"] == InvestigationStatus.FAILED:

@@ -29,10 +29,10 @@ def after_load_context(state: InvestigationState) -> Literal["triage", "__end__"
     return "triage"
 
 
-def after_verify(state: InvestigationState) -> Literal["gather_followup", "__end__"]:
-    """Loop back for more evidence only when verify left searches to run. Verify already checked
-    the budget before asking, so this is a plain read of ``follow_ups``."""
-    return "gather_followup" if state["follow_ups"] else END
+def after_verify(state: InvestigationState) -> Literal["gather_followup", "root_cause"]:
+    """Loop back for more evidence only when verify left searches to run, otherwise conclude.
+    Verify already checked the budget before asking, so this is a plain read of ``follow_ups``."""
+    return "gather_followup" if state["follow_ups"] else "root_cause"
 
 
 def fan_out(state: InvestigationState) -> list[Send]:

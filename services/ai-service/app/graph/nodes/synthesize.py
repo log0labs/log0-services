@@ -101,10 +101,10 @@ def build_synthesis_input(state: InvestigationState, *, hypotheses: list[Hypothe
     if state["question"]:
         parts.append(f"The engineer asked: {_line(state['question'], 500)}")
     if hypotheses:
-        parts.append("Hypotheses to judge:")
+        parts.append("Hypotheses:")
         for h in hypotheses:
             parts.append(
-                f"- {h.id}: {_line(h.statement, MAX_STATEMENT_CHARS)} "
+                f"- {h.id} [{h.status}]: {_line(h.statement, MAX_STATEMENT_CHARS)} "
                 f"(cited for: {', '.join(h.supporting_evidence) or 'none'}; "
                 f"cited against: {', '.join(h.contradicting_evidence) or 'none'})"
             )

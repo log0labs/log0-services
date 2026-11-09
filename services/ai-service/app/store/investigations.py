@@ -1,6 +1,7 @@
 """Persistence for ai.investigation."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, insert, select, update
@@ -170,8 +171,21 @@ async def record_run_result(
     tenant_id: UUID,
     graph_version: str,
     tool_call_count: int,
+    root_cause: dict[str, Any] | None = None,
+    recommendation: dict[str, Any] | None = None,
+    confidence_band: str | None = None,
 ) -> None:
-    """Store which graph produced the run and how many tool calls it made."""
+    """Store which graph produced the run, how many tool calls it made and, when the run reached
+    one, its root cause, recommendation and confidence band (a thin run leaves them empty)."""
+    results = {
+        key: value
+        for key, value in (
+            ("root_cause", root_cause),
+            ("recommendation", recommendation),
+            ("confidence_band", confidence_band),
+        )
+        if value is not None
+    }
     stmt = (
         update(investigation)
         .where(
@@ -181,6 +195,7 @@ async def record_run_result(
         .values(
             graph_version=graph_version,
             tool_call_count=tool_call_count,
+            **results,
             updated_at=datetime.now(tz=UTC),
         )
     )

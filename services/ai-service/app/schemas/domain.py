@@ -48,6 +48,7 @@ class CodeLocation(BaseModel):
 
 class RootCause(BaseModel):
     statement: str
+    hypothesis_id: str | None = None  # the hypothesis it comes from; the confidence rule needs its status
     evidence_ids: list[str]  # must all exist: the deterministic grounding check
     affected_locations: list[CodeLocation] = Field(default_factory=list)
     contributing_factors: list[str] = Field(default_factory=list)
@@ -61,6 +62,17 @@ class CodeChange(BaseModel):
     explanation: str
     old_code: str | None = None  # must match the file at repo_sha exactly once
     new_code: str | None = None
+
+
+class Recommendation(BaseModel):
+    """What the engineer should do next. ``changes`` stays empty until the code tools exist (M4)."""
+
+    summary: str
+    rationale: str = ""
+    changes: list[CodeChange] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    tests_required: list[str] = Field(default_factory=list)
+    verification_steps: list[str] = Field(default_factory=list)  # e.g. error rate back to baseline
 
 
 class Triage(BaseModel):
@@ -149,6 +161,42 @@ class Verification(BaseModel):
     """What the verify step asks the model for."""
 
     verdicts: list[HypothesisVerdict] = Field(description="One verdict for each open hypothesis")
+
+
+class RootCauseAnalysis(BaseModel):
+    """What the root_cause step asks the model for: the root cause and the recommendation in one
+    answer. ``build_analysis`` turns it into ``RootCause`` and ``Recommendation`` after the checks."""
+
+    statement: str = Field(
+        description="The most likely root cause in one or two specific sentences. If it is not "
+        "confirmed by the evidence, say so in the sentence."
+    )
+    hypothesis_id: str | None = Field(
+        default=None,
+        description="Id of the hypothesis this comes from, copied exactly (like hyp_1a2b3c4d). "
+        "Null when it combines several or none fits. Never a refuted one.",
+    )
+    evidence_ids: list[str] = Field(
+        description="Ids of the evidence that supports the root cause, copied exactly (like ev_1a2b3c4d). At least one."
+    )
+    contributing_factors: list[str] = Field(
+        default_factory=list, description="Other conditions that made it worse. Empty if none."
+    )
+    unresolved_questions: list[str] = Field(
+        default_factory=list,
+        description="What could not be determined from the evidence, and what would settle it.",
+    )
+    confidence: float = Field(
+        default=0.0, description="Your confidence from 0.0 to 1.0. It is only logged, never shown."
+    )
+    recommendation_summary: str = Field(description="What the engineer should do next, in one or two sentences")
+    recommendation_rationale: str = Field(default="", description="Why this is the right next step")
+    risks: list[str] = Field(default_factory=list, description="Risks of taking that step")
+    tests_required: list[str] = Field(default_factory=list, description="Tests to add or run")
+    verification_steps: list[str] = Field(
+        default_factory=list,
+        description="How to check the fix worked, for example the error rate for this incident returning to normal in the logs",
+    )
 
 
 class ReviewDecision(BaseModel):

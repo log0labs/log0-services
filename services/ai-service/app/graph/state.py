@@ -23,6 +23,7 @@ from app.schemas.domain import (
     CodeLocation,
     Evidence,
     Hypothesis,
+    Recommendation,
     RepoContext,
     ReviewDecision,
     RootCause,
@@ -94,6 +95,8 @@ class InvestigationState(TypedDict):
     follow_ups: list[str]  # log searches verify wants run next; empty: no loop
 
     root_cause: RootCause | None
+    recommendation: Recommendation | None
+    confidence_band: str | None  # high | medium | low, from the deterministic rule
     review: ReviewDecision | None
     proposed_changes: list[CodeChange]
     validation_errors: list[str]
@@ -129,6 +132,8 @@ def new_state(
         verify_round=0,
         follow_ups=[],
         root_cause=None,
+        recommendation=None,
+        confidence_band=None,
         review=None,
         proposed_changes=[],
         validation_errors=[],
@@ -182,6 +187,7 @@ CHECKPOINT_TYPES: tuple[type, ...] = (
     Triage,
     Evidence,
     Hypothesis,
+    Recommendation,
     RootCause,
     CodeLocation,
     ReviewDecision,

@@ -71,6 +71,17 @@ async def main(incident_id: UUID, tenant_id: UUID) -> None:
     for h in final["hypotheses"]:
         print(f"  {h.id} [{h.status}] {h.statement}")
         print(f"      supports: {h.supporting_evidence}  contradicts: {h.contradicting_evidence}")
+    cause = final["root_cause"]
+    if cause:
+        print(f"root cause [{final['confidence_band']}] (hypothesis {cause.hypothesis_id}): {cause.statement}")
+        print(f"  cites: {cause.evidence_ids}")
+        for question in cause.unresolved_questions:
+            print(f"  unresolved: {question}")
+    advice = final["recommendation"]
+    if advice:
+        print(f"recommendation: {advice.summary}")
+        for step in advice.verification_steps:
+            print(f"  verify: {step}")
     for item in final["evidence"]:
         print(f"  [{item.kind:8}] {item.id}  {item.summary[:150]}")
 

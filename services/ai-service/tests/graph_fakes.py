@@ -18,6 +18,7 @@ from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.schemas.domain import (
     HypothesisDraft,
     HypothesisVerdict,
+    RootCauseAnalysis,
     Synthesis,
     Triage,
     Verification,
@@ -180,7 +181,8 @@ class FakeModel:
 
     ``answer`` is what it returns for any schema; ``answers`` overrides that per schema, so one
     model can play both synthesize (``Synthesis``) and verify (``Verification``). Asked for a
-    ``Verification`` with no answer for it, it gives no verdicts: hypotheses stay open.
+    ``Verification`` with no answer for it, it gives no verdicts: hypotheses stay open. Asked for a
+    ``RootCauseAnalysis`` with no answer for it, it gives a valid one (``analysis_answer``).
     """
 
     def __init__(
@@ -216,6 +218,8 @@ class FakeModel:
                 return value
             if schema is Verification:
                 return Verification(verdicts=[])  # nothing configured: no opinion on any hypothesis
+            if schema is RootCauseAnalysis:
+                return analysis_answer()
             return self.answer
 
         return RunnableLambda(lambda m: None, afunc=call)
@@ -269,6 +273,23 @@ def synthesis_answer(**over: Any) -> Synthesis:
             ),
         ]
     return Synthesis(hypotheses=drafts, **over)
+
+
+def analysis_answer(**over: Any) -> RootCauseAnalysis:
+    data: dict[str, Any] = {
+        "statement": "The payment gateway stopped answering, so calls hit the 30 s timeout.",
+        "evidence_ids": [STACKTRACE_EVIDENCE_ID, INCIDENT_EVIDENCE_ID],
+        "contributing_factors": ["No circuit breaker around the gateway call"],
+        "unresolved_questions": ["Why did the gateway stop answering?"],
+        "confidence": 0.7,
+        "recommendation_summary": "Check the gateway status and add a circuit breaker.",
+        "recommendation_rationale": "The timeouts all come from one downstream call.",
+        "risks": ["A breaker that opens too early rejects valid payments"],
+        "tests_required": ["A test that simulates a gateway timeout"],
+        "verification_steps": ["The error rate for this incident returns to baseline in the logs"],
+    }
+    data.update(over)
+    return RootCauseAnalysis(**data)
 
 
 def verdict(hypothesis_id: str, kind: str = "open", **over: Any) -> HypothesisVerdict:

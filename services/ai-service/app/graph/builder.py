@@ -3,7 +3,7 @@
     START -> load_context -> triage -> (parallel) gather_logs | gather_history |
                                                   gather_code | search_runbooks -> synthesize -> verify
     verify -> gather_followup -> verify   (while verify wants more log searches and the budget allows)
-    verify -> END
+    verify -> root_cause -> END
 
 ``load_context`` ends the run when the incident cannot be read. ``triage`` picks which
 gather branches run. Each branch is sent into ``synthesize``. The graph is pure wiring: 
@@ -19,13 +19,14 @@ from app.graph.nodes.gather_history import gather_history
 from app.graph.nodes.gather_logs import gather_logs
 from app.graph.nodes.load_context import load_context
 from app.graph.nodes.pending import gather_code, search_runbooks
+from app.graph.nodes.root_cause import root_cause
 from app.graph.nodes.synthesize import synthesize
 from app.graph.nodes.triage import triage
 from app.graph.nodes.verify import verify
 from app.graph.routing import BRANCH_NODES, after_load_context, after_verify, fan_out
 from app.graph.state import InvestigationContext, InvestigationState
 
-GRAPH_VERSION = "m2-verify-v1"
+GRAPH_VERSION = "m2-root-cause-v1"
 
 
 def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
@@ -40,6 +41,7 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder.add_node("search_runbooks", search_runbooks)
     builder.add_node("synthesize", synthesize)
     builder.add_node("verify", verify)
+    builder.add_node("root_cause", root_cause)
     builder.add_node("gather_followup", gather_followup)
     
     builder.add_edge(START, "load_context")
@@ -49,7 +51,8 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     for node in BRANCH_NODES.values():
         builder.add_edge(node, "synthesize")
     builder.add_edge("synthesize", "verify")
-    builder.add_conditional_edges("verify", after_verify, ["gather_followup", END])
+    builder.add_conditional_edges("verify", after_verify, ["gather_followup", "root_cause"])
+    builder.add_edge("root_cause", END)
     builder.add_edge("gather_followup", "verify")
 
     return builder.compile(checkpointer=checkpointer)
