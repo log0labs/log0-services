@@ -17,6 +17,7 @@ from app.graph.builder import GRAPH_VERSION
 from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
+from app.graph.usage import Prices, UsageRecorder, run_config
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
 from app.store import events as event_store
@@ -25,6 +26,17 @@ from app.tools.incidents import IncidentApi, RelatedIncidentSource
 from app.tools.logs import LogBackend
 
 logger = logging.getLogger(__name__)
+
+
+def usage_for_row(recorder: UsageRecorder) -> dict[str, Any]:
+    """Tokens and cost for the row; nothing when no call reported usage (the columns stay empty)."""
+    if not recorder.has_usage:
+        return {}
+    return {
+        "input_tokens": recorder.input_tokens,
+        "output_tokens": recorder.output_tokens,
+        "cost_usd": recorder.cost_usd(),
+    }
 
 
 class GraphExecutor:
@@ -38,12 +50,14 @@ class GraphExecutor:
         incidents: IncidentApi,
         history: RelatedIncidentSource,
         models: ChatModels,
+        prices: Prices | None = None,
     ) -> None:
         self._graph = graph
         self._logs = logs
         self._incidents = incidents
         self._history = history
         self._models = models
+        self._prices = prices or {}
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         # The row is the authority on who owns this investigation and what was asked.
@@ -56,8 +70,10 @@ class GraphExecutor:
         if row is None:
             raise LookupError(f"Investigation {investigation_id} not found for tenant {tenant_id}")
 
-        # thread_id = investigation id: one checkpoint thread per investigation, never shared
-        config: Any = {"configurable": {"thread_id": str(investigation_id)}}
+        # thread_id = investigation id: one checkpoint thread per investigation, never shared.
+        # The recorder listens to every node and model call of this run (tokens, time, cost).
+        recorder = UsageRecorder(self._prices)
+        config: Any = run_config(investigation_id, recorder, GRAPH_VERSION)
         context = InvestigationContext(
             tenant_id=tenant_id,  # from the investigation row the runner verified, never the model
             logs=self._logs,
@@ -92,7 +108,9 @@ class GraphExecutor:
                 graph_version=GRAPH_VERSION,
                 tool_call_count=final["tool_calls"],
                 **result_for_row(final),
+                **usage_for_row(recorder),
             )
+        recorder.log_summary(investigation_id)
 
         if final["status"] == InvestigationStatus.FAILED:
             error = final["error"] or "Investigation failed"

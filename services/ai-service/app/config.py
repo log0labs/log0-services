@@ -6,7 +6,7 @@ Values come from environment variables (and a local ``.env`` file in dev).
 from functools import lru_cache
 from typing import Annotated, Self
 
-from pydantic import BeforeValidator, SecretStr, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # mangles the tool name); qwen on Groq rejects json_schema and needs function_calling.
     llm_triage_output_method: StructuredOutputMethod = "json_schema"
     llm_investigation_output_method: StructuredOutputMethod = "function_calling"
+
+    # What a model costs, USD per million (input, output) tokens, by the model name the provider
+    # reports, e.g. LLM_PRICES='{"openai/gpt-oss-120b": [0.15, 0.60]}'. Empty by default: a price
+    # I am not given is not guessed, so an unpriced model leaves cost_usd empty.
+    llm_prices: dict[str, tuple[float, float]] = Field(default_factory=dict)
 
     # Generation defaults (per-purpose overrides can be added later if needed)
     llm_temperature: float = 0.2

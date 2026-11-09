@@ -1,6 +1,7 @@
 """Persistence for ai.investigation."""
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -174,9 +175,15 @@ async def record_run_result(
     root_cause: dict[str, Any] | None = None,
     recommendation: dict[str, Any] | None = None,
     confidence_band: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cost_usd: Decimal | None = None,
 ) -> None:
     """Store which graph produced the run, how many tool calls it made and, when the run reached
-    one, its root cause, recommendation and confidence band (a thin run leaves them empty)."""
+    one, its root cause, recommendation and confidence band (a thin run leaves them empty).
+
+    Tokens and cost are **added** to what the row already holds: a run resumed after a restart
+    only measured its own calls, so the row ends up with the total over both parts."""
     results = {
         key: value
         for key, value in (
@@ -186,6 +193,12 @@ async def record_run_result(
         )
         if value is not None
     }
+    if input_tokens is not None:
+        results["input_tokens"] = func.coalesce(investigation.c.input_tokens, 0) + input_tokens
+    if output_tokens is not None:
+        results["output_tokens"] = func.coalesce(investigation.c.output_tokens, 0) + output_tokens
+    if cost_usd is not None:
+        results["cost_usd"] = func.coalesce(investigation.c.cost_usd, 0) + cost_usd
     stmt = (
         update(investigation)
         .where(

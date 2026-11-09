@@ -3,6 +3,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -171,6 +172,7 @@ async def test_the_root_cause_and_recommendation_are_stored_on_the_row(session_f
     assert done.recommendation is not None and done.recommendation["verificationSteps"]
     assert done.confidence_band == "low"  # the default fake verify settles nothing: no supported hypothesis
     assert "modelConfidence" not in str(done.root_cause)  # the model's own number never reaches the row
+    assert done.input_tokens is None and done.cost_usd is None  # the fakes report no usage: nothing to store
 
     events = await _events(session_factory, row.id)
     identified = [e for e in events if e.type == "root_cause.identified"]
@@ -179,6 +181,27 @@ async def test_the_root_cause_and_recommendation_are_stored_on_the_row(session_f
     assert [e.type for e in events].index("root_cause.identified") > max(
         i for i, e in enumerate(events) if e.type == "hypothesis.proposed"
     )
+
+
+async def test_tokens_and_cost_are_added_to_what_the_row_already_holds(session_factory: SessionFactory) -> None:
+    row = await _create(session_factory)
+
+    async def record(**usage: Any) -> None:
+        async with session_factory() as session:
+            await store.record_run_result(
+                session, investigation_id=row.id, tenant_id=TENANT, graph_version=GRAPH_VERSION, tool_call_count=3, **usage
+            )
+
+    await record(input_tokens=1000, output_tokens=200, cost_usd=Decimal("0.001500"))
+    first = await _row(session_factory, row.id)
+    assert (first.input_tokens, first.output_tokens, first.cost_usd) == (1000, 200, Decimal("0.001500"))
+
+    await record(input_tokens=500, output_tokens=50, cost_usd=Decimal("0.000500"))  # the resumed part of the run
+    total = await _row(session_factory, row.id)
+    assert (total.input_tokens, total.output_tokens, total.cost_usd) == (1500, 250, Decimal("0.002000"))
+
+    await record()  # a run that measured nothing must not erase what is there
+    assert (await _row(session_factory, row.id)).input_tokens == 1500
 
 
 async def test_a_run_without_hypotheses_leaves_the_result_columns_empty(session_factory: SessionFactory) -> None:

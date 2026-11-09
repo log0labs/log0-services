@@ -51,6 +51,7 @@ async def _lifespan(app: FastAPI):
                 incidents=incident_api,
                 history=incident_reader,
                 models=PurposeChatModels(settings),
+                prices=settings.llm_prices,
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(
