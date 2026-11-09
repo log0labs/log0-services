@@ -116,6 +116,41 @@ class Synthesis(BaseModel):
     )
 
 
+class HypothesisVerdict(BaseModel):
+    """The model's judgement of one hypothesis. ``apply_verdicts`` checks it before it counts."""
+
+    hypothesis_id: str = Field(description="The id of the hypothesis being judged, copied exactly (like hyp_1a2b3c4d)")
+    verdict: Literal["supported", "refuted", "open"] = Field(
+        description=(
+            "supported: the evidence directly shows this explanation is true. "
+            "refuted: the evidence directly shows it is false. "
+            "open: the evidence does not settle it (the safe answer when unsure)"
+        )
+    )
+    supporting_evidence: list[str] = Field(
+        default_factory=list,
+        description="Ids of evidence that supports it, copied exactly. Required for supported.",
+    )
+    contradicting_evidence: list[str] = Field(
+        default_factory=list,
+        description="Ids of evidence that argues against it, copied exactly. Required for refuted.",
+    )
+    follow_up_search: str | None = Field(
+        default=None,
+        description=(
+            "Only for open: a short, distinctive piece of text (an exception name, an error "
+            "phrase) that would appear in the log messages if this hypothesis were true. "
+            "Null when no search would help."
+        ),
+    )
+
+
+class Verification(BaseModel):
+    """What the verify step asks the model for."""
+
+    verdicts: list[HypothesisVerdict] = Field(description="One verdict for each open hypothesis")
+
+
 class ReviewDecision(BaseModel):
     action: Literal["approve", "refine", "stop"]
     note: str | None = None  # the engineer's guidance when action == "refine"

@@ -8,7 +8,8 @@ incident id. Pick one with:
     docker exec log0-postgres psql -U log0 -d log0 -tAc "select incident_id, tenant_id from public.incident limit 3"
 
 WARNING: this sends a summary of that incident (messages, stack trace summary) to your
-configured triage model, exactly like the AI summary feature does. State is checkpointed
+configured triage and investigation models, together with log excerpts, and the follow-up
+searches verify asks for are run against your log store. State is checkpointed
 to Postgres under a throwaway thread id that is deleted at the end.
 """
 
@@ -60,7 +61,7 @@ async def main(incident_id: UUID, tenant_id: UUID) -> None:
         await logs.close()
         await history.close()
 
-    print(f"status: {final['status'].value} | error: {final['error']} | tool_calls: {final['tool_calls']} | checkpoints: {len(steps)}")
+    print(f"status: {final['status'].value} | error: {final['error']} | tool_calls: {final['tool_calls']} | verify_rounds: {final['verify_round']} | checkpoints: {len(steps)}")
     triage = final["triage"]
     if triage:
         print(f"triage: {triage.category} -> {triage.gather}\n  {triage.summary}")

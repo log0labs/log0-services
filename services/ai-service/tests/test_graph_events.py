@@ -7,12 +7,26 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.graph.builder import build_graph
 from app.graph.events import MAX_TEXT, events_from_update
+from app.graph.nodes.synthesize import hypothesis_id
 from app.graph.state import new_state
 from app.parsing.stacktrace import StackFrame
-from app.schemas.domain import Evidence, Hypothesis, Triage
+from app.schemas.domain import Evidence, Hypothesis, Triage, Verification
 from app.schemas.investigation import InvestigationScope
 from app.tools.incidents import IncidentContext
-from tests.graph_fakes import FINGERPRINT, FIRST, INCIDENT_ID, LAST, make_context
+from tests.graph_fakes import (
+    FINGERPRINT,
+    FIRST,
+    INCIDENT_EVIDENCE_ID,
+    INCIDENT_ID,
+    LAST,
+    FakeModel,
+    FakeModels,
+    make_context,
+    synthesis_answer,
+    triage_answer,
+    verdict,
+    verification_answer,
+)
 
 
 def _incident() -> IncidentContext:
@@ -118,9 +132,27 @@ def test_synthesize_becomes_one_hypothesis_proposed_per_hypothesis_then_its_gaps
     ]
 
 
-def test_hypotheses_from_any_other_node_are_not_reported_as_proposed() -> None:
+def test_verify_reports_each_changed_hypothesis_as_updated() -> None:
+    hypothesis = Hypothesis(
+        id="hyp_1", statement="s", supporting_evidence=["ev_1"], contradicting_evidence=["ev_2"], status="refuted"
+    )
+    assert events_from_update({"verify": {"hypotheses": [hypothesis]}}) == [
+        (
+            "hypothesis.updated",
+            {
+                "id": "hyp_1",
+                "statement": "s",
+                "status": "refuted",
+                "supportingEvidence": ["ev_1"],
+                "contradictingEvidence": ["ev_2"],
+            },
+        )
+    ]
+
+
+def test_hypotheses_from_any_other_node_are_not_reported() -> None:
     hypothesis = Hypothesis(id="hyp_1", statement="s", supporting_evidence=["ev_1"])
-    assert events_from_update({"verify": {"hypotheses": [hypothesis]}}) == []  # 2.12 adds .updated
+    assert events_from_update({"gather_logs": {"hypotheses": [hypothesis]}}) == []
 
 
 def test_a_failed_load_context_reports_nothing() -> None:
@@ -166,3 +198,24 @@ async def test_the_real_graph_streams_progress_as_each_node_finishes() -> None:
     assert types.index("hypothesis.proposed") > last_evidence
     assert types.count("hypothesis.proposed") == 2
     assert set(types) == {"context.loaded", "triage.completed", "evidence.added", "hypothesis.proposed"}
+
+
+@pytest.mark.asyncio
+async def test_the_real_graph_reports_a_verified_hypothesis_after_proposing_it() -> None:
+    first = hypothesis_id("The payment gateway is slow, so calls exceed the 30 s timeout.")
+    investigation = FakeModel(
+        synthesis_answer(),
+        answers={Verification: verification_answer(verdict(first, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID]))},
+    )
+    ctx = make_context(models=FakeModels(FakeModel(triage_answer()), investigation=investigation))
+    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope())
+
+    events: list[tuple[str, dict]] = []
+    async for update in build_graph().astream(state, context=ctx, stream_mode="updates"):
+        events += events_from_update(update)
+
+    types = [t for t, _ in events]
+    assert types.count("hypothesis.proposed") == 2 and types.count("hypothesis.updated") == 1
+    assert types.index("hypothesis.updated") > max(i for i, t in enumerate(types) if t == "hypothesis.proposed")
+    updated = next(p for t, p in events if t == "hypothesis.updated")
+    assert updated["id"] == first and updated["status"] == "supported"

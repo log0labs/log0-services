@@ -7,13 +7,15 @@ change it, and it never lands in a checkpoint a user could resume with another t
 """
 
 import operator
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Annotated, Protocol, TypedDict
 from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+from app.graph.budget import Budget
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
 from app.schemas.domain import (
@@ -89,6 +91,7 @@ class InvestigationState(TypedDict):
     evidence: Annotated[list[Evidence], add_evidence]
     hypotheses: Annotated[list[Hypothesis], merge_by_id]
     verify_round: int
+    follow_ups: list[str]  # log searches verify wants run next; empty: no loop
 
     root_cause: RootCause | None
     review: ReviewDecision | None
@@ -124,6 +127,7 @@ def new_state(
         evidence=[],
         hypotheses=[],
         verify_round=0,
+        follow_ups=[],
         root_cause=None,
         review=None,
         proposed_changes=[],
@@ -157,6 +161,10 @@ class InvestigationContext:
     incidents: IncidentApi
     history: RelatedIncidentSource
     models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
+    budget: Budget = field(default_factory=Budget)
+    # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
+    # so its clock starts again: the limit is per process run, not across restarts.
+    started_at: float = field(default_factory=time.monotonic)
 
 
 # ------------------------------------------------------------------------ checkpoints

@@ -19,6 +19,9 @@ MAX_TEXT = 300  # cap on any free text copied into an event
 
 EventPair = tuple[str, dict[str, Any]]
 
+# the nodes that write hypotheses, and what each one's write means
+_HYPOTHESIS_EVENTS = {"synthesize": "hypothesis.proposed", "verify": "hypothesis.updated"}
+
 
 def _cap(text: str) -> str:
     return text if len(text) <= MAX_TEXT else text[: MAX_TEXT - 1] + "…"
@@ -48,8 +51,8 @@ def _evidence_added(item: Evidence) -> EventPair:
     return "evidence.added", {"id": item.id, "kind": item.kind, "summary": _cap(item.summary)}
 
 
-def _hypothesis_proposed(item: Hypothesis) -> EventPair:
-    return "hypothesis.proposed", {
+def _hypothesis_event(event_type: str, item: Hypothesis) -> EventPair:
+    return event_type, {
         "id": item.id,
         "statement": _cap(item.statement),
         "status": item.status,
@@ -60,7 +63,7 @@ def _hypothesis_proposed(item: Hypothesis) -> EventPair:
 
 def events_from_update(update: dict[str, Any]) -> list[EventPair]:
     """Events for one ``updates`` chunk, in a stable order: the node's own event, then its
-    evidence, then its gaps."""
+    evidence, then its hypotheses, then its gaps."""
     events: list[EventPair] = []
     for node, delta in update.items():
         if not isinstance(delta, dict):  # e.g. an "__interrupt__" marker: nothing to report
@@ -70,7 +73,7 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
         elif node == "triage" and delta.get("triage") is not None:
             events.append(_triage_completed(delta["triage"]))
         events.extend(_evidence_added(item) for item in delta.get("evidence") or [])
-        if node == "synthesize":
-            events.extend(_hypothesis_proposed(h) for h in delta.get("hypotheses") or [])
+        if node in _HYPOTHESIS_EVENTS:  # verify returns only the hypotheses it changed
+            events.extend(_hypothesis_event(_HYPOTHESIS_EVENTS[node], h) for h in delta.get("hypotheses") or [])
         events.extend(("gap.recorded", {"message": _cap(gap)}) for gap in delta.get("gaps") or [])
     return events

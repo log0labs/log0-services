@@ -75,7 +75,7 @@ def _evidence_block(item: Evidence, *, with_content: bool) -> str:
     return "\n".join(lines)
 
 
-def build_synthesis_input(state: InvestigationState) -> tuple[str, int]:
+def build_synthesis_input(state: InvestigationState, *, hypotheses: list[Hypothesis] | None = None) -> tuple[str, int]:
     """The user message, and how many evidence items did not fit (they are listed as a gap).
 
     Items are added in order; an item that does not fit with its excerpt is tried with its
@@ -100,6 +100,14 @@ def build_synthesis_input(state: InvestigationState) -> tuple[str, int]:
         parts += [f"- {_line(g)}" for g in state["gaps"]]
     if state["question"]:
         parts.append(f"The engineer asked: {_line(state['question'], 500)}")
+    if hypotheses:
+        parts.append("Hypotheses to judge:")
+        for h in hypotheses:
+            parts.append(
+                f"- {h.id}: {_line(h.statement, MAX_STATEMENT_CHARS)} "
+                f"(cited for: {', '.join(h.supporting_evidence) or 'none'}; "
+                f"cited against: {', '.join(h.contradicting_evidence) or 'none'})"
+            )
     parts.append("Evidence:")
     
     room = MAX_PROMPT_CHARS - sum(len(p) + 1 for p in parts) - len("</incident_data>")
@@ -124,7 +132,7 @@ def hypothesis_id(statement: str) -> str:
     return f"hyp_{digest[:8]}"
 
 
-def _valid_ids(cited: list[str], known: set[str]) -> list[str]:
+def valid_ids(cited: list[str], known: set[str]) -> list[str]:
     """Keep only ids that exist (tolerating ``[ev_1]`` and stray spaces), without repeats."""
     kept: list[str] = []
     for raw in cited:
@@ -148,8 +156,8 @@ def normalize_hypotheses(raw: Synthesis, known_ids: set[str]) -> list[Hypothesis
     kept: dict[str, Hypothesis] = {}
     for draft in raw.hypotheses:
         statement = " ".join(draft.statement.split())[:MAX_STATEMENT_CHARS]
-        supporting = _valid_ids(draft.supporting_evidence, known_ids)
-        contradicting = _valid_ids(draft.contradicting_evidence, known_ids)
+        supporting = valid_ids(draft.supporting_evidence, known_ids)
+        contradicting = valid_ids(draft.contradicting_evidence, known_ids)
         confused = set(supporting) & set(contradicting)
         supporting = [i for i in supporting if i not in confused]
         contradicting = [i for i in contradicting if i not in confused]

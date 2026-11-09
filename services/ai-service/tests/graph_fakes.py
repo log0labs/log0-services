@@ -12,9 +12,17 @@ from uuid import UUID
 
 from langchain_core.runnables import RunnableLambda
 
+from app.graph.budget import Budget
 from app.graph.state import InvestigationContext
 from app.llm.purpose import Purpose, StructuredOutputMethod
-from app.schemas.domain import HypothesisDraft, Synthesis, Triage, make_evidence_id
+from app.schemas.domain import (
+    HypothesisDraft,
+    HypothesisVerdict,
+    Synthesis,
+    Triage,
+    Verification,
+    make_evidence_id,
+)
 
 TENANT = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_TENANT = UUID("22222222-2222-4222-8222-222222222222")
@@ -168,10 +176,24 @@ class FakeHistory:
 
 
 class FakeModel:
-    """A chat model whose structured output is canned. Records the messages it was sent."""
+    """A chat model whose structured output is canned. Records the messages it was sent.
 
-    def __init__(self, answer: Any = None, *, error: Exception | None = None, delay: float = 0) -> None:
+    ``answer`` is what it returns for any schema; ``answers`` overrides that per schema, so one
+    model can play both synthesize (``Synthesis``) and verify (``Verification``). Asked for a
+    ``Verification`` with no answer for it, it gives no verdicts: hypotheses stay open.
+    """
+
+    def __init__(
+        self,
+        answer: Any = None,
+        *,
+        answers: dict[Any, Any] | None = None,
+        error: Exception | None = None,
+        delay: float = 0,
+    ) -> None:
         self.answer = answer
+        self.answers = answers or {}  # a list is played in order, the last one repeating
+        self.calls = 0
         self.error = error
         self.delay = delay
         self.messages: list[Any] = []
@@ -186,6 +208,14 @@ class FakeModel:
                 await asyncio.sleep(self.delay)
             if self.error:
                 raise self.error
+            if schema in self.answers:
+                value = self.answers[schema]
+                if isinstance(value, list):
+                    value = value[min(self.calls, len(value) - 1)]
+                self.calls += 1
+                return value
+            if schema is Verification:
+                return Verification(verdicts=[])  # nothing configured: no opinion on any hypothesis
             return self.answer
 
         return RunnableLambda(lambda m: None, afunc=call)
@@ -241,6 +271,14 @@ def synthesis_answer(**over: Any) -> Synthesis:
     return Synthesis(hypotheses=drafts, **over)
 
 
+def verdict(hypothesis_id: str, kind: str = "open", **over: Any) -> HypothesisVerdict:
+    return HypothesisVerdict(hypothesis_id=hypothesis_id, verdict=kind, **over)  # type: ignore[arg-type]
+
+
+def verification_answer(*verdicts: HypothesisVerdict) -> Verification:
+    return Verification(verdicts=list(verdicts))
+
+
 def make_context(
     *,
     api: FakeApi | None = None,
@@ -248,6 +286,7 @@ def make_context(
     history: FakeHistory | None = None,
     models: FakeModels | None = None,
     tenant: UUID = TENANT,
+    budget: Budget | None = None,
 ) -> InvestigationContext:
     return InvestigationContext(
         tenant_id=tenant,
@@ -255,6 +294,7 @@ def make_context(
         incidents=api or FakeApi(),
         history=history or FakeHistory(),
         models=models or FakeModels(FakeModel(triage_answer())),
+        budget=budget or Budget(),
     )
 
 

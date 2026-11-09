@@ -251,7 +251,7 @@ async def test_a_run_interrupted_by_shutdown_resumes_without_repeating_finished_
 
     assert second.api.calls == []  # load_context was not redone
     # triage was not redone either, but synthesize (the node after the interruption) ran, once
-    assert second.models.purposes == [Purpose.INVESTIGATION]
+    assert second.models.purposes == [Purpose.INVESTIGATION, Purpose.INVESTIGATION]  # synthesize, then verify
     done = await _row(session_factory, row.id)
     assert done.tool_call_count == 3 + 3 + 1
     types = [e.type for e in await _events(session_factory, row.id)]
@@ -272,4 +272,4 @@ async def test_a_graph_that_already_finished_is_not_run_again(session_factory: S
 
     assert len(backends.api.calls) == calls_after_first == 1
     assert len(await _events(session_factory, row.id)) == events_after_first
-    assert backends.models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION]  # each model asked once
+    assert backends.models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION, Purpose.INVESTIGATION]  # nothing asked twice

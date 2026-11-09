@@ -8,15 +8,18 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END
 from langgraph.types import Send
 
+from app.graph.budget import Budget
 from app.graph.builder import build_graph
-from app.graph.routing import after_load_context, fan_out
+from app.graph.nodes.synthesize import hypothesis_id
+from app.graph.routing import after_load_context, after_verify, fan_out
 from app.graph.state import InvestigationState, new_state
 from app.integrations.clickhouse import ClickHouseError
 from app.integrations.incident_service import IncidentNotFoundError
 from app.llm.purpose import Purpose
-from app.schemas.domain import HypothesisDraft, Triage
+from app.schemas.domain import HypothesisDraft, Triage, Verification
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from tests.graph_fakes import (
+    INCIDENT_EVIDENCE_ID,
     INCIDENT_ID,
     FakeApi,
     FakeHistory,
@@ -26,6 +29,8 @@ from tests.graph_fakes import (
     make_context,
     synthesis_answer,
     triage_answer,
+    verdict,
+    verification_answer,
 )
 
 
@@ -66,7 +71,8 @@ async def test_synthesize_runs_once_after_the_parallel_branches_and_cites_real_e
     models = FakeModels(FakeModel(triage_answer(gather=["logs", "history", "code"])))
     final = await _run(make_context(models=models))
 
-    assert models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION]  # once each, though 3 branches ran
+    # triage once, then synthesize once and verify once, though 3 branches ran
+    assert models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION, Purpose.INVESTIGATION]
     assert models.investigation.options == {"method": "function_calling"}
     assert [h.status for h in final["hypotheses"]] == ["open", "open"]
     known = {e.id for e in final["evidence"]}
@@ -119,6 +125,87 @@ async def test_code_and_runbook_branches_record_gaps_until_they_exist() -> None:
     assert any("code investigation is not available" in g for g in final["gaps"])
     assert any("Runbooks and docs were not searched" in g for g in final["gaps"])
     assert final["triage"].gather == ["logs", "code", "runbooks"]
+
+
+# ------------------------------------------------------------------ verify and loop
+
+FIRST_HYPOTHESIS = hypothesis_id("The payment gateway is slow, so calls exceed the 30 s timeout.")
+
+
+def _verifying(*answers: Verification) -> FakeModels:
+    investigation = FakeModel(synthesis_answer(), answers={Verification: list(answers)})
+    return FakeModels(FakeModel(triage_answer()), investigation=investigation)
+
+
+@pytest.mark.asyncio
+async def test_verify_can_settle_a_hypothesis_without_looping() -> None:
+    models = _verifying(verification_answer(verdict(FIRST_HYPOTHESIS, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID])))
+    logs = FakeLogs()
+    final = await _run(make_context(models=models, logs=logs))
+
+    assert [h.status for h in final["hypotheses"]] == ["supported", "open"]
+    assert final["verify_round"] == 1 and models.purposes.count(Purpose.INVESTIGATION) == 2
+    assert [k for k, _, _ in logs.calls].count("search") == 1  # only gather_logs' sample search: no loop
+
+
+@pytest.mark.asyncio
+async def test_verify_loops_through_a_targeted_search_and_judges_again() -> None:
+    models = _verifying(
+        verification_answer(verdict(FIRST_HYPOTHESIS, "open", follow_up_search="OutOfMemoryError")),
+        verification_answer(verdict(FIRST_HYPOTHESIS, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID])),
+    )
+    logs = FakeLogs()
+    final = await _run(make_context(models=models, logs=logs))
+
+    queries = [p.get("query") for k, _, p in logs.calls if k == "search"]
+    assert queries == [None, "OutOfMemoryError"]  # gather_logs' sample search, then the follow-up
+    assert final["verify_round"] == 2 and final["follow_ups"] == []
+    assert final["hypotheses"][0].status == "supported"
+    assert final["tool_calls"] == 7 + 1  # the follow-up search counts against the budget
+    assert len(final["evidence"]) == 8
+    # the second verify round saw what the search found
+    second_prompt = str(models.investigation.messages[-1])
+    assert 'contain "OutOfMemoryError"' in second_prompt
+
+
+@pytest.mark.asyncio
+async def test_a_model_that_always_wants_more_is_stopped_by_the_round_limit() -> None:
+    always = verification_answer(verdict(FIRST_HYPOTHESIS, "open", follow_up_search="OutOfMemoryError"))
+    models = _verifying(always)  # the same answer every round
+    logs = FakeLogs()
+    final = await _run(make_context(models=models, logs=logs))
+
+    assert final["verify_round"] == 2  # max_verify_rounds
+    assert [p.get("query") for k, _, p in logs.calls if k == "search"] == [None, "OutOfMemoryError"]  # one loop only
+    assert models.purposes.count(Purpose.INVESTIGATION) == 3  # synthesize + two verify rounds
+    assert any("were not run because the verification round limit" in g for g in final["gaps"])
+    assert final["status"] == InvestigationStatus.RUNNING  # a limit is a gap, not a failed run
+
+
+@pytest.mark.asyncio
+async def test_the_tool_call_limit_skips_verification_entirely() -> None:
+    models = _verifying(verification_answer(verdict(FIRST_HYPOTHESIS, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID])))
+    final = await _run(make_context(models=models, budget=Budget(max_tool_calls=7)))  # gathering used all 7
+
+    assert models.purposes.count(Purpose.INVESTIGATION) == 1  # synthesize only
+    assert [h.status for h in final["hypotheses"]] == ["open", "open"]
+    assert any("were not verified because the tool-call limit" in g for g in final["gaps"])
+
+
+@pytest.mark.asyncio
+async def test_no_hypotheses_means_verify_does_nothing() -> None:
+    bad = synthesis_answer(hypotheses=[HypothesisDraft(statement="Gremlins.", supporting_evidence=["ev_deadbeef"])])
+    models = FakeModels(FakeModel(triage_answer()), investigation=FakeModel(bad))
+    final = await _run(make_context(models=models))
+    assert final["hypotheses"] == [] and final["verify_round"] == 0
+    assert models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION]  # verify made no call
+
+
+def test_routing_after_verify() -> None:
+    state = _start()
+    assert after_verify(state) == END
+    state["follow_ups"] = ["OutOfMemoryError"]
+    assert after_verify(state) == "gather_followup"
 
 
 # ----------------------------------------------------------- degradation and stops
