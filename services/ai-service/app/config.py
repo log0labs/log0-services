@@ -113,6 +113,15 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     github_timeout_seconds: float = 10.0
 
+    # Local copies of tenants' repositories for the code tools (3.4). The cache is disposable:
+    # deleting the folder only means the next investigation clones again.
+    repo_cache_dir: str = ".repo-cache"
+    repo_clone_base_url: str = "https://github.com"  # clone URL = <base>/<owner>/<name>.git
+    git_binary: str = "git"
+    git_timeout_seconds: float = 120
+    git_allowed_protocols: str = "https"  # GIT_ALLOW_PROTOCOL; tests add "file" to clone from a local folder
+    repo_fresh_seconds: float = 60  # a checkout synced more recently than this is reused without fetching
+
     # Postgres public.incident, read through the SELECT-only ai_incident_reader role (2.4).
     # Host/port/database come from DATABASE_URL; only the credentials differ.
     incident_db_user: str = "ai_incident_reader"

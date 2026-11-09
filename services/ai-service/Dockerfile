@@ -4,6 +4,11 @@ FROM python:3.13-slim-bookworm AS base
 # Install uv from PyPI (avoids ghcr.io auth/rate-limit issues on some Docker setups).
 RUN pip install --no-cache-dir uv
 
+# git: the code tools clone tenants' repositories (3.4); ca-certificates for https
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
