@@ -173,7 +173,7 @@ def check_repo_path(raw: str) -> str:
     return path
 
 
-def _child_env() -> dict[str, str]:
+def child_env() -> dict[str, str]:
     env = {name: os.environ[name] for name in _SAFE_ENV if name in os.environ}
     env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
     return env
@@ -182,6 +182,36 @@ def _child_env() -> dict[str, str]:
 def _clip(text: str) -> str:
     text = text.rstrip("\r\n")
     return text if len(text) <= MAX_LINE_CHARS else text[:MAX_LINE_CHARS] + " ...[line cut]"
+
+
+def load_text_file(root: Path, raw_path: str) -> tuple[str, bytes]:
+    """The guarded way to open a repository file: ``(relative POSIX path, content)`` or ``CodeToolError``.
+
+    Used by ``read_file`` here and by ``blame`` in ``tools.git``, so both apply exactly the same
+    rules: a repository-relative path that, once resolved on disk, is still inside the checkout,
+    not in ``.git``, not a secret-bearing name, a regular file, at most 1 MB and not binary.
+    """
+    path = check_repo_path(raw_path)
+    if is_sensitive(path):
+        raise CodeToolError("this file is not available (it may hold secrets)")
+    resolved_root = root.resolve()
+    try:
+        target = (resolved_root / path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise CodeToolError("file not found") from None
+    if not target.is_relative_to(resolved_root):  # a symlink or junction that points outside the checkout
+        raise CodeToolError("path leaves the repository")
+    relative = target.relative_to(resolved_root)
+    if any(part.lower() == ".git" for part in relative.parts) or is_sensitive(relative.as_posix()):
+        raise CodeToolError("this file is not available")
+    if not target.is_file():
+        raise CodeToolError("not a file")
+    if target.stat().st_size > MAX_FILE_BYTES:
+        raise CodeToolError("file is larger than 1 MB: search it instead of reading it")
+    data = target.read_bytes()
+    if b"\0" in data[:BINARY_SNIFF_BYTES]:
+        raise CodeToolError("binary file")
+    return relative.as_posix(), data
 
 
 @dataclass(frozen=True)
@@ -218,7 +248,7 @@ class CodeTools:
             result = subprocess.run(
                 [self.git_binary, "ls-files", "-z"],
                 cwd=self.root,
-                env=_child_env(),
+                env=child_env(),
                 capture_output=True,
                 timeout=self.list_timeout_seconds,
                 check=False,
@@ -272,7 +302,7 @@ class CodeTools:
             process = subprocess.Popen(
                 command,
                 cwd=self.root,
-                env=_child_env(),
+                env=child_env(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -326,30 +356,9 @@ class CodeTools:
         return await asyncio.to_thread(self._read, path, start_line, end_line)
 
     def _read(self, raw_path: str, start_line: int, end_line: int | None) -> FileSlice:
-        path = check_repo_path(raw_path)
-        if is_sensitive(path):
-            raise CodeToolError("this file is not available (it may hold secrets)")
         if start_line < 1 or (end_line is not None and end_line < start_line):
             raise CodeToolError("start_line must be 1 or more and end_line must not be before start_line")
-
-        root = self.root.resolve()
-        try:
-            target = (root / path).resolve(strict=True)
-        except (OSError, RuntimeError):
-            raise CodeToolError("file not found") from None
-        if not target.is_relative_to(root):  # a symlink or junction that points outside the checkout
-            raise CodeToolError("path leaves the repository")
-        relative = target.relative_to(root)
-        if any(part.lower() == ".git" for part in relative.parts) or is_sensitive(relative.as_posix()):
-            raise CodeToolError("this file is not available")
-        if not target.is_file():
-            raise CodeToolError("not a file")
-        if target.stat().st_size > MAX_FILE_BYTES:
-            raise CodeToolError("file is larger than 1 MB: search it instead of reading it")
-
-        data = target.read_bytes()
-        if b"\x00" in data[:BINARY_SNIFF_BYTES]:
-            raise CodeToolError("binary file")
+        relative, data = load_text_file(self.root, raw_path)
         lines = data.decode("utf-8", errors="replace").splitlines()
         total = len(lines)
         if start_line > max(total, 1):
@@ -359,7 +368,7 @@ class CodeTools:
         chosen = lines[start_line - 1 : last]
         text = "\n".join(f"{number:>6} | {_clip(line)}" for number, line in enumerate(chosen, start=start_line))
         return FileSlice(
-            path=relative.as_posix(),
+            path=relative,
             start_line=start_line,
             end_line=last if chosen else start_line - 1,
             total_lines=total,

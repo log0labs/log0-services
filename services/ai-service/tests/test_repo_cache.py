@@ -139,7 +139,7 @@ async def test_the_first_call_clones_the_default_branch_and_reports_the_commit(c
     assert checkout.sha == head and checkout.branch == "trunk"
     assert (checkout.path / "app.py").read_text(encoding="utf-8").strip() == "print('one')"
     assert checkout.path == tmp_path.joinpath("cache", str(TENANT), str(connection.id)).resolve()
-    assert _git("rev-parse", "--is-shallow-repository", cwd=checkout.path) == "true"  # one commit, not the history
+    assert _git("rev-parse", "--is-shallow-repository", cwd=checkout.path) == "false"  # a short history fits the default depth
 
 
 async def test_the_path_holds_only_ids_never_names_a_user_typed(cache: RepoCache) -> None:
@@ -235,7 +235,7 @@ async def test_a_stale_checkout_is_updated_and_local_changes_are_discarded(cache
     assert not (second.path / "junk.txt").exists()
 
 
-async def test_an_update_needs_no_history_only_the_new_tip(cache: RepoCache, remote: Remote, spy: list[tuple[list[str], dict[str, str], Path]]) -> None:
+async def test_an_update_fetches_only_the_configured_depth(cache: RepoCache, remote: Remote, spy: list[tuple[list[str], dict[str, str], Path]]) -> None:
     connection = _connection()
     await cache.ensure_checkout(connection, SECRET)
     remote.commit("b.py", "x = 1\n")
@@ -243,7 +243,49 @@ async def test_an_update_needs_no_history_only_the_new_tip(cache: RepoCache, rem
     await cache.ensure_checkout(connection, SECRET, max_age_seconds=0)
     assert _verbs(spy) == ["fetch", "reset", "clean", "rev-parse"]
     fetch = spy[0][0]
-    assert "--depth" in fetch and fetch[fetch.index("--depth") + 1] == "1"
+    assert "--depth" in fetch and fetch[fetch.index("--depth") + 1] == "300"  # REPO_HISTORY_DEPTH's default
+
+
+# ---------------------------------------------------------------------------- history depth
+
+
+def _commit_count(path: Path) -> int:
+    return int(_git("rev-list", "--count", "HEAD", cwd=path))
+
+
+async def test_the_history_depth_setting_limits_how_many_commits_a_checkout_keeps(tmp_path: Path, remote: Remote) -> None:
+    for i in range(3):
+        remote.commit("app.py", f"print({i})\n")  # four commits in all with the fixture's first one
+    shallow = RepoCache(_settings(tmp_path, remote, repo_history_depth=2))
+
+    checkout = await shallow.ensure_checkout(_connection(), SECRET)
+
+    assert _commit_count(checkout.path) == 2
+    assert _git("rev-parse", "--is-shallow-repository", cwd=checkout.path) == "true"
+
+
+async def test_the_default_depth_keeps_the_recent_history(cache: RepoCache, remote: Remote) -> None:
+    for i in range(3):
+        remote.commit("app.py", f"print({i})\n")
+    checkout = await cache.ensure_checkout(_connection(), SECRET)
+    assert _commit_count(checkout.path) == 4
+
+
+async def test_a_larger_depth_deepens_an_existing_shallow_checkout(tmp_path: Path, remote: Remote) -> None:
+    for i in range(3):
+        remote.commit("app.py", f"print({i})\n")
+    connection = _connection()
+    first = await RepoCache(_settings(tmp_path, remote, repo_history_depth=1)).ensure_checkout(connection, SECRET)
+    assert _commit_count(first.path) == 1
+
+    deeper = await RepoCache(_settings(tmp_path, remote, repo_history_depth=50)).ensure_checkout(connection, SECRET, max_age_seconds=0)
+
+    assert _commit_count(deeper.path) == 4 and deeper.sha == first.sha
+
+
+@pytest.mark.parametrize(("configured", "used"), [(0, "1"), (-5, "1"), (300, "300"), (10**6, "5000")])
+async def test_the_depth_is_kept_within_sane_bounds(tmp_path: Path, remote: Remote, configured: int, used: str) -> None:
+    assert RepoCache(_settings(tmp_path, remote, repo_history_depth=configured))._depth == used
 
 
 async def test_a_folder_that_is_not_a_checkout_is_replaced_by_a_clean_clone(cache: RepoCache) -> None:

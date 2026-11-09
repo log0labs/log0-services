@@ -2,7 +2,8 @@
 
 ``RepoCache.ensure_checkout`` clones a connected repository into
 ``<cache>/<tenant id>/<repository id>`` (only ids in the path: nothing a user typed) and later
-calls bring it up to date. It uses the git command line, shallow (one commit, one branch).
+calls bring it up to date. It uses the git command line, shallow: one branch and the last ``REPO_HISTORY_DEPTH`` commits
+(enough for the history tools of 3.6 to see recent changes, not the whole repository's past).
 
 What it is careful about, because the token is a secret and the repository is someone else's data:
 
@@ -45,6 +46,7 @@ _BRANCH = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,255}$")
 _NAME_PART = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _SYNC_MARKER = "log0-synced"  # touched inside .git after every successful sync
 _STDERR_LIMIT = 300
+MAX_HISTORY_DEPTH = 5000
 _PASSTHROUGH_ENV = ("PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR")  # git needs these; nothing else is inherited
 
 
@@ -97,6 +99,7 @@ class RepoCache:
         self._timeout = settings.git_timeout_seconds
         self._protocols = settings.git_allowed_protocols
         self._fresh_seconds = settings.repo_fresh_seconds
+        self._depth = str(max(1, min(settings.repo_history_depth, MAX_HISTORY_DEPTH)))
         self._locks: dict[Path, asyncio.Lock] = {}
 
     def checkout_path(self, connection: RepositoryConnection) -> Path:
@@ -152,7 +155,7 @@ class RepoCache:
             await self._run(
                 [
                     "-c", "core.symlinks=false",
-                    "clone", "--depth", "1", "--single-branch", "--branch", branch,
+                    "clone", "--depth", self._depth, "--single-branch", "--branch", branch,
                     "--no-tags", "--template=", "--", url, str(staging),
                 ],
                 secret,
@@ -166,7 +169,7 @@ class RepoCache:
 
     async def _update(self, url: str, branch: str, path: Path, secret: str) -> None:
         # The URL is given explicitly (not "origin"), so it always comes from the current settings.
-        await self._run(["fetch", "--depth", "1", "--no-tags", "--", url, branch], secret, cwd=path)
+        await self._run(["fetch", "--depth", self._depth, "--no-tags", "--", url, branch], secret, cwd=path)
         await self._run(["reset", "--hard", "FETCH_HEAD"], secret, cwd=path)
         await self._run(["clean", "-ffdx"], secret, cwd=path)  # drop anything that is not the repository's
         (path / ".git" / _SYNC_MARKER).touch()
