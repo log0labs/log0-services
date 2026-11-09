@@ -5,18 +5,21 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import health, investigations, summaries
+from app.api import ai_settings, health, investigations, repositories, summaries
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
 from app.graph.builder import build_graph
 from app.graph.checkpoint import open_checkpointer
 from app.graph.executor import GraphExecutor
 from app.integrations.clickhouse import LogStore
+from app.integrations.github import GitHubClient
 from app.integrations.incident_db import IncidentReader
 from app.integrations.incident_service import IncidentApiClient
+from app.llm.connection_check import check_connection
 from app.llm.models import PurposeChatModels
 from app.observability import configure_tracing
 from app.runner import InvestigationRunner
+from app.security.crypto import secret_box_from_settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +41,12 @@ async def _lifespan(app: FastAPI):
     app.state.incident_reader = incident_reader
     incident_api = IncidentApiClient(settings)
     app.state.incident_api = incident_api
+    # Tenant settings and repositories (M3). No master key configured: the service still starts and
+    # the endpoints that must store or read a tenant secret answer 503. A key that is set but
+    # invalid is a configuration error and stops the start-up instead.
+    app.state.secret_box = secret_box_from_settings(settings) if settings.secrets_keys else None
+    app.state.github = GitHubClient(settings)
+    app.state.connection_checker = check_connection
 
     async with AsyncExitStack() as stack:
         executor: GraphExecutor | None = None
@@ -79,6 +88,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(summaries.router)
     app.include_router(investigations.router)
+    app.include_router(repositories.router)
+    app.include_router(repositories.services_router)
+    app.include_router(ai_settings.router)
     return app
 
 

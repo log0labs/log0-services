@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     secrets_keys: dict[str, SecretStr] = Field(default_factory=dict)
     secrets_active_key_id: str = ""
 
+    # GitHub's REST API, used to check a repository token when a tenant connects a repository.
+    github_api_url: str = "https://api.github.com"
+    github_timeout_seconds: float = 10.0
+
     # Postgres public.incident, read through the SELECT-only ai_incident_reader role (2.4).
     # Host/port/database come from DATABASE_URL; only the credentials differ.
     incident_db_user: str = "ai_incident_reader"

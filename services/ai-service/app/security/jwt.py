@@ -82,3 +82,15 @@ def require_investigation_writer(
             detail="Insufficient role",
         )
     return user
+
+
+def require_admin(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> CurrentUser:
+    """Change tenant settings (LLM keys, repositories): ADMIN only."""
+    if user.role != Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role",
+        )
+    return user
