@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     clickhouse_password: SecretStr | None = None
     clickhouse_timeout_seconds: int = 15
     
+    # Master keys that encrypt tenant secrets (LLM API keys, repository tokens) before they are
+    # stored. A JSON object of key id -> Fernet key, e.g. SECRETS_KEYS='{"k1": "<key>"}'; make a
+    # key with `uv run python scripts/new_secret_key.py`. New secrets use SECRETS_ACTIVE_KEY_ID;
+    # old ones stay readable while their key id stays in SECRETS_KEYS. Empty by default: the
+    # service starts without them and only refuses to store or read a tenant secret.
+    secrets_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    secrets_active_key_id: str = ""
+
     # Postgres public.incident, read through the SELECT-only ai_incident_reader role (2.4).
     # Host/port/database come from DATABASE_URL; only the credentials differ.
     incident_db_user: str = "ai_incident_reader"
