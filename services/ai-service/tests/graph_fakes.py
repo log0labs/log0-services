@@ -13,8 +13,8 @@ from uuid import UUID
 from langchain_core.runnables import RunnableLambda
 
 from app.graph.state import InvestigationContext
-from app.llm.purpose import Purpose
-from app.schemas.domain import Triage
+from app.llm.purpose import Purpose, StructuredOutputMethod
+from app.schemas.domain import HypothesisDraft, Synthesis, Triage, make_evidence_id
 
 TENANT = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_TENANT = UUID("22222222-2222-4222-8222-222222222222")
@@ -175,8 +175,11 @@ class FakeModel:
         self.error = error
         self.delay = delay
         self.messages: list[Any] = []
+        self.options: dict[str, Any] = {}
 
     def with_structured_output(self, schema: Any, **kwargs: Any) -> RunnableLambda:
+        self.options = kwargs  # e.g. {"method": "json_schema"}
+
         async def call(messages: Any) -> Any:
             self.messages.append(messages)
             if self.delay:
@@ -189,13 +192,20 @@ class FakeModel:
 
 
 class FakeModels:
-    def __init__(self, model: FakeModel) -> None:
+    """Hands out ``model`` for triage and ``investigation`` (a valid synthesis by default) for
+    synthesize, and records which purposes were asked for."""
+
+    def __init__(self, model: FakeModel, *, investigation: FakeModel | None = None) -> None:
         self.model = model
+        self.investigation = investigation or FakeModel(synthesis_answer())
         self.purposes: list[Purpose] = []
 
     def for_purpose(self, purpose: Purpose) -> FakeModel:
         self.purposes.append(purpose)
-        return self.model
+        return self.investigation if purpose == Purpose.INVESTIGATION else self.model
+
+    def structured_method(self, purpose: Purpose) -> StructuredOutputMethod:
+        return "function_calling" if purpose == Purpose.INVESTIGATION else "json_schema"  # the settings defaults
 
 
 def triage_answer(**over: Any) -> Triage:
@@ -207,6 +217,28 @@ def triage_answer(**over: Any) -> Triage:
     }
     data.update(over)
     return Triage(**data)
+
+
+# The ids load_context gives the incident and the stack trace (content hashes, so computable here)
+INCIDENT_EVIDENCE_ID = make_evidence_id("incident", f"incident {INCIDENT_ID}")
+STACKTRACE_EVIDENCE_ID = make_evidence_id("log", f"stacktrace {FINGERPRINT[:12]}")
+
+
+def synthesis_answer(**over: Any) -> Synthesis:
+    drafts = over.pop("hypotheses", None)
+    if drafts is None:
+        drafts = [
+            HypothesisDraft(
+                statement="The payment gateway is slow, so calls exceed the 30 s timeout.",
+                supporting_evidence=[STACKTRACE_EVIDENCE_ID, INCIDENT_EVIDENCE_ID],
+            ),
+            HypothesisDraft(
+                statement="The connection pool is exhausted, so requests queue until they time out.",
+                supporting_evidence=[INCIDENT_EVIDENCE_ID],
+                contradicting_evidence=[STACKTRACE_EVIDENCE_ID],
+            ),
+        ]
+    return Synthesis(hypotheses=drafts, **over)
 
 
 def make_context(

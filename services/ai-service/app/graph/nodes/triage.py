@@ -67,7 +67,9 @@ def allowed_branches(scope: InvestigationScope) -> list[GatherBranch]:
 
 def _clean(text: str, limit: int = MAX_LINE_CHARS) -> str:
     """One line of data for the prompt: no way to close our <incident_data> block early."""
-    return " ".join(_TAG.sub("", text).split())[:limit]
+    while (stripped := _TAG.sub("", text)) != text:  # repeat: "<incident_<incident_data>data>" leaves a tag
+        text = stripped
+    return " ".join(text.split())[:limit]
 
 
 def build_triage_input(state: InvestigationState, allowed: list[GatherBranch]) -> str:
@@ -147,9 +149,11 @@ async def triage(state: InvestigationState, runtime: Runtime[InvestigationContex
         }
     
     try:
-        # json_schema, not the default tool calling: Groq's gpt-oss models sometimes call the
-        # tool "triage" instead of "Triage" and the provider rejects the whole request.
-        model = ctx.models.for_purpose(Purpose.TRIAGE).with_structured_output(Triage, method="json_schema")
+        # The method comes from settings (json_schema by default): Groq's gpt-oss models sometimes
+        # call the tool "triage" instead of "Triage" and the provider rejects the whole request.
+        model = ctx.models.for_purpose(Purpose.TRIAGE).with_structured_output(
+            Triage, method=ctx.models.structured_method(Purpose.TRIAGE)
+        )
         async with asyncio.timeout(TRIAGE_TIMEOUT_SECONDS):
             answer = await model.ainvoke(
                 [

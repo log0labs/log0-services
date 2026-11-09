@@ -10,7 +10,7 @@ from langchain_core.language_models import BaseChatModel
 from app.config import Settings
 from app.llm.factory import chat_model_for_purpose
 from app.llm.generation import generation_for_purpose
-from app.llm.purpose import Purpose
+from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.llm.resolver import LlmResolver, PlatformLlmResolver
 
 
@@ -36,3 +36,7 @@ class PurposeChatModels:
             )
             self._cache[purpose] = model
         return model
+    
+    def structured_method(self, purpose: Purpose) -> StructuredOutputMethod:
+        """How to ask this purpose's model for structured output (it depends on the model)."""
+        return self._settings.structured_output_method(purpose)

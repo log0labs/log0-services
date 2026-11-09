@@ -12,7 +12,7 @@ from sqlalchemy.engine import make_url
 
 from app.llm.model_spec import ModelSpec
 from app.llm.providers import get_provider
-from app.llm.purpose import Purpose
+from app.llm.purpose import Purpose, StructuredOutputMethod
 
 
 def _coerce_model_spec(value: str | ModelSpec) -> ModelSpec:
@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     llm_evaluation: ModelSpecField = ModelSpec(
         provider="groq", model="openai/gpt-oss-120b"
     )
+    
+    # How each purpose asks its model for structured output. This depends on the MODEL, so change
+    # it together with the model: Groq's gpt-oss models need json_schema (their tool calling
+    # mangles the tool name); qwen on Groq rejects json_schema and needs function_calling.
+    llm_triage_output_method: StructuredOutputMethod = "json_schema"
+    llm_investigation_output_method: StructuredOutputMethod = "function_calling"
 
     # Generation defaults (per-purpose overrides can be added later if needed)
     llm_temperature: float = 0.2
@@ -94,6 +100,14 @@ class Settings(BaseSettings):
     # Host/port/database come from DATABASE_URL; only the credentials differ.
     incident_db_user: str = "ai_incident_reader"
     incident_db_password: SecretStr | None = None
+    
+    def structured_output_method(self, purpose: Purpose) -> StructuredOutputMethod:
+        """The structured-output method for a purpose (LangChain's default for unconfigured ones)."""
+        configured: dict[Purpose, StructuredOutputMethod] = {
+            Purpose.TRIAGE: self.llm_triage_output_method,
+            Purpose.INVESTIGATION: self.llm_investigation_output_method,
+        }
+        return configured.get(purpose, "function_calling")
 
     @property
     def llm_models(self) -> dict[Purpose, ModelSpec]:

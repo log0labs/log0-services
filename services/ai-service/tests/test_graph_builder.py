@@ -13,7 +13,8 @@ from app.graph.routing import after_load_context, fan_out
 from app.graph.state import InvestigationState, new_state
 from app.integrations.clickhouse import ClickHouseError
 from app.integrations.incident_service import IncidentNotFoundError
-from app.schemas.domain import Triage
+from app.llm.purpose import Purpose
+from app.schemas.domain import HypothesisDraft, Triage
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from tests.graph_fakes import (
     INCIDENT_ID,
@@ -23,6 +24,7 @@ from tests.graph_fakes import (
     FakeModel,
     FakeModels,
     make_context,
+    synthesis_answer,
     triage_answer,
 )
 
@@ -57,6 +59,35 @@ async def test_logs_and_history_branches_run_in_parallel_and_both_contribute() -
     assert len({e.id for e in final["evidence"]}) == 7  # no id collisions between parallel branches
     assert final["tool_calls"] == 3 + 3 + 1  # load_context + gather_logs + gather_history
     assert final["gaps"] == []
+
+
+@pytest.mark.asyncio
+async def test_synthesize_runs_once_after_the_parallel_branches_and_cites_real_evidence() -> None:
+    models = FakeModels(FakeModel(triage_answer(gather=["logs", "history", "code"])))
+    final = await _run(make_context(models=models))
+
+    assert models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION]  # once each, though 3 branches ran
+    assert models.investigation.options == {"method": "function_calling"}
+    assert [h.status for h in final["hypotheses"]] == ["open", "open"]
+    known = {e.id for e in final["evidence"]}
+    cited = {i for h in final["hypotheses"] for i in h.supporting_evidence + h.contradicting_evidence}
+    assert cited and cited <= known  # the grounding rule held
+    # synthesize saw what the branches found, and the gaps, so it claims nothing about code
+    sent = str(models.investigation.messages)
+    assert "timeline" in sent and "Earlier incident" in sent
+    assert "code investigation is not available" in sent
+
+
+@pytest.mark.asyncio
+async def test_a_model_that_cites_invented_evidence_yields_no_hypotheses_and_a_gap() -> None:
+    bad = synthesis_answer(
+        hypotheses=[HypothesisDraft(statement="It was the gremlins.", supporting_evidence=["ev_deadbeef"])]
+    )
+    models = FakeModels(FakeModel(triage_answer()), investigation=FakeModel(bad))
+    final = await _run(make_context(models=models))
+    assert final["hypotheses"] == []
+    assert any("cited real evidence" in g for g in final["gaps"])
+    assert final["status"] == InvestigationStatus.RUNNING  # a thin answer is not a failed run
 
 
 @pytest.mark.asyncio
@@ -132,6 +163,7 @@ async def test_a_broken_model_still_gathers_everything_the_scope_allows() -> Non
     assert any(e.source_ref.startswith("timeline") for e in final["evidence"])
     assert any(e.summary.startswith("Earlier incident") for e in final["evidence"])
     assert any("Automatic triage was unavailable" in g for g in final["gaps"])
+    assert len(final["hypotheses"]) == 2  # synthesize uses its own model, which was fine
 
 
 @pytest.mark.asyncio
@@ -140,7 +172,8 @@ async def test_every_source_off_ends_after_triage() -> None:
     models = FakeModels(FakeModel(triage_answer()))
     final = await _run(make_context(models=models), scope)
     assert final["triage"].gather == []
-    assert models.purposes == []  # triage did not even call the model
+    assert models.purposes == []  # neither triage nor synthesize called a model
+    assert final["hypotheses"] == []
     assert "Every evidence source is turned off" in final["gaps"][-1]
     assert _refs(final) == {"incident", "logstats", "stacktrace"}  # load_context's facts only
 

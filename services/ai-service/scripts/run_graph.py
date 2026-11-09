@@ -19,6 +19,9 @@ from uuid import UUID, uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Model text can contain characters a Windows console cannot encode (e.g. a non-breaking hyphen)
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 if sys.platform == "win32":  # psycopg's async mode cannot use Windows' default event loop
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -64,6 +67,9 @@ async def main(incident_id: UUID, tenant_id: UUID) -> None:
         for h in triage.initial_hypotheses:
             print(f"  hypothesis: {h}")
     print(f"gaps: {final['gaps']}")
+    for h in final["hypotheses"]:
+        print(f"  {h.id} [{h.status}] {h.statement}")
+        print(f"      supports: {h.supporting_evidence}  contradicts: {h.contradicting_evidence}")
     for item in final["evidence"]:
         print(f"  [{item.kind:8}] {item.id}  {item.summary[:150]}")
 

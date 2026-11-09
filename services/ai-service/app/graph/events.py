@@ -13,7 +13,7 @@ Payload keys are camelCase, like the rest of the JSON the browser sees.
 
 from typing import Any
 
-from app.schemas.domain import Evidence, Triage
+from app.schemas.domain import Evidence, Hypothesis, Triage
 
 MAX_TEXT = 300  # cap on any free text copied into an event
 
@@ -48,6 +48,16 @@ def _evidence_added(item: Evidence) -> EventPair:
     return "evidence.added", {"id": item.id, "kind": item.kind, "summary": _cap(item.summary)}
 
 
+def _hypothesis_proposed(item: Hypothesis) -> EventPair:
+    return "hypothesis.proposed", {
+        "id": item.id,
+        "statement": _cap(item.statement),
+        "status": item.status,
+        "supportingEvidence": list(item.supporting_evidence),
+        "contradictingEvidence": list(item.contradicting_evidence),
+    }
+
+
 def events_from_update(update: dict[str, Any]) -> list[EventPair]:
     """Events for one ``updates`` chunk, in a stable order: the node's own event, then its
     evidence, then its gaps."""
@@ -60,5 +70,7 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
         elif node == "triage" and delta.get("triage") is not None:
             events.append(_triage_completed(delta["triage"]))
         events.extend(_evidence_added(item) for item in delta.get("evidence") or [])
+        if node == "synthesize":
+            events.extend(_hypothesis_proposed(h) for h in delta.get("hypotheses") or [])
         events.extend(("gap.recorded", {"message": _cap(gap)}) for gap in delta.get("gaps") or [])
     return events

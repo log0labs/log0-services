@@ -19,6 +19,9 @@ from uuid import UUID, uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Model text can contain characters a Windows console cannot encode (e.g. a non-breaking hyphen)
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 if sys.platform == "win32":  # psycopg's async mode cannot use Windows' default event loop
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 

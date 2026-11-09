@@ -17,6 +17,7 @@ from app.db.session import create_session_factory
 from app.graph.builder import GRAPH_VERSION, build_graph
 from app.graph.executor import GraphExecutor
 from app.integrations.incident_service import IncidentNotFoundError
+from app.llm.purpose import Purpose
 from app.runner import InvestigationRunner, SessionFactory
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from app.store import events as event_store
@@ -62,7 +63,7 @@ class Backends:
     """One set of fakes, with the calls they received, plus an executor built on them."""
 
     def __init__(self, graph: Any, *, api: FakeApi | None = None, logs: FakeLogs | None = None) -> None:
-        self.api = api or FakeApi(incident_payload(tenantId=str(TENANT), incidentId=str(INCIDENT)))
+        self.api = api or FakeApi(incident_payload(tenantId=str(TENANT)))
         self.logs = logs or FakeLogs()
         self.history = FakeHistory()
         self.models = FakeModels(FakeModel(triage_answer()))
@@ -141,6 +142,8 @@ async def test_a_run_completes_and_leaves_a_progress_trail(session_factory: Sess
     assert types[:2] == ["investigation.started", "context.loaded"]
     assert types[-1] == "investigation.completed"
     assert types.count("triage.completed") == 1 and types.count("evidence.added") == 7
+    assert types.count("hypothesis.proposed") == 2  # synthesize joined the branches and proposed two
+    assert types.index("hypothesis.proposed") > max(i for i, t in enumerate(types) if t == "evidence.added")
     assert types.index("context.loaded") < types.index("triage.completed") < types.index("investigation.completed")
     triage_event = next(e for e in events if e.type == "triage.completed")
     assert triage_event.payload["category"] == "dependency"
@@ -246,12 +249,15 @@ async def test_a_run_interrupted_by_shutdown_resumes_without_repeating_finished_
     assert (await _row(session_factory, row.id)).status == InvestigationStatus.COMPLETED
     await recovered.shutdown()
 
-    assert second.api.calls == [] and second.models.purposes == []  # load_context and triage were not redone
+    assert second.api.calls == []  # load_context was not redone
+    # triage was not redone either, but synthesize (the node after the interruption) ran, once
+    assert second.models.purposes == [Purpose.INVESTIGATION]
     done = await _row(session_factory, row.id)
     assert done.tool_call_count == 3 + 3 + 1
     types = [e.type for e in await _events(session_factory, row.id)]
     assert types.count("context.loaded") == 1 and types.count("triage.completed") == 1
     assert types.count("evidence.added") == 7  # nothing duplicated, nothing missing
+    assert types.count("hypothesis.proposed") == 2  # produced by the resumed run
     assert types[-1] == "investigation.completed"
 
 
@@ -266,4 +272,4 @@ async def test_a_graph_that_already_finished_is_not_run_again(session_factory: S
 
     assert len(backends.api.calls) == calls_after_first == 1
     assert len(await _events(session_factory, row.id)) == events_after_first
-    assert len(backends.models.purposes) == 1  # triage ran once
+    assert backends.models.purposes == [Purpose.TRIAGE, Purpose.INVESTIGATION]  # each model asked once

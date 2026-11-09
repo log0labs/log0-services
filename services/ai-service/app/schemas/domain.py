@@ -89,6 +89,33 @@ class Triage(BaseModel):
     )
 
 
+class HypothesisDraft(BaseModel):
+    """One explanation as the model writes it. ``normalize_hypotheses`` turns it into a
+    ``Hypothesis`` with a stable id, after checking that every cited id really exists."""
+
+    statement: str = Field(
+        description="One or two sentences: a specific explanation of why this incident happened, "
+        "concrete enough that more evidence could confirm or refute it"
+    )
+    supporting_evidence: list[str] = Field(
+        description="Ids of the evidence that supports it, copied exactly as given (like ev_1a2b3c4d). "
+        "At least one."
+    )
+    contradicting_evidence: list[str] = Field(
+        default_factory=list,
+        description="Ids of evidence that argues against it, copied exactly as given. Empty if none.",
+    )
+
+
+class Synthesis(BaseModel):
+    """What the synthesize step asks the model for."""
+
+    hypotheses: list[HypothesisDraft] = Field(
+        description="Two to four competing explanations, most likely first. Fewer when the "
+        "evidence is thin: never invent one to fill the list."
+    )
+
+
 class ReviewDecision(BaseModel):
     action: Literal["approve", "refine", "stop"]
     note: str | None = None  # the engineer's guidance when action == "refine"

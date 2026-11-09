@@ -14,7 +14,7 @@ from uuid import UUID
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-from app.llm.purpose import Purpose
+from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
 from app.schemas.domain import (
     CodeChange,
@@ -144,6 +144,8 @@ class ChatModels(Protocol):
     """Hands out the chat model for a purpose. ``PurposeChatModels`` in production, a fake in tests."""
 
     def for_purpose(self, purpose: Purpose) -> BaseChatModel: ...
+    
+    def structured_method(self, purpose: Purpose) -> StructuredOutputMethod: ...
 
 
 @dataclass(frozen=True)

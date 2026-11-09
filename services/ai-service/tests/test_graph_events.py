@@ -9,7 +9,7 @@ from app.graph.builder import build_graph
 from app.graph.events import MAX_TEXT, events_from_update
 from app.graph.state import new_state
 from app.parsing.stacktrace import StackFrame
-from app.schemas.domain import Evidence, Triage
+from app.schemas.domain import Evidence, Hypothesis, Triage
 from app.schemas.investigation import InvestigationScope
 from app.tools.incidents import IncidentContext
 from tests.graph_fakes import FINGERPRINT, FIRST, INCIDENT_ID, LAST, make_context
@@ -95,6 +95,34 @@ def test_a_gather_node_reports_evidence_and_gaps_but_no_node_event() -> None:
     assert [t for t, _ in events_from_update(update)] == ["evidence.added", "gap.recorded"]
 
 
+def test_synthesize_becomes_one_hypothesis_proposed_per_hypothesis_then_its_gaps() -> None:
+    hypothesis = Hypothesis(
+        id="hyp_12345678",
+        statement="The gateway is slow.",
+        supporting_evidence=["ev_00000001"],
+        contradicting_evidence=["ev_00000002"],
+    )
+    update = {"synthesize": {"hypotheses": [hypothesis], "gaps": ["2 evidence item(s) did not fit"]}}
+    assert events_from_update(update) == [
+        (
+            "hypothesis.proposed",
+            {
+                "id": "hyp_12345678",
+                "statement": "The gateway is slow.",
+                "status": "open",
+                "supportingEvidence": ["ev_00000001"],
+                "contradictingEvidence": ["ev_00000002"],
+            },
+        ),
+        ("gap.recorded", {"message": "2 evidence item(s) did not fit"}),
+    ]
+
+
+def test_hypotheses_from_any_other_node_are_not_reported_as_proposed() -> None:
+    hypothesis = Hypothesis(id="hyp_1", statement="s", supporting_evidence=["ev_1"])
+    assert events_from_update({"verify": {"hypotheses": [hypothesis]}}) == []  # 2.12 adds .updated
+
+
 def test_a_failed_load_context_reports_nothing() -> None:
     # status/error/tool_calls only: the executor reports the failure once, at the end
     update = {"load_context": {"status": "FAILED", "error": "Incident not found", "tool_calls": 1}}
@@ -133,4 +161,8 @@ async def test_the_real_graph_streams_progress_as_each_node_finishes() -> None:
     # triage comes after everything load_context found, and before the gather branches' evidence
     assert types.index("triage.completed") == 1 + 3  # context.loaded + incident, logstats, stacktrace
     assert types.count("evidence.added") == 7 and "gap.recorded" not in types
-    assert set(types) == {"context.loaded", "triage.completed", "evidence.added"}
+    # synthesize joins the branches, so its hypotheses come after every evidence item
+    last_evidence = max(i for i, t in enumerate(types) if t == "evidence.added")
+    assert types.index("hypothesis.proposed") > last_evidence
+    assert types.count("hypothesis.proposed") == 2
+    assert set(types) == {"context.loaded", "triage.completed", "evidence.added", "hypothesis.proposed"}

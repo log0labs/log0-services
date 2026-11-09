@@ -19,7 +19,7 @@ from app.graph.checkpoint import (
 )
 from app.graph.state import InvestigationState, new_state
 from app.parsing.stacktrace import StackFrame
-from app.schemas.domain import Evidence, Triage
+from app.schemas.domain import Evidence, Hypothesis, Triage
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from app.tools.incidents import IncidentContext
 from tests.graph_fakes import INCIDENT_ID, make_context
@@ -68,6 +68,8 @@ async def test_state_survives_a_restart_and_comes_back_as_real_objects(
     assert all(isinstance(e, Evidence) for e in values["evidence"]) and len(values["evidence"]) == 7
     assert all(isinstance(f, StackFrame) for f in values["stack_frames"])
     assert isinstance(values["scope"], InvestigationScope)
+    assert len(values["hypotheses"]) == 2 and all(isinstance(h, Hypothesis) for h in values["hypotheses"])
+    assert values["hypotheses"] == final["hypotheses"]
     assert values["status"] == InvestigationStatus.RUNNING
     assert values["tool_calls"] == final["tool_calls"] == 7
     assert snapshot.next == ()
