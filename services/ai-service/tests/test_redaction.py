@@ -202,3 +202,19 @@ def test_a_secret_near_a_chunk_boundary_is_found():
     line = "x" * 98 + "\n"
     text = line * (CHUNK // len(line) - 1) + "api_key=abcdef123456789\n" + line * 2000
     assert "abcdef123456789" not in redact(text).text
+
+
+def test_a_bearer_token_with_underscores_is_hidden():
+    """Found by the evaluation harness: the demo shop logs `Authorization: Bearer sk_live_demo_<digits>`, and the
+    Bearer rule's character class had no underscore, so the live key went to the model."""
+    key = "sk_live_" + "demo_0123456789abcdef"
+    line = f"gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer {key}"
+    out = redact(line)
+    assert key not in out.text and "[REDACTED:" in out.text
+    assert out.text.startswith("gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization:")
+
+
+def test_stripe_style_keys_with_underscores_in_the_tail_are_hidden_anywhere():
+    key = "sk_live_" + "demo_0123456789abcdef"
+    assert redact(f"STRIPE={key} and {key}").text.count("[REDACTED:") >= 2
+    assert redact("sk_test_" + "a1b2c3d4e5f6a7b8c9").counts == {"stripe_key": 1}

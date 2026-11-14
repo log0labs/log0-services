@@ -53,14 +53,14 @@ _TOKEN_SHAPES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})")),
     ("aws_key", re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA)[0-9A-Z]{16}\b")),
     ("slack_token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
-    ("stripe_key", re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}")),
+    ("stripe_key", re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9_]{12,}")),
     ("google_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}")),
     ("api_key", re.compile(r"\b(?:sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,})")),
 )
 
 # "Bearer abc123..." and "Basic dXNlcjpwYXNz": the value must contain a digit, so prose such as
 # "Basic authentication" is left alone.
-_AUTH_HEADER = re.compile(r"\b(?P<scheme>Bearer|Basic)\s+(?P<secret>(?=[A-Za-z0-9._~+/=-]{0,200}[0-9])[A-Za-z0-9._~+/=-]{12,200})", re.IGNORECASE)
+_AUTH_HEADER = re.compile(r"\b(?P<scheme>Bearer|Basic)\s+(?P<secret>(?=[A-Za-z0-9._~+/=_-]{0,200}[0-9])[A-Za-z0-9._~+/=_-]{12,200})", re.IGNORECASE)
 
 _SECRET_WORDS = (
     r"password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|"
