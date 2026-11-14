@@ -33,3 +33,19 @@ This document captures important architectural and technical decisions made duri
 ## 6. Multi-Tenant Support
 - **Decision:** All services designed to include `tenant_id` in logs and incidents.
 - **Rationale:** Enables SaaS deployment with strong tenant isolation.
+
+
+## AI service decisions (ADR-010 to ADR-019)
+
+The AI service's decisions are written up in full in the website docs (Architecture, Decisions). In one line each:
+
+- **ADR-010** Python and LangGraph for the AI service (supersedes the "no framework" part of ADR-008).
+- **ADR-011** The model proposes edits; code builds and validates the diff (`git apply --check`).
+- **ADR-012** A local clone, git and ripgrep, not code-search APIs or embeddings.
+- **ADR-013** pgvector in the existing Postgres, with plain SQL.
+- **ADR-014** A persisted event log behind the Server-Sent Events stream.
+- **ADR-015** The model proposes, code decides: every claim is checked before it counts.
+- **ADR-016** Redact at the door (when evidence is created); trace only with consent.
+- **ADR-017** Evaluate on recorded incidents, planted bugs and a scripted self-test.
+- **ADR-018** MCP is an adapter over the same tools; the tenant is never an argument.
+- **ADR-019** With the review gate off, a root cause is approved (found by the evaluation harness).
