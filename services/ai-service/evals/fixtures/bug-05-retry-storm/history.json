@@ -1,0 +1,20 @@
+[
+  {
+    "ai_summary": "Summary: Payments are failing with 503 errors from the external payment gateway, causing charge failures for multiple orders.\nPossible Cause: The recurring 503 status from the payment gateway suggests the gateway may be experiencing a temporary outage or overload, possibly due to a sudden spike in traffic or a recent deployment that introduced a bug.\nRecommended Actions:\n- Verify the health and uptime of the external payment gateway service and check for any announced outages.\n- Inspect recent changes to the payment integration code or configuration that could affect request handling.\n- Implement retry logic with exponential backoff for 503 responses to mitigate transient failures.\n- Add circuit breaker to prevent cascading failures and provide graceful degradation.\n- Monitor gateway response times and error rates in real time to detect future incidents early.",
+    "environment": "demo",
+    "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+    "first_seen_at": {
+      "$dt": "2026-11-14T20:46:16.083267+00:00"
+    },
+    "incident_id": "551e3676-99b7-4365-a1a9-a1c8d86e5da5",
+    "last_seen_at": {
+      "$dt": "2026-11-14T20:46:16.673132+00:00"
+    },
+    "occurrence_count": 10,
+    "resolved_at": null,
+    "same_fingerprint": false,
+    "service_name": "payments",
+    "severity": "HIGH",
+    "status": "NEW"
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "aiSummary": "Summary: The inventory service is panicking due to an `Option::unwrap()` on a `None` value, causing high-severity failures.\nPossible Cause: The error indicates a `None` value was unwrapped, which may be caused by missing inventory data or a race condition where the inventory record is not yet available when accessed.\nRecommended Actions:\n- Review the code paths that unwrap optional inventory values and add proper None handling or default values.\n- Add logging around the unwrap points to capture the context when the None occurs.\n- Implement defensive checks or use `if let`/`match` to avoid panics.\n- Run unit tests covering cases where inventory data may be missing.\n- Monitor the service after changes to confirm the panic frequency has dropped.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:47:50.971792Z",
+  "environment": "demo",
+  "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+  "firstSeenAt": "2026-11-14T20:47:50.673599Z",
+  "incidentId": "21c1bd76-90b2-4ded-8a7b-c6f4f5ee9513",
+  "lastSeenAt": "2026-11-14T20:47:50.823921Z",
+  "occurrenceCount": 884,
+  "resolvedAt": null,
+  "serviceName": "inventory",
+  "severity": "HIGH",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:47:50.972777Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "26703406-6df2-4e74-91ca-a920db253ef7",
+  "topMessages": [
+    "thread panicked: called `Option::unwrap()` on a `None` value"
+  ],
+  "updatedAt": "2026-11-14T20:47:52.007895Z"
+}

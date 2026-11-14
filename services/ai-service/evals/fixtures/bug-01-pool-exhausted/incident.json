@@ -1,0 +1,27 @@
+{
+  "aiSummary": "Summary: The storefront-api is experiencing frequent timeouts when trying to obtain a database connection, leading to failed GET requests for trending products.\nPossible Cause: The error message indicates that the API is timing out while attempting to acquire a connection from the connection pool, which may be caused by an exhausted pool due to high concurrency, misconfigured pool size, or long-running database queries.\nRecommended Actions:\n- Verify and adjust the connection pool size and timeout settings in the datastore configuration.\n- Profile database queries to identify any that are taking unusually long and optimize them.\n- Implement connection pool monitoring to alert when the pool is nearing capacity.\n- Add retry logic with exponential backoff for transient connection acquisition failures.\n- Review recent deployments for changes that could affect database load or connection handling.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:42:50.523485Z",
+  "environment": "demo",
+  "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+  "firstSeenAt": "2026-11-14T20:42:50.429466Z",
+  "incidentId": "baa4d54b-3deb-4c6c-9e5f-d851bcf3e208",
+  "lastSeenAt": "2026-11-14T20:42:50.434580Z",
+  "occurrenceCount": 2001,
+  "resolvedAt": null,
+  "serviceName": "storefront-api",
+  "severity": "HIGH",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:42:50.525109Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "b4e1c611-bb4e-4ce9-a98a-4fbda1139793",
+  "topMessages": [
+    "GET /products/trending failed: Timed out while checking out a connection from connection pool"
+  ],
+  "updatedAt": "2026-11-14T20:42:51.672278Z"
+}

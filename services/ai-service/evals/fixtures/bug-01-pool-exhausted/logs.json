@@ -1,0 +1,182 @@
+{
+  "cooccurring": [],
+  "search": [
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.996000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.937000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.885000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.876000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.823000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.816000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.800000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.782000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.781000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.778000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.777000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.776000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.763000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.762000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.760000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ce67b01e1181499c3b0d44bfe5682036ede17a181d0a1a367c0087fdd06f46bd",
+      "level": "ERROR",
+      "message": "GET /products/trending failed: Timed out while checking out a connection from connection pool",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:09.758000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:42:50.040000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:43:09.996000+00:00"
+      },
+      "level": "ERROR",
+      "n": 2001,
+      "service_name": "storefront-api"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:42:00+00:00"
+      },
+      "n": 994
+    },
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:43:00+00:00"
+      },
+      "n": 1007
+    }
+  ],
+  "trace": [
+    {
+      "n": 1162,
+      "stack_trace": "MongoWaitQueueTimeoutError: Timed out while checking out a connection from connection pool\n    at ConnectionPool.checkOut (/app/node_modules/mongodb/lib/cmap/connection_pool.js:157:38)\n    at async Server.command (/app/node_modules/mongodb/lib/sdam/server.js:144:24)\n    at async tryOperation (/app/node_modules/mongodb/lib/operations/execute_operation.js:213:32)\n    at async executeOperation (/app/node_modules/mongodb/lib/operations/execute_operation.js:78:16)\n    at async AggregationCursor._initialize (/app/node_modules/mongodb/lib/cursor/aggregation_cursor.js:48:26)\n    at async AggregationCursor.cursorInit (/app/node_modules/mongodb/lib/cursor/abstract_cursor.js:578:27)\n    at async AggregationCursor.fetchBatch (/app/node_modules/mongodb/lib/cursor/abstract_cursor.js:612:13)\n    at async AggregationCursor.next (/app/node_modules/mongodb/lib/cursor/abstract_cursor.js:286:17)\n    at async [Symbol.asyncIterator] (/app/node_modules/mongodb/lib/cursor/abstract_cursor.js:194:34)\n    at async AggregationCursor.toArray (/app/node_modules/mongodb/lib/cursor/abstract_cursor.js:368:26)"
+    }
+  ]
+}

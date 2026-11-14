@@ -1,0 +1,23 @@
+# Labelled retrieval cases: which runbook chunks answer each query. Labels are "<runbook file> > <heading path>".
+cases:
+  - id: pool
+    query: timed out while checking out a connection from the connection pool
+    relevant: ["database > Database > Connection pool"]
+  - id: gateway-outage
+    query: payment gateway unavailable retry 5/5 charge failed status 503
+    relevant: ["payments > Payments > Gateway outage"]
+  - id: key-rotation
+    query: payment gateway rejected our credentials invalid api key 401
+    relevant: ["payments > Payments > Rotated or expired credentials"]
+  - id: nil-map
+    query: panic assignment to entry in nil map idempotency store
+    relevant: ["payments > Payments > Duplicate charges"]
+  - id: unstocked
+    query: thread panicked unwrap on a None value looking up a SKU with no inventory record
+    relevant: ["inventory > Inventory > Unstocked products"]
+  - id: lock
+    query: reservations take seconds the stock lock is held while writing the audit entry
+    relevant: ["inventory > Inventory > Slow reservations"]
+  - id: out-of-stock
+    query: not enough stock for SKU the reservation must be awaited
+    relevant: ["inventory > Inventory > Out of stock"]

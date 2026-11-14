@@ -1,0 +1,27 @@
+{
+  "aiSummary": "Summary: The storefront API is failing to process orders for SKU-1038 due to an unhandled promise rejection caused by insufficient stock.\nPossible Cause: The error indicates that the inventory service may be reporting insufficient stock for SKU-1038, possibly due to a race condition or stale cache during high concurrency requests.\nRecommended Actions:\n- Verify inventory counts for SKU-1038 in the database and reconcile with the inventory service.\n- Check for concurrent order placement logic that might lead to double\u2011decrementing stock.\n- Add idempotency keys or locking around stock deduction to prevent race conditions.\n- Implement a retry mechanism for stock checks with exponential backoff.\n- Monitor inventory API latency and error rates to detect similar issues early.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:44:24.465685Z",
+  "environment": "demo",
+  "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+  "firstSeenAt": "2026-11-14T20:44:24.296011Z",
+  "incidentId": "14696e77-11aa-4605-a7e1-29b5e462775b",
+  "lastSeenAt": "2026-11-14T20:44:24.392153Z",
+  "occurrenceCount": 787,
+  "resolvedAt": null,
+  "serviceName": "storefront-api",
+  "severity": "HIGH",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:44:24.466872Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "74fe07db-d665-46fe-a113-b8cd83027cf2",
+  "topMessages": [
+    "unhandled promise rejection: not enough stock for SKU-1038"
+  ],
+  "updatedAt": "2026-11-14T20:44:25.572782Z"
+}

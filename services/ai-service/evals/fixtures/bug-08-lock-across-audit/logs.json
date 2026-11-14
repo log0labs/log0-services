@@ -1,0 +1,176 @@
+{
+  "cooccurring": [],
+  "search": [
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:48.578000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:48.568000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:48.502000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:47.516000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:47.434000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:47.066000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.869000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.859000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.840000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.838000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.835000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.831000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.829000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.825000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.815000+00:00"
+      }
+    },
+    {
+      "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+      "level": "ERROR",
+      "message": "POST /checkout failed: The operation was aborted due to timeout",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:48:46.809000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:48:34.317000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:48:48.578000+00:00"
+      },
+      "level": "ERROR",
+      "n": 147,
+      "service_name": "storefront-api"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:48:00+00:00"
+      },
+      "n": 147
+    }
+  ],
+  "trace": [
+    {
+      "n": 147,
+      "stack_trace": "TimeoutError: The operation was aborted due to timeout"
+    }
+  ]
+}

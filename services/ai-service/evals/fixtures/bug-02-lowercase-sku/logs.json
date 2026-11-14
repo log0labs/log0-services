@@ -1,0 +1,176 @@
+{
+  "cooccurring": [],
+  "search": [
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-700-1794689030261-700 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.276000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-2-703-1794689030252-703 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.267000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-3-705-1794689030248-705 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.265000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-699-1794689030241-699 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.260000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-2-702-1794689030225-702 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.245000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-3-704-1794689030225-704 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.243000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-698-1794689030215-698 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.239000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-3-703-1794689030210-703 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.223000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-2-701-1794689030208-701 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.222000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-697-1794689030203-697 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.213000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-3-702-1794689030197-702 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.208000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-2-700-1794689030196-700 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.206000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-696-1794689030194-696 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.202000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-3-701-1794689030190-701 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.196000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-2-699-1794689030186-699 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.195000+00:00"
+      }
+    },
+    {
+      "fingerprint": "4650da38acd56985b33e95fd40dda7f7c8312860dde3cc407baf2e1c8e9e0b1a",
+      "level": "ERROR",
+      "message": "GET /cart/k6-1-695-1794689030185-695 failed: unknown sku sku-1004",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:43:50.192000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:43:42.348000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:43:50.276000+00:00"
+      },
+      "level": "ERROR",
+      "n": 2111,
+      "service_name": "storefront-api"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:43:00+00:00"
+      },
+      "n": 2111
+    }
+  ],
+  "trace": [
+    {
+      "n": 2111,
+      "stack_trace": "Error: unknown sku sku-1004\n    at file:///app/src/pricing.js:13:25\n    at Array.map (<anonymous>)\n    at priceCart (file:///app/src/pricing.js:11:23)\n    at file:///app/src/app.js:62:39\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    }
+  ]
+}
