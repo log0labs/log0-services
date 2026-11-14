@@ -65,11 +65,33 @@ public class Incident {
     @Column(name = "ai_summary", columnDefinition = "text")
     private String aiSummary;
 
+    /** When a summary was last asked for; null for incidents created before this was tracked. */
+    @Column(name = "ai_summary_requested_at")
+    private Instant aiSummaryRequestedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** How long a requested summary is shown as "generating" before it counts as failed. */
+    public static final java.time.Duration SUMMARY_PENDING_WINDOW = java.time.Duration.ofMinutes(3);
+
+    /**
+     * Where the AI summary stands: {@code READY} when there is text, {@code PENDING} while a request
+     * younger than {@link #SUMMARY_PENDING_WINDOW} is in flight, otherwise {@code UNAVAILABLE}
+     * (the request failed, was never made, or the model was down).
+     */
+    public String summaryStatus(Instant now) {
+        if (aiSummary != null && !aiSummary.isBlank()) {
+            return "READY";
+        }
+        if (aiSummaryRequestedAt != null && aiSummaryRequestedAt.plus(SUMMARY_PENDING_WINDOW).isAfter(now)) {
+            return "PENDING";
+        }
+        return "UNAVAILABLE";
+    }
 
     @PrePersist
     void onCreate() {

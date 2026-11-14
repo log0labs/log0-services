@@ -92,6 +92,7 @@ public class IncidentService {
             incident.setFirstSeenAt(event.getFirstSeenAt());
             incident.setLastSeenAt(event.getLastSeenAt());
             incident.setTopMessages(event.getTopMessages());
+            incident.setAiSummaryRequestedAt(Instant.now());
             incidentRepository.save(incident);
 
             recordHistory(incident.getIncidentId(), null, "NEW", null);
@@ -346,5 +347,25 @@ public class IncidentService {
         incidentRepository.countBySeverity(tenantId).forEach(row -> bySeverity.put((String) row[0], (Long) row[1]));
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
         return new IncidentStatsResponse(total, byStatus, bySeverity, incidentRepository.findEnvironments(tenantId));
+    }
+
+    /**
+     * Asks for the AI summary again. Does nothing when the incident already has one or a request is
+     * still in flight, so repeated clicks cannot pile up model calls.
+     *
+     * @return the status after the call: {@code READY}, {@code PENDING} or {@code UNAVAILABLE}
+     */
+    @Transactional
+    public String retryAiSummary(UUID incidentId, UUID tenantId) {
+        Incident incident = getIncident(incidentId, tenantId);
+        Instant now = Instant.now();
+        String status = incident.summaryStatus(now);
+        if (!"UNAVAILABLE".equals(status)) {
+            return status;
+        }
+        incident.setAiSummaryRequestedAt(now);
+        incidentRepository.save(incident);
+        aiSummarizer.requestSummary(incident);
+        return "PENDING";
     }
 }
