@@ -36,6 +36,9 @@ _JAVA_LIBRARY_PREFIXES = (
 _CSHARP_LIBRARY_PREFIXES = ("System.", "Microsoft.", "Newtonsoft.", "Azure.", "Npgsql.")
 _GO_LIBRARY_MARKERS = ("/usr/local/go/", "/go/pkg/mod/", "/vendor/", "/src/runtime/")
 _RUST_LIBRARY_PREFIXES = ("std::", "core::", "alloc::", "tokio::", "futures::", "hyper::", "rust_begin_unwind")
+# where dependencies and the standard library live: ~/.cargo/registry on a developer machine, /usr/local/cargo/registry in the
+# official Docker images, /rustc/<hash>/library for std. Paths may arrive with a leading "./".
+_RUST_LIBRARY_PATHS = ("/rustc/", "/.cargo/registry/", "/cargo/registry/", "/.cargo/git/", "/cargo/git/checkouts/")
 _SWIFT_LIBRARY_BINARIES = ("libswift", "libsystem", "libdispatch", "libc++", "Foundation", "CoreFoundation", "libobjc")
 _NATIVE_LIBRARY_MARKERS = ("/usr/include/", "/usr/lib/", "/build/glibc", "/build/gcc", "/rustc/")
 
@@ -237,7 +240,7 @@ def _parse_rust(lines: list[str]) -> list[StackFrame]:
         symbol = _RUST_HASH.sub("", sym["symbol"])  # drop the compiler's ::h0123456789abcdef
         module, _, function = symbol.rpartition("::")
         file = at["file"].replace("\\", "/")
-        library = symbol.startswith(_RUST_LIBRARY_PREFIXES) or any(m in file for m in ("/rustc/", "/.cargo/registry/"))
+        library = symbol.startswith(_RUST_LIBRARY_PREFIXES) or any(m in file for m in _RUST_LIBRARY_PATHS)
         frames.append(
             StackFrame(
                 language="rust",

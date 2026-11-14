@@ -324,3 +324,38 @@ def test_similar_looking_formats_are_not_confused() -> None:
     assert parse_stack_trace("\tat com.log0.A.run(A.java:5)").language == "java"
     # Dart "#0 fn (package:x/y.dart:1:2)" is not gdb, PHP or Swift
     assert parse_stack_trace("#0      run (package:app/a.dart:1:2)").language == "dart"
+
+
+RUST_IN_DOCKER = """\
+thread 'tokio-rt-worker' panicked at src/main.rs:41:66:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: inventory::log0::install_panic_hook::{{closure}}
+             at ./src/src/log0.rs:66:25
+   1: core::option::Option<T>::unwrap
+             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/option.rs:1015:21
+   2: inventory::reserve::{{closure}}
+             at ./src/src/main.rs:41:66
+   3: <F as axum::handler::Handler<(M,T1,T2),S>>::call::{{closure}}
+             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/handler/mod.rs:255:43
+   4: <tower::util::oneshot::Oneshot<S,Req> as core::future::future::Future>::poll
+             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tower-0.5.3/src/util/oneshot.rs:96:42
+   5: tokio::runtime::task::core::Core<T,S>::poll
+             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.52.2/src/runtime/task/core.rs:365:24
+"""
+
+
+def test_rust_dependencies_in_a_docker_cargo_home_are_library_code() -> None:
+    """A real backtrace from a service built in rust:1.92 (cargo home /usr/local/cargo): only the service's own
+    files may count as application code, never axum, tower or tokio from the cargo registry."""
+    out = parse_stack_trace(RUST_IN_DOCKER)
+    assert out.language == "rust"
+    in_app = [(f.path_hint, f.line) for f in out.frames if f.in_app]
+    assert in_app == [("src/src/log0.rs", 66), ("src/src/main.rs", 41)]
+    assert next(f for f in out.frames if f.in_app and "main.rs" in (f.path_hint or "")).function == "{{closure}}"
+    assert not any(f.in_app for f in out.frames if "registry" in f.file)
+
+
+def test_rust_dependencies_in_a_developers_cargo_home_are_still_library_code() -> None:
+    trace = RUST_IN_DOCKER.replace("./usr/local/cargo/registry", "/home/dev/.cargo/registry")
+    assert [f.line for f in parse_stack_trace(trace).frames if f.in_app] == [66, 41]
