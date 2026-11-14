@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     hf_embedding_base_url: str = "https://router.huggingface.co/hf-inference"
     embedding_timeout_seconds: float = 30.0
 
+    # Serve log0's read-only tools to MCP clients at /mcp (streamable HTTP, bearer-token protected). Off by
+    # default: switch it on where you want Claude Desktop, Cursor or another MCP client to reach this service.
+    mcp_http_enabled: bool = False
+
     # LangSmith (mirrored to os.environ via app.observability.configure_tracing)
     langchain_tracing_v2: bool = False
     langchain_api_key: SecretStr | None = None

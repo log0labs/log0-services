@@ -4,6 +4,7 @@ import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.routing import Route
 
 from app.api import (
     ai_settings,
@@ -26,6 +27,8 @@ from app.integrations.incident_service import IncidentApiClient
 from app.integrations.repo_cache import RepoCache
 from app.llm.connection_check import check_connection
 from app.llm.models import PurposeChatModels
+from app.mcp.http import LazyMount, build_http_app
+from app.mcp.server import McpBackends, build_mcp_server
 from app.observability import configure_tracing
 from app.retrieval.embeddings import build_embedder
 from app.retrieval.memory import PgMemory
@@ -62,7 +65,29 @@ async def _lifespan(app: FastAPI):
     app.state.embedder = build_embedder(settings)  # runbook search and memory (M5)
     app.state.memory = PgMemory(session_factory, app.state.embedder)
 
+    runbook_search = RunbookSearcher(session_factory, app.state.embedder)
+    code_access = DbCodeAccess(
+        session_factory,
+        app.state.secret_box,
+        RepoCache(settings),
+        git_binary=settings.git_binary,
+        rg_binary=settings.rg_binary,
+    )
+
     async with AsyncExitStack() as stack:
+        if settings.mcp_http_enabled:
+            mcp_server = build_mcp_server(
+                McpBackends(
+                    logs=log_store,
+                    incidents=incident_api,
+                    history=incident_reader,
+                    session_factory=session_factory,
+                    runbooks=runbook_search,
+                    code=code_access,
+                )
+            )
+            app.state.mcp_mount.target = build_http_app(mcp_server, secret=settings.jwt_secret.get_secret_value())
+            await stack.enter_async_context(mcp_server.session_manager.run())
         executor: GraphExecutor | None = None
         if settings.investigation_graph_enabled:
             # Opens the Postgres checkpointer (creating its tables on first start) and keeps it
@@ -76,15 +101,9 @@ async def _lifespan(app: FastAPI):
                 models=PurposeChatModels(settings),
                 prices=settings.llm_prices,
                 require_review=settings.investigation_review_gate,
-                runbooks=RunbookSearcher(session_factory, app.state.embedder),
+                runbooks=runbook_search,
                 memory=app.state.memory,
-                code=DbCodeAccess(
-                    session_factory,
-                    app.state.secret_box,
-                    RepoCache(settings),
-                    git_binary=settings.git_binary,
-                    rg_binary=settings.rg_binary,
-                ),
+                code=code_access,
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(
@@ -118,6 +137,9 @@ def create_app() -> FastAPI:
     app.include_router(repositories.services_router)
     app.include_router(ai_settings.router)
     app.include_router(runbooks.router)
+    app.state.mcp_mount = LazyMount()  # the endpoint is plugged in at start-up when MCP_HTTP_ENABLED is on
+    # an exact route, not a mount: a mount would redirect POST /mcp to /mcp/, which MCP clients do not follow
+    app.router.routes.append(Route("/mcp", endpoint=app.state.mcp_mount))
     return app
 
 
