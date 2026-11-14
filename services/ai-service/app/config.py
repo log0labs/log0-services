@@ -4,7 +4,7 @@ Values come from environment variables (and a local ``.env`` file in dev).
 """
 
 from functools import lru_cache
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BeforeValidator, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     google_api_key: SecretStr | None = None
+
+    # Embeddings for runbook search and memory (M5). "hash" is built in: no network, no model, it
+    # matches shared words only (fine for development and tests). "huggingface" calls the HF
+    # inference router with HF_TOKEN and gives real semantic search; the model must produce
+    # vectors of EMBEDDING_DIMENSION numbers (384 for sentence-transformers/all-MiniLM-L6-v2).
+    # The database column has a fixed size, so changing the model to another size needs a migration.
+    embedding_provider: Literal["hash", "huggingface"] = "hash"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    hf_embedding_base_url: str = "https://router.huggingface.co/hf-inference"
+    embedding_timeout_seconds: float = 30.0
 
     # LangSmith (mirrored to os.environ via app.observability.configure_tracing)
     langchain_tracing_v2: bool = False
@@ -180,6 +190,12 @@ class Settings(BaseSettings):
             raise ValueError("Missing LLM API keys:\n  " + "\n  ".join(missing))
         return self
     
+    @model_validator(mode="after")
+    def _require_token_for_hf_embeddings(self) -> Self:
+        if self.embedding_provider == "huggingface" and self.hf_token is None:
+            raise ValueError("EMBEDDING_PROVIDER=huggingface needs HF_TOKEN")
+        return self
+
     @model_validator(mode="after")
     def _require_jwt_secret(self) -> Self:
         """Investigations verify JWT locally; secret must match auth-service."""

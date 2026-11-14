@@ -5,7 +5,14 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import ai_settings, health, investigations, repositories, summaries
+from app.api import (
+    ai_settings,
+    health,
+    investigations,
+    repositories,
+    runbooks,
+    summaries,
+)
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
 from app.graph.builder import build_graph
@@ -20,6 +27,7 @@ from app.integrations.repo_cache import RepoCache
 from app.llm.connection_check import check_connection
 from app.llm.models import PurposeChatModels
 from app.observability import configure_tracing
+from app.retrieval.embeddings import build_embedder
 from app.runner import InvestigationRunner
 from app.security.crypto import secret_box_from_settings
 
@@ -49,6 +57,7 @@ async def _lifespan(app: FastAPI):
     app.state.secret_box = secret_box_from_settings(settings) if settings.secrets_keys else None
     app.state.github = GitHubClient(settings)
     app.state.connection_checker = check_connection
+    app.state.embedder = build_embedder(settings)  # runbook search and memory (M5)
 
     async with AsyncExitStack() as stack:
         executor: GraphExecutor | None = None
@@ -83,6 +92,8 @@ async def _lifespan(app: FastAPI):
         yield
         await runner.shutdown()
 
+    if hasattr(app.state.embedder, "close"):
+        await app.state.embedder.close()
     await log_store.close()
     await incident_reader.close()
     await engine.dispose()
@@ -101,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(repositories.router)
     app.include_router(repositories.services_router)
     app.include_router(ai_settings.router)
+    app.include_router(runbooks.router)
     return app
 
 
