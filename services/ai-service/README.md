@@ -127,8 +127,26 @@ non-code cause, no forbidden output or secret in the answer, calibration, latenc
 precision and recall. A baseline file gates regressions. Read `evals/run.py` for every option and
 ADR-017 in the website docs (architecture, decisions) for the reasoning.
 
-> The scripted model that CI uses scores the harness, not log0. Quality numbers come only from a real-model run, and
-> none are published here until one has been done.
+> The scripted model that CI uses scores the harness, not log0. Quality numbers come only from a complete real-model run.
+
+### Measured so far
+
+Model-independent, deterministic, offline:
+
+| What | Result |
+|---|---|
+| A stack trace leads to the right repository file, with no model (Node, Go, Rust) | 6 of 6 applicable cases |
+| Runbook retrieval with the built-in lexical embedder, 7 labelled queries | context precision 0.71, recall 0.86 |
+| Harness self-test: a perfect scripted run / a wrong one | 1.00 on every metric / 0 on cause, location and fix |
+
+**First real-model run: incomplete, not a baseline.** Groq `gpt-oss-120b` (investigation, judge) and `gpt-oss-20b` (triage)
+on the free tier, 9 cases, 0.047 USD. Three of nine root causes were judged correct (the Node lower-case SKU, the Go nil
+map, the Rust `unwrap`); no case produced a located file or a diff. The provider rejected several of the model's tool calls
+(it invented a tool called `apply_patch`) and the free tier's daily token cap (200,000 for that model) was reached, so the
+run could not be repeated. Treat those figures as a first look at one cheap model, not as log0's quality. The harness now
+marks cases with model failures as degraded, leaves them out of the averages, and refuses to write a baseline from such a
+run (exit code 3). A valid run needs a provider tier whose daily quota covers about 200,000 tokens per pass.
+
 
 ## Layout
 
@@ -149,4 +167,4 @@ tests/            75 test modules; tests that need Postgres or ClickHouse skip w
 
 GitHub only, with a personal access token; no pull requests are opened. Saved per-tenant model settings are stored and
 testable but the graph still uses the platform models. The default runbook embedder is lexical. The evaluation set is
-small (a regression gate, not a benchmark), and the real-model quality has not been measured yet.
+small (a regression gate, not a benchmark), and no complete real-model run exists yet (see "Measured so far").
