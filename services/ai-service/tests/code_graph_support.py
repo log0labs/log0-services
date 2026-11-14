@@ -6,6 +6,8 @@ verify, root cause, code findings) and play a script of tool calls for the code 
 """
 
 import dataclasses
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
 
@@ -34,12 +36,25 @@ class FakeCode:
     def __init__(self, result: CodeCheckout | Exception | None) -> None:
         self.result = result
         self.calls: list[tuple[UUID, str]] = []
+        self.snapshot_calls: list[tuple[UUID, str, str]] = []  # (tenant, service, sha) of every snapshot asked for
+        self.snapshots_open = 0  # how many snapshot blocks are open right now (0 after a clean exit)
 
     async def open(self, *, tenant_id: UUID, service_name: str) -> CodeCheckout | None:
         self.calls.append((tenant_id, service_name))
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
+
+    @asynccontextmanager
+    async def snapshot(self, *, tenant_id: UUID, service_name: str, sha: str) -> AsyncIterator[CodeCheckout | None]:
+        self.snapshot_calls.append((tenant_id, service_name, sha))
+        if isinstance(self.result, Exception):
+            raise self.result
+        self.snapshots_open += 1
+        try:
+            yield self.result
+        finally:
+            self.snapshots_open -= 1
 
 
 def checkout_for(repo: Repo, *, prefix: str = "services/payment", sha: str | None = None) -> CodeCheckout:

@@ -7,6 +7,7 @@ Production wires ``DbCodeAccess`` (``integrations/code_access.py``: the 3.1 tabl
 box, the 3.4 cache). Tests wire a fake that points at a temporary repository.
 """
 
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -37,5 +38,15 @@ class CodeAccess(Protocol):
         """The checkout for a service of this tenant, or ``None`` when no repository is mapped to it.
 
         Raises ``CodeAccessError`` when one is mapped but cannot be opened.
+        """
+        ...
+
+    def snapshot(self, *, tenant_id: UUID, service_name: str, sha: str) -> AbstractAsyncContextManager[CodeCheckout | None]:
+        """``async with`` a private copy of the repository at exactly ``sha`` (a full commit id).
+
+        Unlike ``open`` it never fetches and never moves: it is what a later step uses to read, and
+        patch, the very commit the investigation pinned, however far the shared checkout has moved on.
+        The copy is removed when the block ends. Yields ``None`` when no repository is mapped; raises
+        ``CodeAccessError`` when it cannot be provided (token unreadable, commit no longer available).
         """
         ...

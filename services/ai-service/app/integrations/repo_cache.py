@@ -29,6 +29,8 @@ import shutil
 import stat
 import subprocess
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -46,6 +48,7 @@ _BRANCH = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,255}$")
 _NAME_PART = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _SYNC_MARKER = "log0-synced"  # touched inside .git after every successful sync
 _STDERR_LIMIT = 300
+_COMMIT = re.compile(r"^[0-9a-f]{40}$")  # a full commit id: never a branch name, never an option
 MAX_HISTORY_DEPTH = 5000
 _PASSTHROUGH_ENV = ("PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR")  # git needs these; nothing else is inherited
 
@@ -135,6 +138,51 @@ class RepoCache:
                 await self._update(url, branch, path, secret)
             sha = (await self._run(["rev-parse", "HEAD"], secret, cwd=path)).strip()
         return Checkout(path=path, sha=sha, branch=branch)
+
+    @asynccontextmanager
+    async def worktree(self, connection: RepositoryConnection, sha: str) -> AsyncIterator[Path]:
+        """A private copy of the repository at commit ``sha``, removed when the block ends.
+
+        The shared checkout moves forward whenever any investigation refreshes it. Anything that must
+        read (and later patch) exactly the commit an investigation pinned works in one of these instead:
+        a ``git worktree`` at that commit, in its own folder next to the checkout, untouched by later
+        updates of the shared one. ``sha`` must be a full 40-character commit id. Raises
+        ``CheckoutError`` when the repository is not checked out or the commit is not in it.
+        """
+        sha = sha.strip().lower()
+        if not _COMMIT.match(sha):
+            raise CheckoutError("the commit id must be 40 hexadecimal characters")
+        path = self.checkout_path(connection)
+        if not (path / ".git" / "HEAD").is_file():
+            raise CheckoutError("the repository is not checked out")
+        destination = path.with_name(f"{path.name}.wt-{uuid4().hex[:8]}")
+        lock = self._locks.setdefault(path, asyncio.Lock())
+
+        async with lock:  # adding a worktree writes into the shared repository's .git
+            await self._run(["worktree", "prune"], "", cwd=path)
+            try:
+                await self._run(["worktree", "add", "--detach", str(destination), sha], "", cwd=path)
+            except CheckoutError:
+                await asyncio.shield(self._remove_worktree(path, destination))  # nothing half-made is left behind
+                raise
+        try:
+            yield destination
+        finally:
+            # shielded: a cancelled investigation must still clean up after itself
+            async with lock:
+                await asyncio.shield(self._remove_worktree(path, destination))
+
+    async def _remove_worktree(self, path: Path, destination: Path) -> None:
+        try:
+            await self._run(["worktree", "remove", "--force", str(destination)], "", cwd=path)
+        except CheckoutError:
+            pass  # fall through to deleting the folder ourselves
+        if destination.exists():
+            await asyncio.to_thread(_remove, destination)
+        try:
+            await self._run(["worktree", "prune"], "", cwd=path)
+        except CheckoutError:
+            pass
 
     # ------------------------------------------------------------------- internals
 

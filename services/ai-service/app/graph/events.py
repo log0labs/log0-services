@@ -13,7 +13,14 @@ Payload keys are camelCase, like the rest of the JSON the browser sees.
 
 from typing import Any
 
-from app.schemas.domain import Evidence, Hypothesis, Recommendation, RootCause, Triage
+from app.schemas.domain import (
+    CodeChange,
+    Evidence,
+    Hypothesis,
+    Recommendation,
+    RootCause,
+    Triage,
+)
 
 MAX_TEXT = 300  # cap on any free text copied into an event
 
@@ -73,6 +80,15 @@ def _root_cause_identified(cause: RootCause, recommendation: Recommendation | No
     }
 
 
+def _changes_proposed(changes: list[CodeChange]) -> EventPair:
+    """Which files the proposal touches and how: never the code itself (that stays in the checkpoint)."""
+    return "changes.proposed", {
+        "count": len(changes),
+        "files": [c.file_path for c in changes],
+        "operations": [c.operation for c in changes],
+    }
+
+
 def events_from_update(update: dict[str, Any]) -> list[EventPair]:
     """Events for one ``updates`` chunk, in a stable order: the node's own event, then its
     evidence, then its hypotheses, then its root cause, then its gaps."""
@@ -89,5 +105,7 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
             events.extend(_hypothesis_event(_HYPOTHESIS_EVENTS[node], h) for h in delta.get("hypotheses") or [])
         if node == "root_cause" and delta.get("root_cause") is not None:
             events.append(_root_cause_identified(delta["root_cause"], delta.get("recommendation"), delta.get("confidence_band")))
+        if node == "propose_changes" and delta.get("proposed_changes"):
+            events.append(_changes_proposed(delta["proposed_changes"]))
         events.extend(("gap.recorded", {"message": _cap(gap)}) for gap in delta.get("gaps") or [])
     return events

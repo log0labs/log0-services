@@ -20,7 +20,8 @@ from app.graph.nodes.gather_history import gather_history
 from app.graph.nodes.gather_logs import gather_logs
 from app.graph.nodes.human_review import human_review
 from app.graph.nodes.load_context import load_context
-from app.graph.nodes.pending import propose_changes, search_runbooks
+from app.graph.nodes.pending import search_runbooks
+from app.graph.nodes.propose_changes import propose_changes
 from app.graph.nodes.root_cause import root_cause
 from app.graph.nodes.synthesize import synthesize
 from app.graph.nodes.triage import triage
@@ -34,7 +35,7 @@ from app.graph.routing import (
 )
 from app.graph.state import InvestigationContext, InvestigationState
 
-GRAPH_VERSION = "m4-review-v1"
+GRAPH_VERSION = "m4-changes-v1"
 
 
 def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:

@@ -13,6 +13,8 @@ is safe to show.
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from app.graph.code_access import CodeAccessError, CodeCheckout
@@ -75,3 +77,38 @@ class DbCodeAccess:
             code=CodeTools(checkout.path, prefix=prefix, git_binary=self._git, rg_binary=self._rg),
             git=GitTools(checkout.path, prefix=prefix, git_binary=self._git),
         )
+
+    @asynccontextmanager
+    async def snapshot(self, *, tenant_id: UUID, service_name: str, sha: str) -> AsyncIterator[CodeCheckout | None]:
+        """A private worktree at ``sha``: same lookups and token handling as ``open``, but it never
+        moves to a newer commit. If the cache was cleared meanwhile the repository is cloned again first."""
+        async with self._sessions() as session:
+            mapping = await repository_store.get_service(session, tenant_id=tenant_id, service_name=service_name)
+            if mapping is None:
+                yield None
+                return
+            connection = await repository_store.get(session, tenant_id=tenant_id, repository_id=mapping.repository_id)
+        if connection is None:
+            yield None
+            return
+
+        if not (self._cache.checkout_path(connection) / ".git" / "HEAD").is_file():
+            if self._box is None:
+                raise CodeAccessError("secret storage is not configured on this server, so the repository token cannot be used")
+            try:
+                await self._cache.ensure_checkout(connection, token_for_connection(connection, self._box))
+            except CryptoError:
+                raise CodeAccessError("the stored repository token could not be read: reconnect the repository") from None
+            except CheckoutError as exc:
+                raise CodeAccessError(f"the repository could not be fetched ({exc})") from None
+
+        try:
+            async with self._cache.worktree(connection, sha) as root:
+                prefix = mapping.path_prefix
+                yield CodeCheckout(
+                    repo=RepoContext(repo=f"{connection.owner}/{connection.name}", branch=connection.default_branch, sha=sha, path_prefix=prefix),
+                    code=CodeTools(root, prefix=prefix, git_binary=self._git, rg_binary=self._rg),
+                    git=GitTools(root, prefix=prefix, git_binary=self._git),
+                )
+        except CheckoutError as exc:  # raised before the block ran (the commit is gone); errors inside it are not ours
+            raise CodeAccessError(f"the pinned commit is no longer available ({exc})") from None

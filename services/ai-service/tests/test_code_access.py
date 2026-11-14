@@ -183,3 +183,81 @@ async def test_a_repository_that_cannot_be_fetched_is_an_access_error_without_th
     with pytest.raises(CodeAccessError, match="could not be fetched") as caught:
         await make_access(sessions, remote, tmp_path).open(tenant_id=TENANT_A, service_name=SERVICE)
     assert TOKEN not in str(caught.value)
+
+
+# --------------------------------------------------------------------------- snapshot
+
+
+async def test_a_snapshot_is_the_pinned_commit_even_after_the_branch_moved_on(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    await connect(sessions)
+    access = make_access(sessions, remote, tmp_path, fresh=0)
+    opened = await access.open(tenant_id=TENANT_A, service_name=SERVICE)
+    assert opened is not None
+    pinned = opened.repo.sha
+    remote.commit("services/payment/app.py", "print('two')\n")
+    moved = await access.open(tenant_id=TENANT_A, service_name=SERVICE)  # the shared checkout follows the branch
+    assert moved is not None and moved.repo.sha != pinned
+
+    async with access.snapshot(tenant_id=TENANT_A, service_name=SERVICE, sha=pinned) as snapshot:
+        assert snapshot is not None
+        assert (snapshot.repo.sha, snapshot.repo.repo, snapshot.repo.path_prefix) == (pinned, "acme/shop", "services/payment")
+        assert (await snapshot.code.read_file("services/payment/app.py")).text.strip().endswith("print('one')")  # the old text
+        assert (await snapshot.code.list_files()).files == ["services/payment/app.py"]  # scoped to the service folder
+        root = snapshot.code.root
+    assert not root.exists()  # removed when the block ended
+
+
+async def test_a_snapshot_of_an_unmapped_service_or_another_tenant_is_none_and_clones_nothing(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    await connect(sessions, tenant=TENANT_A)
+    access = make_access(sessions, remote, tmp_path)
+    sha = "a" * 40
+    async with access.snapshot(tenant_id=TENANT_A, service_name="other-service", sha=sha) as nothing:
+        assert nothing is None
+    async with access.snapshot(tenant_id=TENANT_B, service_name=SERVICE, sha=sha) as not_theirs:
+        assert not_theirs is None
+    assert not (tmp_path / "cache").exists()
+
+
+async def test_a_snapshot_is_cleaned_up_when_the_block_raises(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    await connect(sessions)
+    access = make_access(sessions, remote, tmp_path)
+    opened = await access.open(tenant_id=TENANT_A, service_name=SERVICE)
+    assert opened is not None
+    seen: list[Path] = []
+    with pytest.raises(RuntimeError, match="boom"):
+        async with access.snapshot(tenant_id=TENANT_A, service_name=SERVICE, sha=opened.repo.sha) as snapshot:
+            assert snapshot is not None
+            seen.append(snapshot.code.root)
+            raise RuntimeError("boom")  # an error inside the block is not turned into a CodeAccessError
+    assert not seen[0].exists()
+
+
+async def test_a_commit_that_is_gone_is_an_access_error(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    await connect(sessions)
+    access = make_access(sessions, remote, tmp_path)
+    await access.open(tenant_id=TENANT_A, service_name=SERVICE)
+    with pytest.raises(CodeAccessError, match="no longer available"):
+        async with access.snapshot(tenant_id=TENANT_A, service_name=SERVICE, sha="deadbeef" * 5):
+            pytest.fail("the block must not run")
+
+
+async def test_a_cleared_cache_is_cloned_again_before_the_snapshot(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    import shutil
+
+    await connect(sessions)
+    access = make_access(sessions, remote, tmp_path)
+    opened = await access.open(tenant_id=TENANT_A, service_name=SERVICE)
+    assert opened is not None
+    shutil.rmtree(opened.code.root, onexc=lambda f, p, _e: (os.chmod(p, 0o700), f(p)))  # someone deleted the cache folder
+
+    async with access.snapshot(tenant_id=TENANT_A, service_name=SERVICE, sha=opened.repo.sha) as snapshot:
+        assert snapshot is not None and (await snapshot.code.list_files()).files == ["services/payment/app.py"]
+
+
+async def test_a_snapshot_that_needs_the_token_but_has_no_master_key_is_an_access_error(sessions: SessionFactory, remote: Remote, tmp_path: Path) -> None:
+    await connect(sessions)
+    settings = Settings(_env_file=None, repo_cache_dir=str(tmp_path / "cache"), repo_clone_base_url=remote.base.as_uri(), git_allowed_protocols="file")  # type: ignore[call-arg]
+    access = DbCodeAccess(sessions, None, RepoCache(settings))  # the cache is empty, so a clone would be needed
+    with pytest.raises(CodeAccessError, match="secret storage is not configured"):
+        async with access.snapshot(tenant_id=TENANT_A, service_name=SERVICE, sha="a" * 40):
+            pytest.fail("the block must not run")
