@@ -15,6 +15,7 @@ from uuid import UUID
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+from app.diff.builder import FileDiff
 from app.graph.budget import Budget
 from app.graph.code_access import CodeAccess
 from app.llm.purpose import Purpose, StructuredOutputMethod
@@ -104,6 +105,8 @@ class InvestigationState(TypedDict):
     validation_errors: list[str]
     change_attempts: int
     diff: str | None
+    diff_files: list[FileDiff]  # per-file summary of the diff (path, operation, added, removed lines)
+    read_paths: list[str]  # files the change proposer was shown: what validation checks the changes against
     
     # budget and bookkeeping
     tool_calls: Annotated[int, operator.add]  # every tool call adds 1: the budget
@@ -142,6 +145,8 @@ def new_state(
         validation_errors=[],
         change_attempts=0,
         diff=None,
+        diff_files=[],
+        read_paths=[],
         tool_calls=0,
         gaps=[],
         status=InvestigationStatus.RUNNING,
@@ -197,6 +202,7 @@ CHECKPOINT_TYPES: tuple[type, ...] = (
     CodeLocation,
     ReviewDecision,
     CodeChange,
+    FileDiff,
 )
 
 

@@ -270,7 +270,8 @@ async def test_approval_leads_to_a_proposed_fix_against_the_pinned_commit(repo: 
     final = (await graph.aget_state(config)).values
 
     assert [c.file_path for c in final["proposed_changes"]] == [PAYMENT] and final["change_attempts"] == 1
-    assert code.snapshot_calls == [(ctx.tenant_id, "payment-service", final["repo"].sha)] and code.snapshots_open == 0
+    pinned = (ctx.tenant_id, "payment-service", final["repo"].sha)
+    assert code.snapshot_calls == [pinned, pinned] and code.snapshots_open == 0  # one snapshot to propose, one to validate: both at the pinned commit
     events = [e for u in updates for e in events_from_update(u)]
     assert ("changes.proposed", {"count": 1, "files": [PAYMENT], "operations": ["modify"]}) in events
 
@@ -289,7 +290,7 @@ async def test_refine_proposes_nothing_until_the_engineer_finally_approves(repo:
     again = await graph.ainvoke(Command(resume={"action": "refine", "note": "check the pool as well"}), config, context=ctx)
     assert "__interrupt__" in again and code.snapshot_calls == []
     final = await graph.ainvoke(Command(resume={"action": "approve", "note": None}), config, context=ctx)
-    assert final["proposed_changes"] and len(code.snapshot_calls) == 1
+    assert final["proposed_changes"] and len(code.snapshot_calls) == 2  # propose, then validate
 
 
 async def test_without_the_gate_no_fix_is_proposed(repo: Repo) -> None:

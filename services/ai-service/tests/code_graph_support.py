@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableLambda
 
 from app.graph.code_access import CodeCheckout
 from app.graph.state import InvestigationContext
@@ -82,11 +83,23 @@ class _Bound:
 class ToolFakeModel(FakeModel):
     """``FakeModel`` plus tool calling: ``script`` is a list of AI messages (or exceptions)."""
 
-    def __init__(self, answer: Any = None, *, script: list[Any] | None = None, **kwargs: Any) -> None:
+    def __init__(self, answer: Any = None, *, script: list[Any] | None = None, sequences: dict[Any, list[Any]] | None = None, **kwargs: Any) -> None:
         super().__init__(answer, **kwargs)
         self.script = script or []
+        self.sequences = sequences or {}  # schema -> answers played one per call (the last repeats): "first wrong, then right"
         self.tool_prompts: list[list[Any]] = []
         self.bound: list[str] = []
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
+        if schema not in self.sequences:
+            return super().with_structured_output(schema, **kwargs)
+        queue = self.sequences[schema]
+
+        async def call(messages: Any) -> Any:
+            self.messages.append(messages)
+            return queue.pop(0) if len(queue) > 1 else queue[0]
+
+        return RunnableLambda(lambda m: None, afunc=call)
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> _Bound:
         self.bound = [t.name for t in tools]

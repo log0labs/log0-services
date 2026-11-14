@@ -9,6 +9,7 @@ event, resume the runner.
 import asyncio
 import os
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -281,4 +282,52 @@ async def test_wait_idle_waits_for_a_finishing_task_and_reports_a_stuck_one(sess
     assert runner.is_running(row.id) and not await runner.wait_idle(row.id, timeout=0.05)  # still busy after the timeout
     release.set()
     assert await runner.wait_idle(row.id, timeout=5)  # finished: idle again
+    await runner.shutdown()
+
+
+# --------------------------------------------------------- approval to a stored diff
+
+
+async def test_an_approved_investigation_stores_the_validated_diff_and_the_changes(session_factory: SessionFactory, tmp_path: Path) -> None:
+    from langchain_core.messages import AIMessage
+
+    from app.schemas.change_proposal import ChangeProposalAnswer
+    from app.schemas.code_findings import CodeFindingsAnswer
+    from tests.code_graph_support import (
+        FakeCode,
+        Repo,
+        ToolFakeModel,
+        ai,
+        call,
+        checkout_for,
+    )
+    from tests.test_validate_changes import GOOD, findings, proposal
+
+    repo = Repo(tmp_path / "repo")
+    model = ToolFakeModel(
+        synthesis_answer(),
+        script=[ai(call("list_files", "c1")), AIMessage(content="investigated")],
+        answers={CodeFindingsAnswer: findings()},
+        sequences={ChangeProposalAnswer: [proposal(GOOD)]},
+    )
+    models = FakeModels(FakeModel(triage_answer(gather=["logs", "history", "code"])), investigation=model)
+    backends = Backends(build_graph(InMemorySaver()), models=models, code=FakeCode(checkout_for(repo)), require_review=True)
+    runner, row = await run_to_pause(session_factory, backends)
+    waiting = await _row(session_factory, row.id)
+    assert waiting.status == InvestigationStatus.AWAITING_REVIEW and waiting.diff is None  # nothing is proposed before the decision
+
+    await decide(session_factory, runner, row.id, "approve")
+    await _wait_for_end(runner, row.id)
+
+    done = await _row(session_factory, row.id)
+    assert done.status == InvestigationStatus.COMPLETED and done.repo_sha == repo.c2
+    assert done.diff is not None and done.diff.startswith("diff --git") and GOOD.new_code in done.diff and GOOD.old_code in done.diff
+    assert done.recommendation is not None and done.recommendation["changes"][0]["filePath"] == GOOD.file_path
+    assert done.recommendation["changes"][0]["newCode"] == GOOD.new_code and done.recommendation["summary"]
+
+    events = await _events(session_factory, row.id)
+    order = types(events)
+    assert order.index("review.decided") < order.index("changes.proposed") < order.index("changes.validated") < order.index("diff.generated") < order.index("investigation.completed")
+    payloads = str([e.payload for e in events if e.type in ("changes.proposed", "changes.validated", "diff.generated")])
+    assert GOOD.new_code not in payloads and GOOD.old_code not in payloads  # events describe, they never carry code
     await runner.shutdown()

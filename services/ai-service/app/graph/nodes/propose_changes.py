@@ -44,6 +44,8 @@ MAX_CHANGE_SECONDS = 120.0
 _CODE_REF = re.compile(r"^(?P<path>.+):(?P<start>\d+)-(?P<end>\d+)@[0-9a-f]{8}$")
 MAX_BRIEF_ITEMS = 5
 MAX_BRIEF_TEXT = 600
+MAX_ERROR_TEXT = 800  # a validation message may quote the file's own text
+MAX_PREVIOUS_CODE = 200
 
 
 def code_focus(state: InvestigationState) -> list[CodeFocus]:
@@ -74,6 +76,11 @@ def build_brief(state: InvestigationState) -> str:
     review = state["review"]
     if review is not None and review.note:
         lines.append(f"The engineer's guidance during review: {review.note[:MAX_BRIEF_TEXT]}")
+    if state["validation_errors"]:  # a retry: the previous proposal failed validation, say exactly how
+        lines.append(f"Your previous proposal (attempt {state['change_attempts']}) was checked against the code and rejected. Fix exactly these problems:")
+        lines += [f"- {error[:MAX_ERROR_TEXT]}" for error in state["validation_errors"][: MAX_BRIEF_ITEMS * 2]]
+        for change in state["proposed_changes"][:MAX_BRIEF_ITEMS]:
+            lines.append(f"- previous {change.operation} of {change.file_path}: {(change.old_code or change.new_code or '')[:MAX_PREVIOUS_CODE]!r}")
     return "\n".join(lines)
 
 
@@ -120,5 +127,6 @@ async def propose_changes(state: InvestigationState, runtime: Runtime[Investigat
         "proposed_changes": proposal.changes,
         "change_attempts": attempts,
         "gaps": gaps,
+        "read_paths": proposal.read_paths,
         "tool_calls": _OPEN_CALLS + proposal.tool_calls,
     }

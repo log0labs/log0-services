@@ -47,6 +47,22 @@ def after_review(state: InvestigationState) -> Literal["synthesize", "propose_ch
     return "synthesize" if review.action == "refine" else "propose_changes"
 
 
+def after_propose(state: InvestigationState) -> Literal["validate_changes", "finalize"]:
+    """Validate what was proposed; with nothing proposed there is nothing to validate."""
+    return "validate_changes" if state["proposed_changes"] else "finalize"
+
+
+MAX_CHANGE_ATTEMPTS = 2
+
+
+def after_validate(state: InvestigationState) -> Literal["propose_changes", "finalize"]:
+    """Failed validation goes back to the proposer with the errors, at most ``MAX_CHANGE_ATTEMPTS`` times in all;
+    a valid diff (no errors), or the last attempt, goes on to finalize."""
+    if state["validation_errors"] and state["change_attempts"] < MAX_CHANGE_ATTEMPTS:
+        return "propose_changes"
+    return "finalize"
+
+
 def fan_out(state: InvestigationState) -> list[Send]:
     """One ``Send`` per branch triage chose, so the branches run in parallel.
 

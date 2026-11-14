@@ -89,6 +89,22 @@ def _changes_proposed(changes: list[CodeChange]) -> EventPair:
     }
 
 
+def _changes_validated(delta: dict[str, Any]) -> EventPair:
+    errors = delta.get("validation_errors") or []
+    return "changes.validated", {"ok": bool(delta.get("diff")) and not errors, "issueCount": len(errors)}
+
+
+def _diff_generated(delta: dict[str, Any]) -> EventPair:
+    """The shape of the diff (files and line counts), never its text."""
+    return "diff.generated", {
+        "bytes": len(delta["diff"].encode("utf-8")),
+        "files": [
+            {"path": f.file_path, "operation": f.operation, "additions": f.additions, "deletions": f.deletions}
+            for f in delta.get("diff_files") or []
+        ],
+    }
+
+
 def events_from_update(update: dict[str, Any]) -> list[EventPair]:
     """Events for one ``updates`` chunk, in a stable order: the node's own event, then its
     evidence, then its hypotheses, then its root cause, then its gaps."""
@@ -107,5 +123,9 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
             events.append(_root_cause_identified(delta["root_cause"], delta.get("recommendation"), delta.get("confidence_band")))
         if node == "propose_changes" and delta.get("proposed_changes"):
             events.append(_changes_proposed(delta["proposed_changes"]))
+        if node == "validate_changes" and ("validation_errors" in delta or "diff" in delta):
+            events.append(_changes_validated(delta))
+            if delta.get("diff"):
+                events.append(_diff_generated(delta))
         events.extend(("gap.recorded", {"message": _cap(gap)}) for gap in delta.get("gaps") or [])
     return events
