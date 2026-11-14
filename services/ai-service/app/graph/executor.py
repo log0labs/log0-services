@@ -14,18 +14,22 @@ from uuid import UUID
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
+from app.config import Settings
 from app.graph.builder import GRAPH_VERSION
 from app.graph.code_access import CodeAccess
 from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.graph.usage import Prices, UsageRecorder, run_config
+from app.observability import tracing_allowed, tracing_scope
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
+from app.security.redaction import redact_text
 from app.store import events as event_store
 from app.store import investigations as investigation_store
+from app.store import provider_config as provider_config_store
 from app.tools.incidents import IncidentApi, RelatedIncidentSource
 from app.tools.logs import LogBackend
 
@@ -38,6 +42,17 @@ def pending_interrupts(snapshot: Any) -> list[Any]:
     """The interrupts a paused graph is waiting on (empty when it is not waiting for a human)."""
     return [interrupt for task in snapshot.tasks for interrupt in task.interrupts]
 
+
+
+def state_for_row(row: Any) -> Any:
+    """The starting state for an investigation row. The question is redacted here, because it is copied into
+    prompts and search queries; the stored row keeps exactly what the engineer typed."""
+    return new_state(
+        investigation_id=str(row.id),
+        incident_id=str(row.incident_id),
+        scope=row.scope,
+        question=redact_text(row.question) if row.question else None,
+    )
 
 
 def usage_for_row(recorder: UsageRecorder) -> dict[str, Any]:
@@ -66,6 +81,7 @@ class GraphExecutor:
         code: CodeAccess | None = None,
         runbooks: RunbookSource | None = None,
         memory: Memory | None = None,
+        settings: Settings | None = None,
         require_review: bool = False,
     ) -> None:
         self._graph = graph
@@ -77,9 +93,21 @@ class GraphExecutor:
         self._code = code
         self._runbooks = runbooks
         self._memory = memory
+        self._settings = settings
         self._require_review = require_review
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
+        allowed = True  # without settings (tests) nothing is restricted
+        if self._settings is not None:
+            async with session_factory() as session:
+                byok = await provider_config_store.has_own_key(session, tenant_id=tenant_id)
+            allowed = tracing_allowed(self._settings, tenant_id=tenant_id, byok=byok)
+            if self._settings.langchain_tracing_v2 and not allowed:
+                logger.info("tracing is off for investigation %s: the tenant uses its own LLM key and has not opted in", investigation_id)
+        with tracing_scope(allowed):
+            await self._run(session_factory, investigation_id, tenant_id)
+
+    async def _run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         # The row is the authority on who owns this investigation and what was asked.
         async with session_factory() as session:
             row = await investigation_store.get_by_id(
@@ -122,12 +150,7 @@ class GraphExecutor:
             logger.info("Resuming investigation %s before %s", investigation_id, snapshot.next)
             await self._stream(None, config, context, session_factory, investigation_id)
         elif not snapshot.values:
-            state = new_state(
-                investigation_id=str(investigation_id),
-                incident_id=str(row.incident_id),
-                scope=row.scope,
-                question=row.question,
-            )
+            state = state_for_row(row)
             await self._stream(state, config, context, session_factory, investigation_id)
         # else: the graph already finished but the service stopped before the row was updated;
         # nothing to run, only the final bookkeeping below.

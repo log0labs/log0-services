@@ -5,9 +5,12 @@ so they use plain snake_case Pydantic models (no camelCase aliases).
 """
 
 import hashlib
+from collections import Counter
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.security.redaction import redact
 
 EvidenceKind = Literal["log", "timeline", "incident", "code", "commit", "runbook", "doc", "memory"]
 GatherBranch = Literal["logs", "history", "code", "runbooks"]
@@ -30,6 +33,21 @@ class Evidence(BaseModel):
     source_ref: str  # "payment/app.py:142@a81f2c", "commit a81f2c", "incident c9d8e7f6", ...
     summary: str  # one line, what the model reads first
     content: str = Field(default="", max_length=4000)  # bounded excerpt (log lines, code, diff)
+    redactions: dict[str, int] = Field(default_factory=dict)  # kind -> how many values were hidden in summary and content
+
+    @model_validator(mode="after")
+    def _hide_secrets(self) -> "Evidence":
+        """Every piece of evidence is redacted when it is created, whichever node or tool made it: this is the
+        one place all evidence passes through before a model, an event or a checkpoint sees it. Rebuilding from
+        a checkpoint finds nothing new (redaction is idempotent) and keeps the counts it already had."""
+        found: Counter[str] = Counter(self.redactions)
+        for name in ("summary", "content"):
+            result = redact(getattr(self, name))
+            if result.counts:
+                setattr(self, name, result.text)
+                found.update(result.counts)
+        self.redactions = dict(found)
+        return self
 
 
 class Hypothesis(BaseModel):

@@ -55,6 +55,7 @@ from app.schemas.code_findings import (
     CodeFindingsAnswer,
     CodeRef,
 )
+from app.security.redaction import redact_text
 from app.tools.code import CodeToolError
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,9 @@ async def execute_tool(tools: dict[str, ToolSpec], name: str, raw_args: Any, tim
     except Exception:
         logger.warning("code tool %s failed unexpectedly", name, exc_info=True)
         return ToolOutcome(f"Error: {name} failed unexpectedly.", None)
-    return ToolOutcome(result.text, result)
+    # what the model reads is redacted (a secret in a file or a log line never reaches it); the structured
+    # result stays exact, because it is what grounding checks against and evidence is built from
+    return ToolOutcome(redact_text(result.text), result)
 
 
 def _tally(outcomes: list[ToolOutcome]) -> dict[str, Any]:

@@ -38,6 +38,7 @@ from app.integrations.incident_service import IncidentNotFoundError
 from app.retrieval.embeddings import EmbeddingError
 from app.retrieval.runbooks import RunbookSource
 from app.security.jwt import CurrentUser
+from app.security.redaction import redact_value
 from app.store import investigations as investigation_store
 from app.tools.code import CodeToolError
 from app.tools.incidents import (
@@ -113,7 +114,8 @@ def guard[F: Callable[..., Awaitable[Any]]](fn: F) -> F:
     @functools.wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
-            return await fn(*args, **kwargs)
+            # the client's model is another vendor's: it gets the same redacted view the investigation graph has
+            return redact_value(await fn(*args, **kwargs))
         except ToolFailure:
             raise
         except IncidentNotFoundError:

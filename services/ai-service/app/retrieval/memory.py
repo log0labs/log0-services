@@ -20,6 +20,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.retrieval.embeddings import Embedder
+from app.security.redaction import redact_text
 from app.store import memory as store
 
 RECALL_LIMIT = 3
@@ -70,6 +71,20 @@ class Memory(Protocol):
     ) -> bool: ...
 
 
+def hide_secrets(memory: NewMemory) -> NewMemory:
+    """The conclusion is model-written text about redacted evidence, but it is stored for months and fed to future
+    prompts, so it gets one more pass."""
+    return NewMemory(
+        tenant_id=memory.tenant_id,
+        investigation_id=memory.investigation_id,
+        incident_id=memory.incident_id,
+        service_name=memory.service_name,
+        root_cause=redact_text(memory.root_cause),
+        recommendation=redact_text(memory.recommendation) if memory.recommendation else None,
+        confidence_band=memory.confidence_band,
+    )
+
+
 def memory_text(memory: NewMemory) -> str:
     """What is embedded: the service, the root cause and the fix, the things a later incident would resemble."""
     parts = [memory.service_name or "", memory.root_cause]
@@ -109,6 +124,7 @@ class PgMemory:
         self._embedder = embedder
 
     async def remember(self, memory: NewMemory) -> None:
+        memory = hide_secrets(memory)
         vector = await self._embedder.embed_query(memory_text(memory))
         async with self._session_factory() as session:
             await store.upsert(

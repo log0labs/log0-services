@@ -15,6 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.integrations.incident_service import IncidentNotFoundError
+from app.security.redaction import redact_text
 
 MAX_RELATED_LIMIT = 20
 MAX_LOOKBACK_DAYS = 90
@@ -109,10 +110,11 @@ async def get_incident(
         first_seen_at=_parse_time(data["firstSeenAt"]),
         last_seen_at=_parse_time(data["lastSeenAt"]),
         resolved_at=_parse_time(resolved) if resolved else None,
+        # redacted here, where the incident enters the system: these lines reach prompts, queries and MCP clients
         top_messages=[
-            m[:TEXT_MAX_CHARS] for m in (data.get("topMessages") or [])[:MAX_TOP_MESSAGES]
+            redact_text(m[:TEXT_MAX_CHARS]) for m in (data.get("topMessages") or [])[:MAX_TOP_MESSAGES]
         ],
-        ai_summary=_cut(data.get("aiSummary"), SUMMARY_MAX_CHARS),
+        ai_summary=redact_text(_cut(data.get("aiSummary"), SUMMARY_MAX_CHARS) or "") or None,
     )
 
 

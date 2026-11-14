@@ -55,7 +55,21 @@ def _triage_completed(triage: Triage) -> EventPair:
 
 
 def _evidence_added(item: Evidence) -> EventPair:
-    return "evidence.added", {"id": item.id, "kind": item.kind, "summary": _cap(item.summary)}
+    payload: dict[str, Any] = {"id": item.id, "kind": item.kind, "summary": _cap(item.summary)}
+    if item.redactions:
+        payload["redacted"] = sum(item.redactions.values())
+    return "evidence.added", payload
+
+
+def _redaction_applied(items: list[Evidence]) -> EventPair | None:
+    """One event per node update that hid something: how many values and of which kinds, never the values."""
+    kinds: dict[str, int] = {}
+    for item in items:
+        for kind, count in item.redactions.items():
+            kinds[kind] = kinds.get(kind, 0) + count
+    if not kinds:
+        return None
+    return "redaction.applied", {"count": sum(kinds.values()), "kinds": dict(sorted(kinds.items()))}
 
 
 def _hypothesis_event(event_type: str, item: Hypothesis) -> EventPair:
@@ -116,7 +130,10 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
             events.append(_context_loaded(delta))
         elif node == "triage" and delta.get("triage") is not None:
             events.append(_triage_completed(delta["triage"]))
-        events.extend(_evidence_added(item) for item in delta.get("evidence") or [])
+        added = delta.get("evidence") or []
+        events.extend(_evidence_added(item) for item in added)
+        if (hidden := _redaction_applied(added)) is not None:
+            events.append(hidden)
         if node in _HYPOTHESIS_EVENTS:  # verify returns only the hypotheses it changed
             events.extend(_hypothesis_event(_HYPOTHESIS_EVENTS[node], h) for h in delta.get("hypotheses") or [])
         if node == "root_cause" and delta.get("root_cause") is not None:

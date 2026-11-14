@@ -103,6 +103,7 @@ async def _lifespan(app: FastAPI):
                 require_review=settings.investigation_review_gate,
                 runbooks=runbook_search,
                 memory=app.state.memory,
+                settings=settings,
                 code=code_access,
             )
         app.state.graph_executor = executor

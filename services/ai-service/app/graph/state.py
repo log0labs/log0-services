@@ -34,6 +34,7 @@ from app.schemas.domain import (
     Triage,
 )
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
+from app.security.redaction import redact_text
 from app.tools.incidents import IncidentApi, IncidentContext, RelatedIncidentSource
 from app.tools.logs import LogBackend
 
@@ -128,7 +129,7 @@ def new_state(
     return InvestigationState(
         investigation_id=investigation_id,
         incident_id=incident_id,
-        question=question,
+        question=redact_text(question) if question else None,  # copied into prompts and queries: never raw
         scope=scope,
         incident=None,
         stack_frames=[],

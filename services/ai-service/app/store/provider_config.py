@@ -59,6 +59,16 @@ async def list_for_tenant(session: AsyncSession, *, tenant_id: UUID) -> list[Pro
     return [_to_config(row) for row in result.all()]
 
 
+async def has_own_key(session: AsyncSession, *, tenant_id: UUID) -> bool:
+    """Whether the tenant stored an API key of its own for any purpose (bring-your-own-key)."""
+    result = await session.execute(
+        select(func.count())
+        .select_from(provider_config)
+        .where(provider_config.c.tenant_id == tenant_id, provider_config.c.api_key_ciphertext.is_not(None))
+    )
+    return result.scalar_one() > 0
+
+
 async def get(session: AsyncSession, *, tenant_id: UUID, purpose: str) -> ProviderConfig | None:
     result = await session.execute(
         select(provider_config).where(provider_config.c.tenant_id == tenant_id, provider_config.c.purpose == purpose)

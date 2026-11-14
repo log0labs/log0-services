@@ -307,3 +307,25 @@ async def test_an_incident_service_outage_is_reported_without_internals(world):
     world.api.payload = OSError("connect to 10.1.2.3:8083 refused")
     message = await fails(world, "get_incident", {"incident_id": str(INCIDENT_ID)})
     assert "10.1.2.3" not in message
+
+
+# -------------------------------------------------------------------------- redaction
+
+
+async def test_what_an_mcp_client_receives_is_redacted_like_what_the_graph_sees(world):
+    from tests.graph_fakes import LAST
+
+    secret = "ghp_" + "a1B2c3D4e5" * 4
+    world.logs.search_rows = [
+        {
+            "timestamp": LAST,
+            "service_name": "payment-service",
+            "level": "ERROR",
+            "message": f"auth failed password=hunter22xyz token {secret} for jane.doe@example.com",
+            "fingerprint": "f" * 64,
+        }
+    ]
+    result = await ok(world, "search_logs", {"start": "2026-01-01T12:00:00Z", "end": "2026-01-01T13:00:00Z"})
+    text = json.dumps(result)
+    assert secret not in text and "hunter22xyz" not in text and "jane.doe@example.com" not in text
+    assert "[REDACTED:" in text and "auth failed" in text

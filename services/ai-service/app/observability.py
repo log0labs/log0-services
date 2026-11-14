@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import AbstractContextManager, nullcontext
+from uuid import UUID
+
+from langsmith import tracing_context
 
 from app.config import Settings
 
@@ -32,3 +36,21 @@ def configure_tracing(settings: Settings) -> None:
             "LANGCHAIN_TRACING_V2 is true but LANGCHAIN_API_KEY is unset; "
             "LangSmith traces will not export."
         )
+
+
+def tracing_allowed(settings: Settings, *, tenant_id: UUID, byok: bool) -> bool:
+    """May this tenant's investigation be sent to LangSmith?
+
+    Only when tracing is on at all, and then: always for tenants using the platform's own keys, and for
+    bring-your-own-key tenants only if they are in ``tracing_opt_in_tenants``. A trace contains the prompts
+    and answers (already redacted, see ``security/redaction.py``), so the default for data that came with
+    the tenant's own provider contract is: not shared.
+    """
+    if not settings.langchain_tracing_v2:
+        return False
+    return not byok or tenant_id in settings.tracing_opt_in_tenants
+
+
+def tracing_scope(allowed: bool) -> AbstractContextManager[object]:
+    """Switch tracing off for the code run inside this block when it is not allowed; otherwise change nothing."""
+    return nullcontext() if allowed else tracing_context(enabled=False)

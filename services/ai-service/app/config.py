@@ -5,6 +5,7 @@ Values come from environment variables (and a local ``.env`` file in dev).
 
 from functools import lru_cache
 from typing import Annotated, Literal, Self
+from uuid import UUID
 
 from pydantic import BeforeValidator, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -102,6 +103,11 @@ class Settings(BaseSettings):
     langchain_api_key: SecretStr | None = None
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langchain_project: str = "log0-ai-service"
+    # Tenants that brought their own LLM key (BYOK) are traced only if they opted in, because a trace holds the
+    # prompts and answers of their incidents and goes to a third party. List their ids here to opt them in, e.g.
+    # TRACING_OPT_IN_TENANTS='["11111111-1111-4111-8111-111111111111"]'. Tenants on the platform's own keys are
+    # traced whenever LANGCHAIN_TRACING_V2 is on.
+    tracing_opt_in_tenants: set[UUID] = Field(default_factory=set)
     
     investigation_max_concurrent: int = 4
     # False runs the old no-op stub instead of the graph (kill switch; the tests use it too)
