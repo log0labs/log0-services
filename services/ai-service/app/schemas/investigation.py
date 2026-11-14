@@ -92,6 +92,18 @@ class ResumeInvestigationRequest(CamelModel):
         return self
 
 
+class FeedbackRequest(CamelModel):
+    """An engineer's opinion of a finished investigation's result: it feeds long-term memory."""
+
+    verdict: Literal["helpful", "partly", "wrong"]
+    note: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _tidy_note(self) -> "FeedbackRequest":
+        self.note = (self.note or "").strip() or None
+        return self
+
+
 class InvestigationEvent(CamelModel):
     """One row of the investigation event log (what the UI/SSE consume)."""
 

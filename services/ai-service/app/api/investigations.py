@@ -7,13 +7,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.retrieval.embeddings import EmbeddingError
+from app.retrieval.memory import Memory, NewMemory
 from app.schemas.investigation import (
     CreateInvestigationRequest,
     CreateInvestigationResponse,
+    FeedbackRequest,
     Investigation,
     InvestigationEvent,
     InvestigationStatus,
@@ -188,6 +192,61 @@ async def resume_investigation(
     await runner.wait_idle(investigation_id)
     runner.schedule(investigation_id, tenant_id=user.tenant_id)
     return CreateInvestigationResponse(investigation_id=investigation_id, status=InvestigationStatus.RUNNING)
+
+
+def get_memory(request: Request) -> Memory:
+    return request.app.state.memory
+
+
+@router.post("/{investigation_id}/feedback", status_code=status.HTTP_204_NO_CONTENT)
+async def give_feedback(
+    investigation_id: UUID,
+    body: FeedbackRequest,
+    user: Annotated[CurrentUser, Depends(require_investigation_writer)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    memory: Annotated[Memory, Depends(get_memory)],
+) -> None:
+    """Rate a finished investigation (helpful, partly, wrong). The rating decides how much later investigations
+    trust what this one concluded: wrong ones are never recalled, helpful ones rank higher."""
+    row = await investigation_store.get_by_id(session, tenant_id=user.tenant_id, investigation_id=investigation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    statement = (row.root_cause or {}).get("statement")
+    if row.status != InvestigationStatus.COMPLETED or not statement:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Only a completed investigation with a root cause can be rated"
+        )
+
+    async def save() -> bool:
+        return await memory.record_feedback(
+            tenant_id=user.tenant_id,
+            investigation_id=investigation_id,
+            verdict=body.verdict,
+            note=body.note,
+            user_id=user.user_id,
+        )
+
+    if not await save():
+        # Finished before memory existed (or the write failed then): store it now from the row, then rate it.
+        recommendation = (row.recommendation or {}).get("summary")
+        try:
+            await memory.remember(
+                NewMemory(
+                    tenant_id=user.tenant_id,
+                    investigation_id=investigation_id,
+                    incident_id=row.incident_id,
+                    service_name=None,
+                    root_cause=statement,
+                    recommendation=recommendation,
+                    confidence_band=row.confidence_band,
+                )
+            )
+        except (EmbeddingError, SQLAlchemyError, OSError):  # embedding or database trouble
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The feedback could not be saved, try again later"
+            ) from None
+        if not await save():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The feedback could not be saved")
 
 
 @router.get("/{investigation_id}/events", response_model=list[InvestigationEvent])

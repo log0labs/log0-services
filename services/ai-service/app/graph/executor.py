@@ -20,6 +20,7 @@ from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.graph.usage import Prices, UsageRecorder, run_config
+from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
@@ -64,6 +65,7 @@ class GraphExecutor:
         prices: Prices | None = None,
         code: CodeAccess | None = None,
         runbooks: RunbookSource | None = None,
+        memory: Memory | None = None,
         require_review: bool = False,
     ) -> None:
         self._graph = graph
@@ -74,6 +76,7 @@ class GraphExecutor:
         self._prices = prices or {}
         self._code = code
         self._runbooks = runbooks
+        self._memory = memory
         self._require_review = require_review
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
@@ -99,6 +102,7 @@ class GraphExecutor:
             models=self._models,
             code=self._code,
             runbooks=self._runbooks,
+            memory=self._memory,
             require_review=self._require_review,
         )
 
@@ -164,7 +168,31 @@ class GraphExecutor:
                 type="investigation.failed",
                 payload={"error": error},
             )
+        else:
+            await self._remember(final, investigation_id, tenant_id)
         # otherwise the runner marks the row COMPLETED and writes investigation.completed
+
+    async def _remember(self, final: Any, investigation_id: UUID, tenant_id: UUID) -> None:
+        """Keep the conclusion for later investigations. Never fails the run: memory is a bonus."""
+        root_cause = final.get("root_cause")
+        incident = final.get("incident")
+        if self._memory is None or root_cause is None or incident is None:
+            return
+        recommendation = final.get("recommendation")
+        try:
+            await self._memory.remember(
+                NewMemory(
+                    tenant_id=tenant_id,
+                    investigation_id=investigation_id,
+                    incident_id=incident.incident_id,
+                    service_name=incident.service_name,
+                    root_cause=root_cause.statement,
+                    recommendation=recommendation.summary if recommendation is not None else None,
+                    confidence_band=final.get("confidence_band"),
+                )
+            )
+        except Exception:  # embedding or database trouble: the investigation itself succeeded
+            logger.warning("could not store the memory of investigation %s", investigation_id, exc_info=True)
 
     async def _await_review(
         self,
