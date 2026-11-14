@@ -76,6 +76,7 @@ async def test_it_starts_from_the_code_the_root_cause_cites_and_proposes_a_groun
     assert result.finished and result.gaps == [] and result.notes == ["Add a regression test too."]
     assert result.changes == [CodeChange(file_path=PAYMENT, operation="modify", explanation="Pass the timeout again.", old_code=OLD, new_code=NEW)]
     assert (result.tool_calls, result.steps) == (1, 1)  # the seeding read; one model turn
+    assert result.read_paths == [PAYMENT]  # what the validator (4.3) will check the changes against
 
 
 async def run_proposer(ctx: CodeInvestigatorContext, focus: list[CodeFocus] | None = None, brief: str = BRIEF):

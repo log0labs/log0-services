@@ -22,7 +22,7 @@ import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.messages import (
@@ -331,6 +331,7 @@ class ChangeProposal:
     tool_calls: int
     steps: int
     finished: bool
+    read_paths: list[str] = field(default_factory=list)  # every file a tool showed the proposer: what the validator checks against
 
 
 async def propose_code_changes(
@@ -356,4 +357,4 @@ async def propose_code_changes(
     except Exception:
         logger.warning("change proposer crashed", exc_info=True)
         return ChangeProposal([], [], ["The fix proposal failed unexpectedly"], 0, 0, False)
-    return ChangeProposal(final["changes"], final["notes"], list(final["gaps"]), final["tool_calls"], final["steps"], final["finished"])
+    return ChangeProposal(final["changes"], final["notes"], list(final["gaps"]), final["tool_calls"], final["steps"], final["finished"], sorted(set(final["seen_paths"])))
