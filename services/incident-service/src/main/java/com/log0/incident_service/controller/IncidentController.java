@@ -19,6 +19,7 @@ import com.log0.incident_service.dto.ActorRequest;
 import com.log0.incident_service.dto.AssignRequest;
 import com.log0.incident_service.dto.IncidentDetailResponse;
 import com.log0.incident_service.dto.IncidentLogsResponse;
+import com.log0.incident_service.dto.IncidentStatsResponse;
 import com.log0.incident_service.entity.Incident;
 import com.log0.incident_service.service.IncidentService;
 
@@ -38,13 +39,29 @@ public class IncidentController {
 
     /**
      * Returns a paginated list of incidents for the given tenant, sorted by
-     * {@code lastSeenAt} descending by default (page size 20).
+     * {@code lastSeenAt} descending by default (page size 20). The optional {@code status},
+     * {@code severity}, {@code environment} (exact) and {@code serviceName} (contains,
+     * case-insensitive) filters narrow the list on the server.
      */
     @GetMapping
     public ResponseEntity<Page<Incident>> listIncidents(
             @RequestParam UUID tenantId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) String serviceName,
+            @RequestParam(required = false) String environment,
             @PageableDefault(size = 20, sort = "lastSeenAt") Pageable pageable) {
-        return ResponseEntity.ok(incidentService.listIncidents(tenantId, pageable));
+        return ResponseEntity.ok(incidentService.listIncidents(
+                tenantId, status, severity, serviceName, environment, pageable));
+    }
+
+    /**
+     * Returns the tenant's incident counts per status and severity, plus its environments.
+     * Counted in the database, so it is exact however many incidents exist.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<IncidentStatsResponse> stats(@RequestParam UUID tenantId) {
+        return ResponseEntity.ok(incidentService.stats(tenantId));
     }
 
     /**

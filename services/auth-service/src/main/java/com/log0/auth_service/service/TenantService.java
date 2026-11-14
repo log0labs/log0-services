@@ -1,5 +1,7 @@
 package com.log0.auth_service.service;
 
+import java.util.UUID;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +12,7 @@ import com.log0.auth_service.entity.Tenant;
 import com.log0.auth_service.entity.User;
 import com.log0.auth_service.entity.User.Role;
 import com.log0.auth_service.exception.DuplicateResourceException;
+import com.log0.auth_service.exception.ResourceNotFoundException;
 import com.log0.auth_service.repository.TenantRepository;
 import com.log0.auth_service.repository.UserRepository;
 
@@ -67,5 +70,33 @@ public class TenantService {
         log.info("Registered new tenant: {} (slug: {})", tenant.getTenantId(), tenant.getSlug());
 
         return TenantResponse.from(tenant);
+    }
+
+    /**
+     * Returns a tenant by id.
+     *
+     * @param tenantId the tenant, from the caller's JWT
+     * @return the tenant as a response DTO
+     * @throws ResourceNotFoundException if the tenant does not exist
+     */
+    public TenantResponse get(UUID tenantId) {
+        return TenantResponse.from(tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId)));
+    }
+
+    /**
+     * Renames a tenant. The slug is left alone.
+     *
+     * @param tenantId the tenant, from the caller's JWT
+     * @param name     the new display name
+     * @return the updated tenant
+     * @throws ResourceNotFoundException if the tenant does not exist
+     */
+    @Transactional
+    public TenantResponse rename(UUID tenantId, String name) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId));
+        tenant.setName(name.trim());
+        return TenantResponse.from(tenantRepository.save(tenant));
     }
 }

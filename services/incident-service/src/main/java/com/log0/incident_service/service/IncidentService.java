@@ -18,6 +18,7 @@ import com.log0.incident_service.dto.IncidentDetailResponse;
 import com.log0.incident_service.dto.IncidentEvent;
 import com.log0.incident_service.dto.IncidentLogDto;
 import com.log0.incident_service.dto.IncidentLogsResponse;
+import com.log0.incident_service.dto.IncidentStatsResponse;
 import com.log0.incident_service.dto.NotificationEvent;
 import com.log0.incident_service.dto.StatusHistoryDto;
 import com.log0.incident_service.entity.Incident;
@@ -26,6 +27,7 @@ import com.log0.incident_service.entity.IncidentStateHistory;
 import com.log0.incident_service.kafka.producer.NotificationEventPublisher;
 import com.log0.incident_service.repository.IncidentAssignmentRepository;
 import com.log0.incident_service.repository.IncidentRepository;
+import com.log0.incident_service.repository.IncidentSpecs;
 import com.log0.incident_service.repository.IncidentStateHistoryRepository;
 import com.log0.incident_service.statemachine.IncidentStateMachine;
 
@@ -270,8 +272,10 @@ public class IncidentService {
      * UPDATEs on every list call.
      */
     @Transactional(readOnly = true)
-    public Page<Incident> listIncidents(UUID tenantId, Pageable pageable) {
-        Page<Incident> page = incidentRepository.findByTenantId(tenantId, pageable);
+    public Page<Incident> listIncidents(UUID tenantId, String status, String severity, String serviceName,
+            String environment, Pageable pageable) {
+        Page<Incident> page = incidentRepository.findAll(
+                IncidentSpecs.filter(tenantId, status, severity, serviceName, environment), pageable);
 
         List<String> fingerprints = page.getContent().stream()
                 .map(Incident::getFingerprint)
@@ -322,5 +326,25 @@ public class IncidentService {
                 .notificationType(notificationType)
                 .assignedToUserId(assignedToUserId)
                 .build();
+    }
+
+    /**
+     * Counts a tenant's incidents per status and severity, and lists its environments. The
+     * counts come from the database, so they stay right however many incidents there are.
+     */
+    @Transactional(readOnly = true)
+    public IncidentStatsResponse stats(UUID tenantId) {
+        Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
+        for (String status : List.of("NEW", "ASSIGNED", "ACKNOWLEDGED", "RESOLVED")) {
+            byStatus.put(status, 0L);
+        }
+        Map<String, Long> bySeverity = new java.util.LinkedHashMap<>();
+        for (String severity : List.of("CRITICAL", "HIGH", "MEDIUM", "LOW")) {
+            bySeverity.put(severity, 0L);
+        }
+        incidentRepository.countByStatus(tenantId).forEach(row -> byStatus.put((String) row[0], (Long) row[1]));
+        incidentRepository.countBySeverity(tenantId).forEach(row -> bySeverity.put((String) row[0], (Long) row[1]));
+        long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
+        return new IncidentStatsResponse(total, byStatus, bySeverity, incidentRepository.findEnvironments(tenantId));
     }
 }
