@@ -75,8 +75,14 @@ def read_decision(raw: Any) -> ReviewDecision | None:
 
 async def human_review(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     """Pause for the engineer's decision (when the gate is on and there is a root cause)."""
-    if not runtime.context.require_review or state["root_cause"] is None:
-        return {"review": None}  # None also clears a decision left over from an earlier round
+    if state["root_cause"] is None:
+        return {"review": None}  # nothing to review; None also clears a decision left over from an earlier round
+    if not runtime.context.require_review:
+        # No human in the loop: the gate being off means "approved", so a fix is proposed when the server can read
+        # code. Without this the graph would end at the root cause and never propose a fix (the review decision is
+        # what routes to propose_changes). A server with no code access ends here, as before: there is nothing to propose.
+        approved = ReviewDecision(action="approve", note=None) if runtime.context.code is not None else None
+        return {"review": approved}
 
     raw = interrupt(review_request(state))  # the graph stops here; resuming returns the decision
 

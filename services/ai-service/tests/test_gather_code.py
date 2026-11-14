@@ -368,7 +368,7 @@ async def test_the_whole_graph_state_has_the_pinned_commit_and_a_shared_budget(r
     assert {e.kind for e in final["evidence"]} >= {"log", "timeline", "incident", "code", "commit"}
     # load_context 3, gather_logs 3, gather_history 1, gather_code: 1 to open + seeding 4 (the first frame: list, read,
     # commits; the second frame, Dispatcher.java, is not in the repository: one listing) + 1 show_commit + 2 excerpts
-    assert final["tool_calls"] == 3 + 3 + 1 + (1 + 4 + 1 + 2)
+    assert final["tool_calls"] == 3 + 3 + 1 + (1 + 4 + 1 + 2) + 2  # + the change proposer: the gate is off and code is available, so it runs
     assert final["root_cause"] is not None and final["status"].value == "RUNNING"
 
 

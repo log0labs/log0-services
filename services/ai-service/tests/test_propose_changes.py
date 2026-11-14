@@ -293,8 +293,12 @@ async def test_refine_proposes_nothing_until_the_engineer_finally_approves(repo:
     assert final["proposed_changes"] and len(code.snapshot_calls) == 2  # propose, then validate
 
 
-async def test_without_the_gate_no_fix_is_proposed(repo: Repo) -> None:
+async def test_without_the_gate_a_fix_is_proposed_automatically_when_code_is_available(repo: Repo) -> None:
+    """The gate off means "no human in the loop", i.e. approved: otherwise the graph would end at the root cause and
+    a default deployment would never propose a fix."""
     code = FakeCode(checkout_for(repo))
     ctx, _ = context_with_code(code, investigation=graph_model(repo))  # require_review stays False
     final = await build_graph().ainvoke(start(), context=ctx)
-    assert final["proposed_changes"] == [] and code.snapshot_calls == []  # approval is what asks for a fix
+    assert final["review"] is not None and final["review"].action == "approve"
+    assert final["proposed_changes"] != [] and code.snapshot_calls != []
+    assert final["diff"] is not None

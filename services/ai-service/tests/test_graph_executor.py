@@ -202,7 +202,7 @@ async def test_the_commit_the_code_was_read_at_is_stored_and_code_evidence_is_in
     done = await _row(session_factory, row.id)
     assert done.repo_sha == repo.c2  # the exact code the investigation read, for the report and for later steps
     assert done.graph_version == GRAPH_VERSION
-    assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2)
+    assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2) + 2  # + the change proposer (auto-approved: gate off, code available)
     events = await _events(session_factory, row.id)
     kinds = [e.payload["kind"] for e in events if e.type == "evidence.added"]
     assert kinds.count("code") == 1 and kinds.count("commit") == 1

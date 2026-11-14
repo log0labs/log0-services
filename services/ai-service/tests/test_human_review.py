@@ -75,6 +75,14 @@ async def test_without_the_gate_the_run_ends_after_the_root_cause_as_before() ->
     assert not any("No fix was proposed" in g for g in final["gaps"])  # and nothing was "approved"
 
 
+async def test_without_the_gate_but_with_code_access_the_root_cause_is_approved_automatically() -> None:
+    from tests.code_graph_support import FakeCode
+
+    ctx = dataclasses.replace(gate_context(enabled=False), code=FakeCode(None))
+    final = await Run(ctx).first()
+    assert final["review"] is not None and final["review"].action == "approve" and final["review"].note is None
+
+
 async def test_a_run_with_no_root_cause_is_never_held_for_review() -> None:
     bad = synthesis_answer(hypotheses=[HypothesisDraft(statement="gremlins", supporting_evidence=["ev_deadbeef"])])
     run = Run(gate_context(investigation=FakeModel(bad)))
