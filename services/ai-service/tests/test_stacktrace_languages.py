@@ -359,3 +359,35 @@ def test_rust_dependencies_in_a_docker_cargo_home_are_library_code() -> None:
 def test_rust_dependencies_in_a_developers_cargo_home_are_still_library_code() -> None:
     trace = RUST_IN_DOCKER.replace("./usr/local/cargo/registry", "/home/dev/.cargo/registry")
     assert [f.line for f in parse_stack_trace(trace).frames if f.in_app] == [66, 41]
+
+
+RUST_PANIC_HOOK = """\
+thread 'tokio-rt-worker' panicked at src/main.rs:41:66:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: inventory::log0::install_panic_hook::{{closure}}
+             at ./src/src/log0.rs:66:25
+   1: std::panicking::panic_with_hook
+             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:842:13
+   2: __rustc::rust_begin_unwind
+             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:698:5
+   3: core::option::Option<T>::unwrap
+             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/option.rs:1015:21
+   4: inventory::reserve::{{closure}}
+             at ./src/src/main.rs:41:66
+"""
+
+
+def test_a_panic_hook_closure_is_not_where_the_program_failed() -> None:
+    """The service ships its panics from inside a hook, so the backtrace starts with the hook's own closure (the
+    service's code!) before the std panic machinery. The first application frame must be where the panic happened."""
+    out = parse_stack_trace(RUST_PANIC_HOOK)
+    first = out.first_in_app_frame()
+    assert first is not None and (first.path_hint, first.line) == ("src/src/main.rs", 41)
+    hook = out.frames[0]
+    assert hook.function == "{{closure}}" and hook.module == "inventory::log0::install_panic_hook" and hook.in_app is False
+
+
+def test_a_rust_backtrace_without_the_panic_machinery_is_unchanged() -> None:
+    out = parse_stack_trace(RUST_IN_DOCKER)  # no rust_begin_unwind frame: nothing to cut
+    assert [f.line for f in out.frames if f.in_app] == [66, 41]

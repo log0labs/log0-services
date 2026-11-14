@@ -232,6 +232,7 @@ _RUST_PANIC = re.compile(
 
 def _parse_rust(lines: list[str]) -> list[StackFrame]:
     frames = []
+    symbols = []
     for previous, current in pairwise(lines):
         at = _RUST_AT.match(current)
         sym = _RUST_FRAME.match(previous)
@@ -241,6 +242,7 @@ def _parse_rust(lines: list[str]) -> list[StackFrame]:
         module, _, function = symbol.rpartition("::")
         file = at["file"].replace("\\", "/")
         library = symbol.startswith(_RUST_LIBRARY_PREFIXES) or any(m in file for m in _RUST_LIBRARY_PATHS)
+        symbols.append(symbol)
         frames.append(
             StackFrame(
                 language="rust",
@@ -253,6 +255,13 @@ def _parse_rust(lines: list[str]) -> list[StackFrame]:
                 in_app=not library,
             )
         )
+    # A panic hook that prints the backtrace itself (most services do, to ship it to a log system) captures it from
+    # inside the hook, so the first frames are the hook's own closure and the standard library's panic machinery,
+    # up to rust_begin_unwind. Those are not where the program failed, even though the closure is the service's code.
+    entry = next((i for i, symbol in enumerate(symbols) if symbol.endswith("rust_begin_unwind")), None)
+    if entry:
+        for frame in frames[:entry]:
+            frame.in_app = False
     return frames
 
 
