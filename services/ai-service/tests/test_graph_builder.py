@@ -1,6 +1,7 @@
 """The whole graph, end to end, with fake backends and a fake model (no network)."""
 
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -16,17 +17,20 @@ from app.graph.state import InvestigationState, new_state
 from app.integrations.clickhouse import ClickHouseError
 from app.integrations.incident_service import IncidentNotFoundError
 from app.llm.purpose import Purpose
+from app.retrieval.runbooks import RunbookPassage, RunbookSearchResult
 from app.schemas.domain import HypothesisDraft, RootCauseAnalysis, Triage, Verification
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from tests.graph_fakes import (
     INCIDENT_EVIDENCE_ID,
     INCIDENT_ID,
     STACKTRACE_EVIDENCE_ID,
+    TENANT,
     FakeApi,
     FakeHistory,
     FakeLogs,
     FakeModel,
     FakeModels,
+    FakeRunbooks,
     analysis_answer,
     make_context,
     synthesis_answer,
@@ -121,12 +125,32 @@ async def test_logs_always_run_even_when_triage_only_asked_for_history() -> None
 
 
 @pytest.mark.asyncio
-async def test_code_and_runbook_branches_record_gaps_until_they_exist() -> None:
+async def test_code_and_runbook_branches_record_gaps_when_they_are_not_configured() -> None:
     answer = triage_answer(gather=["logs", "code", "runbooks"])
     final = await _run(make_context(models=FakeModels(FakeModel(answer))))
     assert any("code investigation is not available" in g for g in final["gaps"])
-    assert any("Runbooks and docs were not searched" in g for g in final["gaps"])
+    assert any("runbook search is not configured" in g for g in final["gaps"])
     assert final["triage"].gather == ["logs", "code", "runbooks"]
+
+
+@pytest.mark.asyncio
+async def test_the_runbook_branch_adds_runbook_evidence_next_to_the_other_branches() -> None:
+    passage = RunbookPassage(
+        chunk_id=uuid4(),
+        runbook_id=uuid4(),
+        title="Gateway playbook",
+        heading_path="Gateway > Timeouts",
+        ordinal=0,
+        content="If the payment gateway times out, check its status page and enable the circuit breaker.",
+        distance=0.2,
+    )
+    runbooks = FakeRunbooks(RunbookSearchResult(outcome="found", passages=[passage]))
+    answer = triage_answer(gather=["logs", "runbooks"])
+    final = await _run(make_context(models=FakeModels(FakeModel(answer)), runbooks=runbooks))
+    kinds = {e.kind for e in final["evidence"]}
+    assert {"runbook", "log"} <= kinds
+    assert runbooks.calls[0]["tenant_id"] == TENANT
+    assert final["triage"].gather == ["logs", "runbooks"]
 
 
 # ------------------------------------------------------------------ verify and loop

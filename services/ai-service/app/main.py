@@ -28,6 +28,7 @@ from app.llm.connection_check import check_connection
 from app.llm.models import PurposeChatModels
 from app.observability import configure_tracing
 from app.retrieval.embeddings import build_embedder
+from app.retrieval.runbooks import RunbookSearcher
 from app.runner import InvestigationRunner
 from app.security.crypto import secret_box_from_settings
 
@@ -73,6 +74,7 @@ async def _lifespan(app: FastAPI):
                 models=PurposeChatModels(settings),
                 prices=settings.llm_prices,
                 require_review=settings.investigation_review_gate,
+                runbooks=RunbookSearcher(session_factory, app.state.embedder),
                 code=DbCodeAccess(
                     session_factory,
                     app.state.secret_box,

@@ -15,6 +15,7 @@ from langchain_core.runnables import RunnableLambda
 from app.graph.budget import Budget
 from app.graph.state import InvestigationContext
 from app.llm.purpose import Purpose, StructuredOutputMethod
+from app.retrieval.runbooks import RunbookSearchResult, RunbookSource
 from app.schemas.domain import (
     HypothesisDraft,
     HypothesisVerdict,
@@ -308,6 +309,7 @@ def make_context(
     models: FakeModels | None = None,
     tenant: UUID = TENANT,
     budget: Budget | None = None,
+    runbooks: RunbookSource | None = None,
 ) -> InvestigationContext:
     return InvestigationContext(
         tenant_id=tenant,
@@ -316,7 +318,22 @@ def make_context(
         history=history or FakeHistory(),
         models=models or FakeModels(FakeModel(triage_answer())),
         budget=budget or Budget(),
+        runbooks=runbooks,
     )
+
+
+class FakeRunbooks:
+    """A runbook source with a canned result (or error); records what it was asked."""
+
+    def __init__(self, result: RunbookSearchResult | Exception) -> None:
+        self.result = result
+        self.calls: list[dict[str, Any]] = []
+
+    async def search(self, **kwargs: Any) -> RunbookSearchResult:
+        self.calls.append(kwargs)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
 
 def unused(name: str = "unused") -> SimpleNamespace:

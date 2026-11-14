@@ -20,6 +20,7 @@ from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.graph.usage import Prices, UsageRecorder, run_config
+from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
 from app.store import events as event_store
@@ -62,6 +63,7 @@ class GraphExecutor:
         models: ChatModels,
         prices: Prices | None = None,
         code: CodeAccess | None = None,
+        runbooks: RunbookSource | None = None,
         require_review: bool = False,
     ) -> None:
         self._graph = graph
@@ -71,6 +73,7 @@ class GraphExecutor:
         self._models = models
         self._prices = prices or {}
         self._code = code
+        self._runbooks = runbooks
         self._require_review = require_review
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
@@ -95,6 +98,7 @@ class GraphExecutor:
             history=self._history,
             models=self._models,
             code=self._code,
+            runbooks=self._runbooks,
             require_review=self._require_review,
         )
 

@@ -20,6 +20,7 @@ from app.graph.budget import Budget
 from app.graph.code_access import CodeAccess
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
+from app.retrieval.runbooks import RunbookSource
 from app.schemas.domain import (
     CodeChange,
     CodeLocation,
@@ -175,6 +176,7 @@ class InvestigationContext:
     history: RelatedIncidentSource
     models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
     code: CodeAccess | None = None  # the tenant's repositories; None: no code investigation on this server
+    runbooks: RunbookSource | None = None  # the tenant's runbooks; None: no runbook search on this server
     require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
     budget: Budget = field(default_factory=Budget)
     # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
