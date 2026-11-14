@@ -33,16 +33,22 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def summarize(results: list[CaseResult], retrieval: list[RetrievalResult], *, label: str) -> dict[str, Any]:
-    names = [n for n in METRIC_ORDER if any(r.score(n) is not None for r in results)]
-    metrics = {n: average([m for r in results for m in r.metrics if m.name == n]) for n in names}
+    """Quality averages cover only the cases where every model call worked. A case that hit a rate limit, an outage or
+    an unusable answer measured the provider, not log0, so it is listed under ``degraded`` and kept out of the averages."""
+    degraded = [r.case.id for r in results if r.outcome.degraded or r.outcome.failed]
+    scored = [r for r in results if r.case.id not in degraded]
+    names = [n for n in METRIC_ORDER if any(r.score(n) is not None for r in scored)]
+    metrics = {n: average([m for r in scored for m in r.metrics if m.name == n]) for n in names}
     seconds = [r.outcome.seconds for r in results]
     costs = [r.outcome.cost_usd for r in results if r.outcome.cost_usd is not None]
-    correct = [(r.outcome.confidence_band, (r.score("root_cause") or 0) >= 1.0) for r in results if r.outcome.root_cause]
+    correct = [(r.outcome.confidence_band, (r.score("root_cause") or 0) >= 1.0) for r in scored if r.outcome.root_cause]
     summary: dict[str, Any] = {
         "version": VERSION,
         "label": label,
         "metrics": {n: (round(v, 4) if v is not None else None) for n, v in metrics.items()},
-        "cases": {r.case.id: {m.name: m.score for m in r.metrics} for r in results},
+        "degraded": degraded,
+        "cases_scored": len(scored),
+        "cases": {r.case.id: {m.name: m.score for m in r.metrics} for r in scored},
         "calibration": [{"band": b, "n": n, "accuracy": round(a, 4)} for b, n, a in calibration_rows(correct)],
         "ops": {
             "cases": len(results),
@@ -100,6 +106,12 @@ def markdown(results: list[CaseResult], summary: dict[str, Any], *, baseline: di
     if note:
         lines += [f"> {note}", ""]
     ops = summary["ops"]
+    if summary.get("degraded"):
+        banner = (
+            f"> **{len(summary['degraded'])} of {ops['cases']} cases had model failures** ({', '.join(summary['degraded'])}): a rate limit, an outage or an "
+            "unusable answer. Their scores are left out of the averages below, so this run is **not a valid measurement of all cases**. Re-run them."
+        )
+        lines += [banner, ""]
     cost = ops["cost_usd"] if ops["cost_usd"] is not None else "not priced"
     lines += [
         (
@@ -123,13 +135,15 @@ def markdown(results: list[CaseResult], summary: dict[str, Any], *, baseline: di
     names = list(summary["metrics"])
     lines += ["", "## Cases", "", "| Case | " + " | ".join(names) + " |", "|---|" + "---|" * len(names)]
     for r in results:
-        lines.append(f"| {r.case.id} | " + " | ".join(_fmt(r.score(n)) for n in names) + " |")
+        flag = " (degraded: excluded)" if r.case.id in summary.get("degraded", []) else ""
+        lines.append(f"| {r.case.id}{flag} | " + " | ".join(_fmt(r.score(n)) for n in names) + " |")
 
     if summary["calibration"]:
         lines += ["", "## Calibration (confidence band against a correct root cause)", "", "| Band | Cases | Correct |", "|---|---|---|"]
         lines += [f"| {c['band']} | {c['n']} | {c['accuracy']:.2f} |" for c in summary["calibration"]]
 
-    failing = [(r.case.id, m) for r in results for m in r.metrics if m.score is not None and m.score < 1.0]
+    failing = [(r.case.id, m) for r in results for m in r.metrics if m.score is not None and m.score < 1.0 and r.case.id not in summary.get("degraded", [])]
+    failing += [(r.case.id, m) for r in results if r.case.id in summary.get("degraded", []) for m in r.metrics if m.name in ("model_available", "completed") and (m.score or 0) < 1.0]
     if failing:
         lines += ["", "## What went wrong", ""]
         lines += [f"- **{case}** / {m.name}: {m.detail}" for case, m in failing]

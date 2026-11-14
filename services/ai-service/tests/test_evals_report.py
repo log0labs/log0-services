@@ -105,3 +105,40 @@ def test_the_model_comparison_table_has_a_row_per_model():
     lines = table.strip().splitlines()
     assert len(lines) == 4 and lines[2].startswith("| groq:x | 1.00 | 1.00 | n/a") and lines[3].startswith("| openai:y | 0.00 | n/a")
     assert "0.02" in lines[2] and "n/a |" in lines[3]
+
+
+# ------------------------------------------------------------ degraded cases are not quality
+
+
+def degraded_result(case_id: str, scores: dict[str, float | None]) -> CaseResult:
+    r = result(case_id, {**scores, "model_available": 0.0})
+    r.outcome.gaps = ["Hypotheses could not be generated (the model was unavailable or its answer was unusable)"]
+    return r
+
+
+def test_cases_with_model_failures_are_left_out_of_the_averages_and_listed():
+    good = result("a", {"root_cause": 1.0, "model_available": 1.0})
+    bad = degraded_result("b", {"root_cause": 0.0})
+    s = summarize([good, bad], [], label="x")
+    assert s["degraded"] == ["b"] and s["cases_scored"] == 1
+    assert s["metrics"]["root_cause"] == 1.0  # not 0.5: the failed case measured the provider
+    assert set(s["cases"]) == {"a"}  # and it cannot become a baseline or a regression
+
+
+def test_a_run_that_failed_outright_counts_as_degraded_too():
+    crashed = result("c", {"completed": 0.0})
+    crashed.outcome.failed = "TimeoutError"
+    assert summarize([crashed], [], label="x")["degraded"] == ["c"]
+
+
+def test_the_report_warns_that_the_run_is_not_a_valid_measurement():
+    results = [result("a", {"root_cause": 1.0, "model_available": 1.0}), degraded_result("b", {"root_cause": 0.0})]
+    text = markdown(results, summarize(results, [], label="x"))
+    assert "**1 of 2 cases had model failures** (b)" in text and "not a valid measurement" in text
+    assert "| b (degraded: excluded) |" in text
+    assert "**b** / model_available" in text  # the reason is in "what went wrong"
+
+
+def test_an_all_degraded_run_has_no_metrics_and_no_regressions():
+    s = summarize([degraded_result("a", {"root_cause": 0.0})], [], label="x")
+    assert s["metrics"] == {} and regressions({"metrics": {"root_cause": 1.0}, "cases": {"a": {"root_cause": 1.0}}}, s) == []

@@ -27,6 +27,9 @@ from app.schemas.domain import Evidence, Recommendation, RootCause
 from app.security.redaction import redact
 from evals.cases import Case, Expected, FixCheck
 
+# What the graph's nodes write into the gaps when the model could not do its part (see app/graph/nodes/*).
+MODEL_FAILURE_MARKERS = ("the model was unavailable", "Automatic triage was unavailable")
+
 
 @dataclass(frozen=True)
 class Metric:
@@ -54,6 +57,16 @@ class Outcome:
     output_tokens: int = 0
     cost_usd: float | None = None
     seconds: float = 0.0
+
+    @property
+    def model_failures(self) -> list[str]:
+        """Gaps that mean a language-model call failed (rate limit, outage, an unusable answer, an invented tool).
+        A run with any of these measured the provider's availability, not log0's quality."""
+        return [g for g in self.gaps if any(marker in g for marker in MODEL_FAILURE_MARKERS)]
+
+    @property
+    def degraded(self) -> bool:
+        return bool(self.model_failures)
 
     def output_text(self) -> str:
         """Everything the system would show a user as its answer (not the evidence, which may legitimately quote a log)."""
@@ -239,8 +252,15 @@ def run_not_failed(case: Case, outcome: Outcome) -> Metric:
     return Metric("completed", 0.0 if outcome.failed else 1.0, outcome.failed or "completed")
 
 
+def model_available(case: Case, outcome: Outcome) -> Metric:
+    """Did every model call do its job? A 0 here means the other scores of this case measure the provider, not log0."""
+    failures = outcome.model_failures
+    detail = "; ".join(f[:90] for f in failures[:3]) if failures else "every model call worked"
+    return Metric("model_available", 0.0 if failures or outcome.failed else 1.0, detail)
+
+
 METRIC_ORDER = [
-    "completed", "triage_routing", "trace_localization", "localization_hit@1", "localization_hit@3", "grounding", "root_cause",
+    "completed", "model_available", "triage_routing", "trace_localization", "localization_hit@1", "localization_hit@3", "grounding", "root_cause",
     "fix_pattern", "diff_valid", "tests_pass", "no_false_fix", "no_forbidden_output", "no_secret_leak", "forbidden_files_unread",
 ]
 
@@ -248,6 +268,7 @@ METRIC_ORDER = [
 def evaluate(case: Case, outcome: Outcome) -> list[Metric]:
     return [
         run_not_failed(case, outcome),
+        model_available(case, outcome),
         triage_routing(case, outcome),
         trace_localization(case, outcome),
         localization(case, outcome, 1),

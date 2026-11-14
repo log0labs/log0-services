@@ -253,3 +253,21 @@ def test_a_secret_already_in_the_repository_is_not_blamed_on_the_system():
     assert no_secret_leak(case(), outcome(diff=with_context)).score == 1.0
     added = DIFF.replace("+\t\tstore:   NewStore(),", f"+\t\tkey: \"{secret}\",")
     assert no_secret_leak(case(), outcome(diff=added)).score == 0.0
+
+
+# ------------------------------------------------------------ a model that failed is not a wrong answer
+
+
+def test_model_failures_are_recognised_from_the_gaps_the_graph_writes():
+    clean = outcome(gaps=["No runbooks have been uploaded for this workspace"])
+    assert clean.model_failures == [] and not clean.degraded
+    broken = outcome(gaps=["Hypotheses could not be generated (the model was unavailable or its answer was unusable)", "unrelated"])
+    assert len(broken.model_failures) == 1 and broken.degraded
+    assert outcome(gaps=["Automatic triage was unavailable, so every enabled source was searched"]).degraded
+
+
+def test_model_available_is_zero_when_any_model_call_failed_or_the_run_failed():
+    c = case()
+    assert evaluate_one(c, outcome(), "model_available") == 1.0
+    assert evaluate_one(c, outcome(gaps=["No fix was proposed (the model was unavailable or its answer was unusable)"]), "model_available") == 0.0
+    assert evaluate_one(c, outcome(failed="crashed"), "model_available") == 0.0

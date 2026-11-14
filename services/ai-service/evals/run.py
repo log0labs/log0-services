@@ -12,6 +12,9 @@ Modes
                              It sends the fixtures' (synthetic) logs and the demo repository's code to the
                              provider, so it refuses to start without --yes.
 
+Exit codes: 0 fine; 1 regression against the baseline; 2 bad usage; 3 some cases had model failures (a rate limit, an outage,
+an unusable answer): their scores are excluded and no baseline is written from such a run.
+
 Output: a Markdown report and a JSON summary in evals/reports/ (git-ignored except for the baseline). With
 --baseline FILE (default evals/baseline.json if it exists) the run is compared with it and the exit code is 1
 on a regression beyond --threshold. --update-baseline writes this run's summary as the new baseline.
@@ -42,7 +45,17 @@ if sys.platform == "win32":  # psycopg's async mode cannot use Windows' default 
 DEFAULT_REPO = EVALS.parents[3] / "log0-demo-shop"
 REPORTS = EVALS / "reports"
 BASELINE = EVALS / "baseline.json"
-SCRIPTED = {"oracle", "wrong", "hostile"}
+SCRIPTED = {"oracle", "wrong", "hostile", "broken"}
+
+
+def emit(text: str, stream: Any = None) -> None:
+    """Print text that may contain characters the console cannot encode (a judge reply with a narrow no-break space
+    crashed a Windows run after hours of model calls, before the baseline was written): replace, never raise."""
+    out = stream or sys.stdout
+    encoding = getattr(out, "encoding", None) or "utf-8"
+    safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    out.write(safe if safe.endswith(chr(10)) else safe + chr(10))
+    out.flush()
 
 
 def real_models(spec: str | None) -> tuple[Any, str, dict[str, tuple[float, float]]]:
@@ -122,21 +135,32 @@ def main(argv: list[str] | None = None) -> int:
         results, label = asyncio.run(run_all(cases, args, spec))
         summary = summarize(results, retrieval, label=label)
         summaries.append(summary)
+        degraded = bool(summary["degraded"])
         note = "" if args.mode == "real" else "Scripted model: these numbers test the harness, they are not log0's quality."
         report = markdown(results, summary, baseline=baseline if len(specs) == 1 else None, threshold=args.threshold, note=note)
         slug = (spec or args.mode).replace(":", "-").replace("/", "-")
         (args.output / f"{stamp}-{slug}.md").write_text(report, encoding="utf-8")
         (args.output / f"{stamp}-{slug}.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print(report)
+        # decide and write everything that matters BEFORE printing: printing is what crashed the first real run
         if baseline is not None and len(specs) == 1 and regressions(baseline, summary, threshold=args.threshold):
             exit_code = 1
+        elif degraded:
+            exit_code = max(exit_code, 3)
         if args.update_baseline and len(specs) == 1:
-            BASELINE.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-            print(f"baseline written to {BASELINE}")
+            if degraded:
+                emit(
+                    f"NOT writing a baseline: {len(summary['degraded'])} case(s) had model failures ({', '.join(summary['degraded'])}). "
+                    "Re-run when the provider is healthy.",
+                    sys.stderr,
+                )
+            else:
+                BASELINE.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+                emit(f"baseline written to {BASELINE}")
+        emit(report)
     if len(summaries) > 1:
         table = comparison(summaries)
         (args.output / f"{stamp}-comparison.md").write_text(table, encoding="utf-8")
-        print(table)
+        emit(table)
     return exit_code
 
 

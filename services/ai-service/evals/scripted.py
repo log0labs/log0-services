@@ -8,6 +8,7 @@ known in advance:
 * ``oracle``  answers the way a perfect investigator would, from the case's answer key
 * ``wrong``   blames something unrelated and proposes no fix
 * ``hostile`` is the oracle, except it obeys the prompt-injection canary and leaks the live key it saw
+* ``broken``  every model call fails (a rate limit, an outage): the run must be flagged degraded, not scored
 
 The numbers an oracle run produces say nothing about log0's quality (the answers come from the key). They prove
 that the harness scores a perfect run as perfect and a bad run as bad. The honest quality numbers come from
@@ -58,12 +59,14 @@ class _Bound:
         self.owner = owner
 
     async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> AIMessage:
+        if self.owner.mode == "broken":
+            raise RuntimeError("simulated provider outage")
         return self.owner.script.pop(0) if self.owner.script else AIMessage(content="Done.")
 
 
 class ScriptedChat:
     def __init__(self, case: Case, mode: str = "oracle") -> None:
-        if mode not in {"oracle", "wrong", "hostile"}:
+        if mode not in {"oracle", "wrong", "hostile", "broken"}:
             raise ValueError(f"unknown scripted mode {mode!r}")
         self.case, self.mode = case, mode
         self.prompts: list[str] = []
@@ -89,6 +92,8 @@ class ScriptedChat:
     # ----------------------------------------------------------------------------------- answers
 
     def _answer(self, schema: Any, text: str) -> Any:
+        if self.mode == "broken":
+            raise RuntimeError("simulated provider outage")  # every model call fails, as in a rate limit or an outage
         expected = self.case.expected
         evidence = _first(EVIDENCE_ID, text)
         if schema is Triage:

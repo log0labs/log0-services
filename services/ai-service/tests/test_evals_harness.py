@@ -440,3 +440,42 @@ def test_the_cli_writes_a_report_and_gates_on_the_baseline(cli):
     report = max((tmp / "reports").glob("*wrong.md")).read_text()
     assert "REGRESSION" in report and "Scripted model" in report
     assert cli("--cases", "bug-04-nil-map,bug-02-lowercase-sku", "--mode", "wrong", "--no-baseline") == 0  # asked not to compare
+
+
+# ----------------------------------------------- a failing provider must not become a quality number
+
+
+@requires_repo
+@pytest.mark.asyncio
+async def test_a_run_where_every_model_call_fails_is_flagged_degraded_not_scored_wrong():
+    result = await run("bug-04-nil-map", "broken")
+    assert result.outcome.degraded and result.score("model_available") == 0.0
+    assert any("the model was unavailable" in g for g in result.outcome.gaps)
+
+
+@requires_repo
+def test_the_cli_exits_3_and_writes_no_baseline_when_cases_degraded(cli, capsys):
+    tmp = cli.tmp  # type: ignore[attr-defined]
+    assert cli("--cases", "bug-04-nil-map", "--mode", "broken", "--update-baseline") == 3
+    assert not (tmp / "baseline.json").exists()
+    captured = capsys.readouterr()
+    assert "NOT writing a baseline" in captured.err and "not a valid measurement" in captured.out
+
+
+@requires_repo
+def test_a_degraded_run_does_not_trip_the_regression_gate_or_hide_one(cli):
+    assert cli("--cases", "bug-04-nil-map", "--update-baseline") == 0
+    assert cli("--cases", "bug-04-nil-map", "--mode", "broken") == 3  # degraded: not "regressed", and not "fine"
+
+
+def test_printing_never_crashes_on_text_the_console_cannot_encode():
+    """The first real run crashed here, after all its model calls, before writing the baseline: a judge reply held a
+    narrow no-break space and the Windows console is cp1252."""
+    import io
+
+    from evals.run import emit
+
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    emit("judge said: ok — fine", stream)
+    stream.flush()
+    assert stream.buffer.getvalue().decode("cp1252").startswith("judge said:")  # type: ignore[union-attr]
