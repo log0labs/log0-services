@@ -13,7 +13,10 @@ from app.config import Settings, get_settings
 
 _bearer = HTTPBearer(auto_error=False)
 
-ALGORITHM = "HS256"
+# The auth service signs with the HMAC variant that matches its secret's length (jjwt picks HS256 for a
+# 32-byte secret, HS384 for 48, HS512 for 64). The same shared secret verifies all three; "none" and the
+# asymmetric algorithms stay rejected.
+ALGORITHMS = ["HS256", "HS384", "HS512"]
 
 
 class Role(StrEnum):
@@ -35,7 +38,7 @@ def decode_access_token(token: str, secret: str) -> CurrentUser:
     payload = jwt.decode(
         token,
         secret,
-        algorithms=[ALGORITHM],
+        algorithms=ALGORITHMS,
         options={"require": ["exp", "sub"]},
     )
     try:
