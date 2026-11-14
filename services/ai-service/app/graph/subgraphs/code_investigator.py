@@ -47,6 +47,7 @@ from pydantic import ValidationError
 
 from app.graph.state import ChatModels, append_unique
 from app.graph.subgraphs.code_tools import ToolResult, ToolSpec
+from app.graph.subgraphs.model_retry import invoke_with_tool_retry
 from app.llm.purpose import Purpose
 from app.parsing.stacktrace import StackFrame
 from app.schemas.code_findings import (
@@ -291,8 +292,11 @@ async def agent(state: CodeInvestigationState, runtime: Runtime[CodeInvestigator
     ctx = runtime.context
     try:
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools([spec.as_langchain_tool() for spec in ctx.tools.values()])
-        async with asyncio.timeout(ctx.limits.model_timeout_seconds):
-            response = await model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]])
+        response = await invoke_with_tool_retry(
+            lambda: model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]),
+            timeout=ctx.limits.model_timeout_seconds,
+            what="code investigator",
+        )
     except Exception:
         logger.warning("code investigator: the model call failed", exc_info=True)
         return {"failed": True, "steps": state["steps"] + 1, "gaps": ["The code could not be investigated (the model was unavailable or its answer was unusable)"]}

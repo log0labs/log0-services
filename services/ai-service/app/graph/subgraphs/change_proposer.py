@@ -43,6 +43,7 @@ from app.graph.subgraphs.code_investigator import (
     escape_data,
     execute_tool,
 )
+from app.graph.subgraphs.model_retry import invoke_with_tool_retry
 from app.llm.purpose import Purpose
 from app.schemas.change_proposal import ChangeProposalAnswer
 from app.schemas.domain import CodeChange
@@ -235,8 +236,11 @@ async def agent(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorCon
     ctx = runtime.context
     try:
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools([spec.as_langchain_tool() for spec in ctx.tools.values()])
-        async with asyncio.timeout(ctx.limits.model_timeout_seconds):
-            response = await model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]])
+        response = await invoke_with_tool_retry(
+            lambda: model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]),
+            timeout=ctx.limits.model_timeout_seconds,
+            what="change proposer",
+        )
     except Exception:
         logger.warning("change proposer: the model call failed", exc_info=True)
         return {"failed": True, "steps": state["steps"] + 1, "gaps": ["No fix was proposed (the model was unavailable or its answer was unusable)"]}
