@@ -89,6 +89,9 @@ def make_env(monkeypatch: pytest.MonkeyPatch, *, with_master_key: bool = True) -
     app.dependency_overrides[get_connection_checker] = lambda: checker
     try:
         with TestClient(app) as client:
+            if not with_master_key:
+                # the developer's local .env may hold a real master key that the lifespan picked up
+                app.state.secret_box = None
             yield Env(client, github, checker, SecretBox({"k1": MASTER_KEY}, "k1") if with_master_key else None, app)
     finally:
         wipe_tenants()

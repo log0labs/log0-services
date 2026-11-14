@@ -26,6 +26,19 @@ class Runbook:
     chunk_count: int
     created_by: UUID
     created_at: datetime
+    source_kind: str = "markdown"
+
+
+@dataclass(frozen=True)
+class RunbookSource:
+    """What the viewer shows: the text, and for a PDF also the original file."""
+
+    id: UUID
+    title: str
+    kind: str  # "markdown", "text", "pdf" or "docx"
+    text: str  # the text as uploaded, or the text extracted from the file
+    file: bytes | None
+    reconstructed: bool  # True when the text was rebuilt from the index (stored before originals were kept)
 
 
 @dataclass(frozen=True)
@@ -47,7 +60,7 @@ def _runbook(row) -> Runbook:
     return Runbook(**{f: m[f] for f in Runbook.__dataclass_fields__})
 
 
-_COLUMNS = "id, tenant_id, title, content_hash, embedding_model, chunk_count, created_by, created_at"
+_COLUMNS = "id, tenant_id, title, content_hash, embedding_model, chunk_count, created_by, created_at, source_kind"
 
 
 async def find_by_title(session: AsyncSession, *, tenant_id: UUID, title: str) -> Runbook | None:
@@ -76,6 +89,9 @@ async def replace(
     created_by: UUID,
     chunks: list[Chunk],
     vectors: list[list[float]],
+    source_text: str | None = None,
+    source_file: bytes | None = None,
+    source_kind: str = "markdown",
 ) -> Runbook:
     """Store a runbook, replacing the one with the same title. Old and new chunks are never both visible:
     this is one transaction."""
@@ -87,8 +103,9 @@ async def replace(
         )
         result = await session.execute(
             text(
-                "INSERT INTO ai.runbook (tenant_id, title, content_hash, embedding_model, chunk_count, created_by) "
-                f"VALUES (:t, :title, :hash, :model, :count, :by) RETURNING {_COLUMNS}"
+                "INSERT INTO ai.runbook (tenant_id, title, content_hash, embedding_model, chunk_count, created_by, "
+                "source_kind, source_text, source_file) "
+                f"VALUES (:t, :title, :hash, :model, :count, :by, :kind, :src, :file) RETURNING {_COLUMNS}"
             ),
             {
                 "t": tenant_id,
@@ -97,6 +114,9 @@ async def replace(
                 "model": embedding_model,
                 "count": len(chunks),
                 "by": created_by,
+                "kind": source_kind,
+                "src": source_text,
+                "file": source_file,
             },
         )
         runbook = _runbook(result.one())
@@ -123,6 +143,60 @@ async def replace(
         await session.rollback()
         raise
     return runbook
+
+
+async def keep_source_if_missing(
+    session: AsyncSession, *, tenant_id: UUID, runbook_id: UUID, source_text: str | None, source_file: bytes | None
+) -> None:
+    """Runbooks stored before originals were kept get theirs the next time the same text is uploaded."""
+    await session.execute(
+        text(
+            "UPDATE ai.runbook SET source_text = :src, source_file = :file "
+            "WHERE tenant_id = :t AND id = :id AND source_text IS NULL AND source_file IS NULL"
+        ),
+        {"t": tenant_id, "id": runbook_id, "src": source_text, "file": source_file},
+    )
+    await session.commit()
+
+
+async def get_source(session: AsyncSession, *, tenant_id: UUID, runbook_id: UUID) -> RunbookSource | None:
+    """The runbook as it was uploaded, for the viewer. A runbook stored before originals were kept is rebuilt from
+    its indexed chunks (headings and text in order) and marked ``reconstructed``."""
+    result = await session.execute(
+        text("SELECT id, title, source_kind, source_text, source_file FROM ai.runbook WHERE tenant_id = :t AND id = :id"),
+        {"t": tenant_id, "id": runbook_id},
+    )
+    row = result.first()
+    if row is None:
+        return None
+    m = row._mapping
+    if m["source_text"] is not None or m["source_file"] is not None:
+        return RunbookSource(
+            id=m["id"],
+            title=m["title"],
+            kind=m["source_kind"],
+            text=m["source_text"] or "",
+            file=bytes(m["source_file"]) if m["source_file"] is not None else None,
+            reconstructed=False,
+        )
+    chunks = await session.execute(
+        text(
+            "SELECT heading_path, content FROM ai.runbook_chunk "
+            "WHERE tenant_id = :t AND runbook_id = :id ORDER BY ordinal"
+        ),
+        {"t": tenant_id, "id": runbook_id},
+    )
+    parts: list[str] = []
+    last_path = None
+    for path, content in ((r[0], r[1]) for r in chunks.all()):
+        if path and path != last_path:
+            level = path.count(" > ") + 1
+            parts.append(f"{'#' * min(level, 4)} {path.split(' > ')[-1]}")
+            last_path = path
+        parts.append(content)
+    return RunbookSource(
+        id=m["id"], title=m["title"], kind="markdown", text="\n\n".join(parts), file=None, reconstructed=True
+    )
 
 
 async def delete_one(session: AsyncSession, *, tenant_id: UUID, runbook_id: UUID) -> bool:
