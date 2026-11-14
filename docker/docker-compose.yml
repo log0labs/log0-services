@@ -59,7 +59,7 @@ services:
     restart: on-failure
 
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16   # postgres 16 + the vector extension (runbook search, memory)
     container_name: log0-postgres
     ports:
       - "5433:5432"   # host 5433 for local DB tools; containers use postgres:5432
