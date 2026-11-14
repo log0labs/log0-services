@@ -165,6 +165,33 @@ async def transition_status(session: AsyncSession, *, investigation_id: UUID, te
     await session.commit()
 
 
+async def transition_status_if(
+    session: AsyncSession,
+    *,
+    investigation_id: UUID,
+    tenant_id: UUID,
+    from_status: InvestigationStatus,
+    to_status: InvestigationStatus,
+) -> bool:
+    """Move the row from ``from_status`` to ``to_status`` only if it is in ``from_status`` right now.
+
+    One UPDATE with the old status in its WHERE: when two requests race (two resumes, a resume and
+    a cancel) exactly one sees ``True``. Returns whether this call made the change.
+    """
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.status == from_status.value,
+        )
+        .values(status=to_status.value, updated_at=datetime.now(tz=UTC))
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount > 0
+
+
 async def record_run_result(
     session: AsyncSession,
     *,

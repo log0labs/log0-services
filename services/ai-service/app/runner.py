@@ -70,6 +70,18 @@ class InvestigationRunner:
         task = self._tasks.get(investigation_id)
         return task is not None and not task.done()
 
+    async def wait_idle(self, investigation_id: UUID, *, timeout: float = 5.0) -> bool:
+        """Wait until no task of this investigation is running; ``False`` if it still is after ``timeout``.
+
+        A run that paused at the review gate has written AWAITING_REVIEW a moment before its task
+        finishes. A resume that lands in that moment must not find the old task still registered.
+        """
+        task = self._tasks.get(investigation_id)
+        if task is None or task.done():
+            return True
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        return bool(done)
+
     async def cancel(self, investigation_id: UUID, *, tenant_id: UUID) -> None:
         """Cancel a running investigation (only if it belongs to ``tenant_id``)."""
         async with self._session_factory() as session:
@@ -181,7 +193,7 @@ class InvestigationRunner:
                         tenant_id=tenant_id,
                         investigation_id=investigation_id,
                     )
-                    if row is not None and row.status not in _TERMINAL:
+                    if row is not None and row.status not in _TERMINAL and row.status != InvestigationStatus.AWAITING_REVIEW:
                         await investigation_store.transition_status(
                             session,
                             investigation_id=investigation_id,
@@ -224,4 +236,4 @@ class InvestigationRunner:
                         set_completed=True,
                     )
                 await self._emit(investigation_id, "investigation.failed", {"error": str(exc)})
-        
+        

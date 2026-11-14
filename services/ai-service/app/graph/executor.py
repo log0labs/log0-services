@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
 from app.graph.builder import GRAPH_VERSION
 from app.graph.code_access import CodeAccess
@@ -27,6 +28,14 @@ from app.tools.incidents import IncidentApi, RelatedIncidentSource
 from app.tools.logs import LogBackend
 
 logger = logging.getLogger(__name__)
+
+MAX_REVIEW_TEXT = 300  # cap on the root cause text copied into the review.requested event
+
+
+def pending_interrupts(snapshot: Any) -> list[Any]:
+    """The interrupts a paused graph is waiting on (empty when it is not waiting for a human)."""
+    return [interrupt for task in snapshot.tasks for interrupt in task.interrupts]
+
 
 
 def usage_for_row(recorder: UsageRecorder) -> dict[str, Any]:
@@ -53,6 +62,7 @@ class GraphExecutor:
         models: ChatModels,
         prices: Prices | None = None,
         code: CodeAccess | None = None,
+        require_review: bool = False,
     ) -> None:
         self._graph = graph
         self._logs = logs
@@ -61,6 +71,7 @@ class GraphExecutor:
         self._models = models
         self._prices = prices or {}
         self._code = code
+        self._require_review = require_review
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         # The row is the authority on who owns this investigation and what was asked.
@@ -84,10 +95,20 @@ class GraphExecutor:
             history=self._history,
             models=self._models,
             code=self._code,
+            require_review=self._require_review,
         )
 
         snapshot = await self._graph.aget_state(config)
-        if snapshot.next:
+        waiting = pending_interrupts(snapshot)
+        if waiting:
+            # The graph is paused at the review gate. Resume it only with the decision the API recorded.
+            decision = await self._decision_for_review(session_factory, tenant_id, investigation_id)
+            if decision is None:  # resumed without a decision (a resume that did not complete): wait again
+                await self._await_review(session_factory, investigation_id, tenant_id, waiting[0].value, announce=False)
+                return
+            logger.info("Resuming investigation %s with the review decision %s", investigation_id, decision["action"])
+            await self._stream(Command(resume=decision), config, context, session_factory, investigation_id)
+        elif snapshot.next:
             # The service stopped mid-run (restart, deploy): continue from the last checkpoint,
             # so finished nodes are not repeated and their tokens are not spent twice.
             logger.info("Resuming investigation %s before %s", investigation_id, snapshot.next)
@@ -103,7 +124,8 @@ class GraphExecutor:
         # else: the graph already finished but the service stopped before the row was updated;
         # nothing to run, only the final bookkeeping below.
 
-        final = (await self._graph.aget_state(config)).values
+        snapshot = await self._graph.aget_state(config)
+        final = snapshot.values
         async with session_factory() as session:
             await investigation_store.record_run_result(
                 session,
@@ -115,6 +137,11 @@ class GraphExecutor:
                 **usage_for_row(recorder),
             )
         recorder.log_summary(investigation_id)
+
+        waiting = pending_interrupts(snapshot)
+        if waiting:  # the run reached the review gate: stop here, nothing is running while it waits
+            await self._await_review(session_factory, investigation_id, tenant_id, waiting[0].value, announce=True)
+            return
 
         if final["status"] == InvestigationStatus.FAILED:
             error = final["error"] or "Investigation failed"
@@ -134,6 +161,58 @@ class GraphExecutor:
                 payload={"error": error},
             )
         # otherwise the runner marks the row COMPLETED and writes investigation.completed
+
+    async def _await_review(
+        self,
+        session_factory: SessionFactory,
+        investigation_id: UUID,
+        tenant_id: UUID,
+        request: dict[str, Any],
+        *,
+        announce: bool,
+    ) -> None:
+        """Mark the investigation AWAITING_REVIEW and (the first time) tell the stream why."""
+        async with session_factory() as session:
+            await investigation_store.transition_status(
+                session, investigation_id=investigation_id, tenant_id=tenant_id, status=InvestigationStatus.AWAITING_REVIEW
+            )
+        if announce:
+            await event_store.append_event_safely(
+                session_factory,
+                investigation_id=investigation_id,
+                type="review.requested",
+                payload={
+                    "round": request.get("round"),
+                    "refinesLeft": request.get("refinesLeft"),
+                    "rootCause": str(request.get("rootCause", ""))[:MAX_REVIEW_TEXT],
+                    "confidenceBand": request.get("confidenceBand"),
+                    "evidenceIds": list(request.get("evidenceIds") or []),
+                    "recommendation": (str(request["recommendation"])[:MAX_REVIEW_TEXT] if request.get("recommendation") else None),
+                },
+            )
+
+    @staticmethod
+    async def _decision_for_review(
+        session_factory: SessionFactory, tenant_id: UUID, investigation_id: UUID
+    ) -> dict[str, Any] | None:
+        """The first decision recorded after the latest review request, or ``None``.
+
+        The API writes ``review.decided`` before the run is resumed, so the event log is the durable
+        hand-over: it survives a restart between the engineer's click and the resume. Taking the first
+        decision after the *latest request* means an old round's decision is never reused and a
+        racing second answer is ignored.
+        """
+        async with session_factory() as session:
+            requested = await event_store.latest_of_type(
+                session, tenant_id=tenant_id, investigation_id=investigation_id, type="review.requested"
+            )
+            events = await event_store.list_after(
+                session, tenant_id=tenant_id, investigation_id=investigation_id, after_seq=requested.seq if requested else 0
+            )
+        for event in events:
+            if event.type == "review.decided":
+                return {"action": event.payload.get("action"), "note": event.payload.get("note")}
+        return None
 
     async def _stream(
         self,

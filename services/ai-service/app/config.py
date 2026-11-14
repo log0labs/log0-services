@@ -119,6 +119,11 @@ class Settings(BaseSettings):
     repo_clone_base_url: str = "https://github.com"  # clone URL = <base>/<owner>/<name>.git
     git_binary: str = "git"
     rg_binary: str = "rg"  # ripgrep, for the code search tool
+
+    # Pause every investigation that reaches a root cause for an engineer's decision (approve, refine
+    # or stop). Off by default: it only helps once something in the console can answer (step 4.10),
+    # and a waiting investigation blocks a new one for the same incident until it is answered.
+    investigation_review_gate: bool = False
     git_timeout_seconds: float = 120
     git_allowed_protocols: str = "https"  # GIT_ALLOW_PROTOCOL; tests add "file" to clone from a local folder
     repo_fresh_seconds: float = 60  # a checkout synced more recently than this is reused without fetching

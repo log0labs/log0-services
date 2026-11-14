@@ -75,13 +75,14 @@ class Backends:
         logs: FakeLogs | None = None,
         models: FakeModels | None = None,
         code: Any = None,
+        require_review: bool = False,
     ) -> None:
         self.api = api or FakeApi(incident_payload(tenantId=str(TENANT)))
         self.logs = logs or FakeLogs()
         self.history = FakeHistory()
         self.models = models or FakeModels(FakeModel(triage_answer()))
         self.executor = GraphExecutor(
-            graph, logs=self.logs, incidents=self.api, history=self.history, models=self.models, code=code
+            graph, logs=self.logs, incidents=self.api, history=self.history, models=self.models, code=code, require_review=require_review
         )
 
 
@@ -200,7 +201,7 @@ async def test_the_commit_the_code_was_read_at_is_stored_and_code_evidence_is_in
 
     done = await _row(session_factory, row.id)
     assert done.repo_sha == repo.c2  # the exact code the investigation read, for the report and for later steps
-    assert done.graph_version == GRAPH_VERSION == "m3-code-v1"
+    assert done.graph_version == GRAPH_VERSION
     assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2)
     events = await _events(session_factory, row.id)
     kinds = [e.payload["kind"] for e in events if e.type == "evidence.added"]

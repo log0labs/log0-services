@@ -63,6 +63,7 @@ async def _lifespan(app: FastAPI):
                 history=incident_reader,
                 models=PurposeChatModels(settings),
                 prices=settings.llm_prices,
+                require_review=settings.investigation_review_gate,
                 code=DbCodeAccess(
                     session_factory,
                     app.state.secret_box,

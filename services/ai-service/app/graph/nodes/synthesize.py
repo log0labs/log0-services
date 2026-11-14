@@ -100,6 +100,9 @@ def build_synthesis_input(state: InvestigationState, *, hypotheses: list[Hypothe
         parts += [f"- {_line(g)}" for g in state["gaps"]]
     if state["question"]:
         parts.append(f"The engineer asked: {_line(state['question'], 500)}")
+    review = state["review"]
+    if review is not None and review.action == "refine" and review.note:
+        parts.append(f"After reading an earlier conclusion the engineer asked for another look: {_line(review.note, 1000)}")
     if hypotheses:
         parts.append("Hypotheses:")
         for h in hypotheses:

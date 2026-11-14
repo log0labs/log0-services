@@ -82,6 +82,30 @@ async def append_event_safely(
         logger.exception("Could not write event %s for %s", type, investigation_id)
 
 
+async def latest_of_type(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    investigation_id: UUID,
+    type: str,
+) -> InvestigationEvent | None:
+    """The newest event of one type, or ``None``. Tenant-scoped via the parent row."""
+    ev = investigation_event
+    stmt = (
+        select(ev)
+        .join(investigation, investigation.c.id == ev.c.investigation_id)
+        .where(
+            ev.c.investigation_id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            ev.c.type == type,
+        )
+        .order_by(ev.c.seq.desc())
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).first()
+    return _row_to_event(row) if row else None
+
+
 async def list_after(
     session: AsyncSession,
     *,

@@ -1,5 +1,6 @@
 """The graph with the REAL Postgres checkpointer (needs the log0-postgres container)."""
 
+import dataclasses
 import logging
 import os
 from collections.abc import AsyncGenerator
@@ -9,6 +10,7 @@ import psycopg
 import pytest
 import pytest_asyncio
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.types import Command
 
 from app.config import get_settings
 from app.graph.builder import build_graph
@@ -19,7 +21,14 @@ from app.graph.checkpoint import (
 )
 from app.graph.state import InvestigationState, new_state
 from app.parsing.stacktrace import StackFrame
-from app.schemas.domain import Evidence, Hypothesis, Recommendation, RootCause, Triage
+from app.schemas.domain import (
+    Evidence,
+    Hypothesis,
+    Recommendation,
+    ReviewDecision,
+    RootCause,
+    Triage,
+)
 from app.schemas.investigation import InvestigationScope, InvestigationStatus
 from app.tools.incidents import IncidentContext
 from tests.graph_fakes import INCIDENT_ID, make_context
@@ -116,3 +125,30 @@ async def test_conninfo_quotes_awkward_passwords(monkeypatch: pytest.MonkeyPatch
     info = psycopg.conninfo.conninfo_to_dict(checkpoint_conninfo(get_settings()))
     assert info["password"] == "p@ss w'rd" and info["host"] == "db.example" and info["port"] == "5433"
     assert info["dbname"] == "log0" and info["options"] == f"-c search_path={CHECKPOINT_SCHEMA}"
+
+
+async def test_a_paused_review_survives_a_restart_and_resumes_with_the_real_saver(
+    saver: AsyncPostgresSaver, thread_id: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The review gate against the real checkpointer: the interrupt payload and the decision go through
+    the same serializer as the rest of the state, and a brand-new connection can resume the run."""
+    config = {"configurable": {"thread_id": thread_id}}
+    gated = dataclasses.replace(make_context(), require_review=True)
+    with caplog.at_level(logging.WARNING):
+        paused = await build_graph(saver).ainvoke(_start(), config, context=gated)
+        assert "__interrupt__" in paused
+
+        # "restart": new connection, new graph object, same thread id
+        async with open_checkpointer(get_settings()) as fresh_saver:
+            graph = build_graph(fresh_saver)
+            snapshot = await graph.aget_state(config)
+            assert snapshot.next == ("human_review",)
+            (waiting,) = [i for task in snapshot.tasks for i in task.interrupts]
+            assert waiting.value["round"] == 1 and waiting.value["rootCause"].startswith("The payment gateway stopped")
+
+            final = await graph.ainvoke(Command(resume={"action": "approve", "note": None}), config, context=gated)
+
+    assert final["review"] == ReviewDecision(action="approve")
+    assert any("No fix was proposed" in g for g in final["gaps"])
+    assert (await build_graph(saver).aget_state(config)).next == ()
+    assert not [r for r in caplog.records if r.name.startswith("langgraph") and r.levelno >= logging.WARNING]

@@ -3,9 +3,10 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.schemas.base import CamelModel
 
@@ -73,6 +74,22 @@ class CreateInvestigationResponse(CamelModel):
     
     investigation_id: UUID
     status: InvestigationStatus
+
+
+class ResumeInvestigationRequest(CamelModel):
+    """The engineer's decision at the review gate."""
+
+    action: Literal["approve", "refine", "stop"]
+    note: str | None = Field(default=None, max_length=1000)  # required for refine: what to look at differently
+
+    @model_validator(mode="after")
+    def _refine_needs_guidance(self) -> "ResumeInvestigationRequest":
+        self.note = (self.note or "").strip() or None
+        if self.action == "refine" and (self.note is None or len(self.note) < 3):
+            raise ValueError("refine needs a note saying what to look at differently")
+        if self.action != "refine":
+            self.note = None  # a note only means something when refining
+        return self
 
 
 class InvestigationEvent(CamelModel):

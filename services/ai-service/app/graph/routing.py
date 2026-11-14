@@ -35,6 +35,18 @@ def after_verify(state: InvestigationState) -> Literal["gather_followup", "root_
     return "gather_followup" if state["follow_ups"] else "root_cause"
 
 
+def after_review(state: InvestigationState) -> Literal["synthesize", "propose_changes", "__end__"]:
+    """What the engineer decided at the review gate (or nothing: the gate was off or had no root cause).
+
+    refine goes back to ``synthesize`` for another round; approve goes on to propose a fix (a
+    placeholder until step 4.2); stop, or no decision at all, ends the investigation.
+    """
+    review = state["review"]
+    if review is None or review.action == "stop":
+        return END
+    return "synthesize" if review.action == "refine" else "propose_changes"
+
+
 def fan_out(state: InvestigationState) -> list[Send]:
     """One ``Send`` per branch triage chose, so the branches run in parallel.
 

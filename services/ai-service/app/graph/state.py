@@ -99,6 +99,7 @@ class InvestigationState(TypedDict):
     recommendation: Recommendation | None
     confidence_band: str | None  # high | medium | low, from the deterministic rule
     review: ReviewDecision | None
+    review_round: int  # how many times the engineer asked for a refinement
     proposed_changes: list[CodeChange]
     validation_errors: list[str]
     change_attempts: int
@@ -136,6 +137,7 @@ def new_state(
         recommendation=None,
         confidence_band=None,
         review=None,
+        review_round=0,
         proposed_changes=[],
         validation_errors=[],
         change_attempts=0,
@@ -168,6 +170,7 @@ class InvestigationContext:
     history: RelatedIncidentSource
     models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
     code: CodeAccess | None = None  # the tenant's repositories; None: no code investigation on this server
+    require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
     budget: Budget = field(default_factory=Budget)
     # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
     # so its clock starts again: the limit is per process run, not across restarts.
