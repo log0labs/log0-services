@@ -79,8 +79,8 @@ def after_create_branch(state: InvestigationState) -> Literal["apply_patch", "fi
     return "apply_patch" if state["branch"] is not None else "finalize"
 
 
-def after_apply_patch(state: InvestigationState) -> Literal["open_draft_pr", "finalize"]:
-    return "open_draft_pr" if state["commit_sha"] is not None else "finalize"
+def after_apply_patch(state: InvestigationState) -> Literal["run_tests", "finalize"]:
+    return "run_tests" if state["commit_sha"] is not None else "finalize"
 
 
 def fan_out(state: InvestigationState) -> list[Send]:

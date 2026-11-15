@@ -22,7 +22,7 @@ from app.integrations.github_writer import (
 )
 from app.publishing.github_publisher import GitHubPublisher
 from app.publishing.port import PublishError
-from app.schemas.domain import BranchRef
+from app.schemas.domain import BranchRef, CheckResult, CiRun
 from app.store import pull_requests, write_audit
 
 pytestmark = [
@@ -55,6 +55,10 @@ class FakeWriter:
         self._call("ensure_branch", target, name, base_sha, investigation_id)
         return BranchState(name, base_sha, created=True)
 
+    async def check_runs(self, target: Any, sha: str) -> list[CheckResult]:
+        self._call("check_runs", target, sha)
+        return [CheckResult(name="ci", status="completed", conclusion="success")]
+
     async def head_of(self, target: Any, branch: str) -> str | None:
         self._call("head_of", target, branch)
         return self.head
@@ -63,8 +67,8 @@ class FakeWriter:
         self._call("commit_files", target, branch, base_sha, files, message)
         return NEW
 
-    async def open_draft_pull_request(self, target: Any, branch: str, title: str, body: str) -> OpenedPullRequest:
-        self._call("open_draft_pull_request", target, branch, title, body)
+    async def open_draft_pull_request(self, target: Any, branch: str, title: str, body: str, labels: tuple[str, ...] = ()) -> OpenedPullRequest:
+        self._call("open_draft_pull_request", target, branch, title, body, labels)
         return OpenedPullRequest(8, "https://github.com/acme/shop/pull/8", created=True)
 
 
@@ -174,7 +178,7 @@ async def test_the_three_writes_are_made_recorded_and_audited(factory) -> None:
 
     branch = await publisher.create_branch(tenant_id=TENANT, target=target, investigation_id=investigation_id, incident_id=uuid4(), base_sha=BASE, approved_by=USER)
     sha = await publisher.commit(tenant_id=TENANT, target=target, investigation_id=investigation_id, branch=branch, files=[FileWrite("a.py", "x")], message="m")
-    pr = await publisher.open_pull_request(tenant_id=TENANT, target=target, investigation_id=investigation_id, branch=branch, commit_sha=sha, title="t", body="b")
+    pr = await publisher.open_pull_request(tenant_id=TENANT, target=target, investigation_id=investigation_id, branch=branch, commit_sha=sha, title="t", body="b", labels=["log0", "log0:tests-passing"])
 
     assert branch.name.startswith("log0/fix-") and branch.base_sha == BASE and sha == NEW
     assert (pr.number, pr.url, pr.branch, pr.commit_sha, pr.draft) == (8, "https://github.com/acme/shop/pull/8", branch.name, NEW, True)
@@ -275,3 +279,32 @@ async def test_the_audit_never_holds_a_token_or_file_content(factory) -> None:
     async with factory() as session:
         rows = await write_audit.list_for_tenant(session, tenant_id=TENANT)
     assert "SECRET" not in repr(rows)
+
+
+async def test_checks_are_read_for_the_commit_and_the_run_is_kept(factory) -> None:
+    _, investigation_id = await _setup(factory)
+    publisher, writer = _publisher(factory)
+    target = await publisher.target_for(tenant_id=TENANT, repo="acme/shop")
+    assert target is not None
+
+    checks = await publisher.check_results(tenant_id=TENANT, target=target, commit_sha=NEW)
+    await publisher.record_ci_run(tenant_id=TENANT, investigation_id=investigation_id, commit_sha=NEW, run=CiRun(outcome="passed", checks=checks))
+
+    assert [c.name for c in checks] == ["ci"] and writer.calls[-1][0] == "check_runs"
+    async with factory() as session:
+        row = (await session.execute(text("SELECT outcome, checks, commit_sha FROM ai.test_run WHERE investigation_id = :i"), {"i": investigation_id})).one()
+    assert row[0] == "passed" and row[1][0]["name"] == "ci" and row[2] == NEW
+
+
+async def test_reading_checks_is_refused_when_writing_is_no_longer_allowed(factory) -> None:
+    repository_id, _ = await _setup(factory)
+    publisher, writer = _publisher(factory)
+    target = await publisher.target_for(tenant_id=TENANT, repo="acme/shop")
+    assert target is not None
+    async with factory() as session:
+        await session.execute(text("UPDATE ai.repository_connection SET pr_writes_enabled = false WHERE id = :i"), {"i": repository_id})
+        await session.commit()
+
+    with pytest.raises(PublishError, match="no longer allowed"):
+        await publisher.check_results(tenant_id=TENANT, target=target, commit_sha=NEW)
+    assert writer.calls == []

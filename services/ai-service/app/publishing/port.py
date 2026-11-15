@@ -10,7 +10,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.integrations.github_writer import FileWrite
-from app.schemas.domain import BranchRef, PullRequestRef
+from app.schemas.domain import BranchRef, CheckResult, CiRun, PullRequestRef
 
 PublishFile = FileWrite
 """One file of the commit: path, whole new text (``None`` deletes it), executable bit."""
@@ -71,4 +71,13 @@ class Publisher(Protocol):
         commit_sha: str,
         title: str,
         body: str,
+        labels: list[str],
     ) -> PullRequestRef: ...
+
+    async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
+        """The CI checks GitHub has for the commit right now (empty: none have started or none exist)."""
+        ...
+
+    async def record_ci_run(self, *, tenant_id: UUID, investigation_id: UUID, commit_sha: str, run: CiRun) -> None:
+        """Keep the outcome of the checks with the investigation (best effort: it is a record, not a decision)."""
+        ...

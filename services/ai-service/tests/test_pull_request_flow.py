@@ -182,7 +182,7 @@ async def test_approval_publishes_and_completes(session_factory: SessionFactory,
     opened = next(e for e in events if e.type == "pr.opened").payload
     assert opened == {"number": 12, "url": "https://github.com/acme/shop/pull/12", "branch": opened["branch"], "draft": True}
     assert publisher.arguments("create_branch")["approved_by"] == APPROVER  # the approver's id reached the write
-    assert [n for n in publisher.names() if n != "target_for"] == ["create_branch", "commit", "open_pull_request"]
+    assert [n for n in publisher.names() if n not in ("target_for", "check_results")] == ["create_branch", "commit", "open_pull_request"]
     await runner.shutdown()
 
 
@@ -220,7 +220,7 @@ async def test_a_restart_after_the_answer_resumes_with_that_answer_and_writes_on
     await _wait_for_end(restarted, row.id)
 
     assert (await _row(session_factory, row.id)).status == InvestigationStatus.COMPLETED
-    assert [n for n in publisher.names() if n != "target_for"] == ["create_branch", "commit", "open_pull_request"]
+    assert [n for n in publisher.names() if n not in ("target_for", "check_results")] == ["create_branch", "commit", "open_pull_request"]
     await restarted.shutdown()
 
 

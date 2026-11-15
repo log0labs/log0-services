@@ -25,6 +25,7 @@ from app.integrations.github import (
     raise_for_status,
 )
 from app.integrations.github_app import GitHubAppAuth
+from app.schemas.domain import CheckResult
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +126,31 @@ class GitHubWriter:
             await call("PATCH", f"{self._repo(target)}/git/refs/heads/{branch}", json={"sha": commit["sha"], "force": False})
             return str(commit["sha"])
 
+    async def check_runs(self, target: WriteTarget, sha: str) -> list[CheckResult]:
+        """The check runs (GitHub Actions and other checks apps) on a commit."""
+        async with self._session(target) as call:
+            response = await call("GET", f"{self._repo(target)}/commits/{sha}/check-runs", params={"per_page": "100"})
+        try:
+            return [
+                CheckResult(
+                    name=str(row["name"])[:120],
+                    status=row["status"] if row["status"] in ("queued", "in_progress", "completed") else "in_progress",
+                    conclusion=row.get("conclusion"),
+                    url=row.get("html_url"),
+                )
+                for row in response.json()["check_runs"]
+            ]
+        except (KeyError, TypeError, ValueError):
+            raise GitHubUnavailableError from None
+
     async def head_of(self, target: WriteTarget, branch: str) -> str | None:
         """The commit a branch points at, or ``None`` when it does not exist."""
         async with self._session(target) as call:
             return await self._head(call, target, branch)
 
-    async def open_draft_pull_request(self, target: WriteTarget, branch: str, title: str, body: str) -> OpenedPullRequest:
+    async def open_draft_pull_request(
+        self, target: WriteTarget, branch: str, title: str, body: str, labels: tuple[str, ...] = LABELS
+    ) -> OpenedPullRequest:
         """Open a draft pull request from ``branch`` into the default branch, or return the one already open."""
         self._check_branch_name(target, branch)
         async with self._session(target) as call:
@@ -150,7 +170,7 @@ class GitHubWriter:
                 return OpenedPullRequest(found[0], found[1], created=False)
             data = response.json()
             number = int(data["number"])
-            await self._label(call, target, number)
+            await self._label(call, target, number, labels)
             return OpenedPullRequest(number, str(data["html_url"]), created=True)
 
     # ------------------------------------------------------------------ internals
@@ -177,9 +197,9 @@ class GitHubWriter:
         rows = response.json()
         return (int(rows[0]["number"]), str(rows[0]["html_url"])) if rows else None
 
-    async def _label(self, call: Call, target: WriteTarget, number: int) -> None:
+    async def _label(self, call: Call, target: WriteTarget, number: int, labels: tuple[str, ...]) -> None:
         try:
-            await call("POST", f"{self._repo(target)}/issues/{number}/labels", json={"labels": list(LABELS)}, expected=(200,))
+            await call("POST", f"{self._repo(target)}/issues/{number}/labels", json={"labels": list(labels)}, expected=(200,))
         except (GitHubAccessError, GitHubUnavailableError, WriteRejectedError) as exc:  # a label is cosmetic
             logger.info("could not label pull request %s: %s", number, type(exc).__name__)
 

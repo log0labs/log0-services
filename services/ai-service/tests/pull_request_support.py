@@ -8,7 +8,7 @@ from app.graph.nodes.validate_changes import validate_changes
 from app.graph.state import InvestigationContext, InvestigationState
 from app.publishing.naming import branch_name
 from app.publishing.port import PublishError, PublishFile, PublishTarget
-from app.schemas.domain import BranchRef, CodeChange, PullRequestRef
+from app.schemas.domain import BranchRef, CheckResult, CiRun, CodeChange, PullRequestRef
 from tests.code_graph_support import (
     PAYMENT,
     FakeCode,
@@ -32,6 +32,8 @@ class FakePublisher:
         self.allowed = allowed
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.fail: dict[str, PublishError] = {}
+        self.checks: list[list[CheckResult]] = [[CheckResult(name="ci / test", status="completed", conclusion="success")]]
+        self.recorded: list[CiRun] = []
 
     def _record(self, name: str, **kwargs: Any) -> None:
         self.calls.append((name, kwargs))
@@ -56,9 +58,17 @@ class FakePublisher:
         self._record("commit", files=files, message=message, branch=branch)
         return COMMIT_SHA
 
-    async def open_pull_request(self, *, tenant_id: UUID, target: PublishTarget, investigation_id: UUID, branch: BranchRef, commit_sha: str, title: str, body: str) -> PullRequestRef:
-        self._record("open_pull_request", title=title, body=body, commit_sha=commit_sha)
+    async def open_pull_request(self, *, tenant_id: UUID, target: PublishTarget, investigation_id: UUID, branch: BranchRef, commit_sha: str, title: str, body: str, labels: list[str]) -> PullRequestRef:
+        self._record("open_pull_request", title=title, body=body, commit_sha=commit_sha, labels=labels)
         return PullRequestRef(number=12, url="https://github.com/acme/shop/pull/12", branch=branch.name, commit_sha=commit_sha)
+
+
+    async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
+        self._record("check_results", commit_sha=commit_sha)
+        return self.checks.pop(0) if len(self.checks) > 1 else self.checks[0]
+
+    async def record_ci_run(self, *, tenant_id: UUID, investigation_id: UUID, commit_sha: str, run: CiRun) -> None:
+        self.recorded.append(run)
 
 
 async def reviewed_state(repo: Repo, publisher: FakePublisher | None = None) -> tuple[InvestigationState, InvestigationContext, FakeCode]:

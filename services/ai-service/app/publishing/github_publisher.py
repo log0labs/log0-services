@@ -24,9 +24,9 @@ from app.integrations.github_writer import (
 )
 from app.publishing.naming import branch_name
 from app.publishing.port import PublishError, PublishFile, PublishTarget
-from app.schemas.domain import BranchRef, PullRequestRef
+from app.schemas.domain import BranchRef, CheckResult, CiRun, PullRequestRef
 from app.store import github_installations as installations
-from app.store import pull_requests, write_audit
+from app.store import pull_requests, test_runs, write_audit
 from app.store import repositories as repository_store
 
 logger = logging.getLogger(__name__)
@@ -125,16 +125,31 @@ class GitHubPublisher:
         commit_sha: str,
         title: str,
         body: str,
+        labels: list[str],
     ) -> PullRequestRef:
         write_target = await self._resolve(tenant_id, target)
 
         async def make() -> PullRequestRef:
-            opened = await self._writer.open_draft_pull_request(write_target, branch.name, title, body)
+            opened = await self._writer.open_draft_pull_request(write_target, branch.name, title, body, tuple(labels))
             async with self._sessions() as session:
                 await pull_requests.mark_open(session, tenant_id=tenant_id, investigation_id=investigation_id, number=opened.number, url=opened.url)
             return PullRequestRef(number=opened.number, url=opened.url, branch=branch.name, commit_sha=commit_sha)
 
         return await self._audited(make, tenant_id, investigation_id, None, "pull_request.open", target.repo, branch.name)
+
+    async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
+        write_target = await self._resolve(tenant_id, target)
+        try:
+            return await self._writer.check_runs(write_target, commit_sha)
+        except (GitHubAccessError, GitHubUnavailableError, GitHubAppNotConfiguredError) as exc:
+            raise PublishError(self._safe_message(exc)) from None
+
+    async def record_ci_run(self, *, tenant_id: UUID, investigation_id: UUID, commit_sha: str, run: CiRun) -> None:
+        try:
+            async with self._sessions() as session:
+                await test_runs.record(session, tenant_id=tenant_id, investigation_id=investigation_id, commit_sha=commit_sha, run=run)
+        except Exception:
+            logger.exception("could not record the CI run of investigation %s", investigation_id)
 
     # ------------------------------------------------------------------ internals
 

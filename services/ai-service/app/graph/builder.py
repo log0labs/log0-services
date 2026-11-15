@@ -5,7 +5,7 @@
     verify -> gather_followup -> verify   (while verify wants more log searches and the budget allows)
     verify -> root_cause -> human_review -> END | synthesize (refine) | propose_changes
     propose_changes -> validate_changes -> propose_changes (retry, max 2 attempts) | offer_pr | finalize
-    offer_pr -> approve_pr | finalize;  approve_pr -> create_branch -> apply_patch -> open_draft_pr -> finalize -> END   (V2: only after an engineer approves;
+    offer_pr -> approve_pr | finalize;  approve_pr -> create_branch -> apply_patch -> run_tests -> open_draft_pr -> finalize -> END   (V2: only after an engineer approves;
                   any step that cannot write goes to finalize with a gap)
 
 ``load_context`` ends the run when the incident cannot be read. ``triage`` picks which
@@ -31,6 +31,7 @@ from app.graph.nodes.pull_request import (
     create_branch,
     offer_pr,
     open_draft_pr,
+    run_tests,
 )
 from app.graph.nodes.root_cause import root_cause
 from app.graph.nodes.search_runbooks import search_runbooks
@@ -77,6 +78,7 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder.add_node("approve_pr", approve_pr)
     builder.add_node("create_branch", create_branch)
     builder.add_node("apply_patch", apply_patch)
+    builder.add_node("run_tests", run_tests)
     builder.add_node("open_draft_pr", open_draft_pr)
     builder.add_node("finalize", finalize)
     
@@ -95,7 +97,8 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder.add_conditional_edges("offer_pr", after_offer, ["approve_pr", "finalize"])
     builder.add_conditional_edges("approve_pr", after_pr_approval, ["create_branch", "finalize"])
     builder.add_conditional_edges("create_branch", after_create_branch, ["apply_patch", "finalize"])
-    builder.add_conditional_edges("apply_patch", after_apply_patch, ["open_draft_pr", "finalize"])
+    builder.add_conditional_edges("apply_patch", after_apply_patch, ["run_tests", "finalize"])
+    builder.add_edge("run_tests", "open_draft_pr")
     builder.add_edge("open_draft_pr", "finalize")
     builder.add_edge("finalize", END)
     builder.add_edge("gather_followup", "verify")

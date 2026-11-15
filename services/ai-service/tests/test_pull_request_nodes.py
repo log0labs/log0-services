@@ -16,6 +16,7 @@ from app.graph.nodes.pull_request import (
     offer_pr,
     open_draft_pr,
     read_pr_decision,
+    run_tests,
 )
 from app.graph.routing import (
     after_apply_patch,
@@ -54,13 +55,14 @@ def repo(tmp_path_factory: pytest.TempPathFactory) -> Repo:
 def pr_graph() -> Any:
     """offer_pr -> approve_pr -> create_branch -> apply_patch -> open_draft_pr, wired as in the real graph, with a checkpointer."""
     builder = StateGraph(InvestigationState, context_schema=InvestigationContext)
-    for name, node in [("offer_pr", offer_pr), ("approve_pr", approve_pr), ("create_branch", create_branch), ("apply_patch", apply_patch), ("open_draft_pr", open_draft_pr)]:
+    for name, node in [("offer_pr", offer_pr), ("approve_pr", approve_pr), ("create_branch", create_branch), ("apply_patch", apply_patch), ("run_tests", run_tests), ("open_draft_pr", open_draft_pr)]:
         builder.add_node(name, node)
     builder.add_edge(START, "offer_pr")
     builder.add_conditional_edges("offer_pr", after_offer, {"approve_pr": "approve_pr", "finalize": END})
     builder.add_conditional_edges("approve_pr", after_pr_approval, {"create_branch": "create_branch", "finalize": END})
     builder.add_conditional_edges("create_branch", after_create_branch, {"apply_patch": "apply_patch", "finalize": END})
-    builder.add_conditional_edges("apply_patch", after_apply_patch, {"open_draft_pr": "open_draft_pr", "finalize": END})
+    builder.add_conditional_edges("apply_patch", after_apply_patch, {"run_tests": "run_tests", "finalize": END})
+    builder.add_edge("run_tests", "open_draft_pr")
     builder.add_edge("open_draft_pr", END)
     return builder.compile(checkpointer=InMemorySaver())
 
@@ -268,5 +270,5 @@ async def test_routing_sends_only_a_valid_diff_to_the_gate_and_only_an_approval_
     assert after_pr_approval(state | {"pr_decision": None}) == "finalize"
     assert after_create_branch(state | {"branch": BranchRef(name="log0/x", base_sha="a")}) == "apply_patch"
     assert after_create_branch(state) == "finalize"
-    assert after_apply_patch(state | {"commit_sha": COMMIT_SHA}) == "open_draft_pr"
+    assert after_apply_patch(state | {"commit_sha": COMMIT_SHA}) == "run_tests"
     assert after_apply_patch(state) == "finalize"

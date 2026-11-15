@@ -27,6 +27,7 @@ from app.llm.models import PurposeChatModels
 from app.llm.purpose import Purpose
 from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.observability import tracing_allowed, tracing_scope
+from app.publishing.ci import CiWait
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
@@ -105,6 +106,13 @@ class GraphExecutor:
         self._secret_box = secret_box
         self._publisher = publisher
 
+    def _ci_policy(self) -> dict[str, Any]:
+        """The CI wait and the only-on-green rule from settings (the defaults when there are none, as in tests)."""
+        if self._settings is None:
+            return {}
+        wait = CiWait(self._settings.ci_wait_seconds, self._settings.ci_poll_seconds, self._settings.ci_start_grace_seconds)
+        return {"ci_wait": wait, "pr_only_on_green": self._settings.pr_only_on_green}
+
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         allowed = True  # without settings (tests) nothing is restricted
         if self._settings is not None:
@@ -172,6 +180,7 @@ class GraphExecutor:
             memory=self._memory,
             require_review=self._require_review,
             publisher=self._publisher,
+            **self._ci_policy(),
         )
 
         snapshot = await self._graph.aget_state(config)

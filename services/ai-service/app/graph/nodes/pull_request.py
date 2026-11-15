@@ -1,6 +1,6 @@
 """From an approved diff to a draft pull request: the V2 half of the graph.
 
-    validate_changes -> offer_pr -> approve_pr -> create_branch -> apply_patch -> open_draft_pr -> finalize
+    validate_changes -> offer_pr -> approve_pr -> create_branch -> apply_patch -> run_tests -> open_draft_pr -> finalize
 
 ``offer_pr`` decides, once, whether a pull request can be offered (log0 may write to the repository)
 and stores the offer in the state. ``approve_pr`` is a human gate like ``human_review``: it parks the
@@ -27,6 +27,7 @@ from app.diff.builder import build_checked_diff, file_modes
 from app.diff.validator import validate_changes as validate
 from app.graph.code_access import CodeAccessError
 from app.graph.state import InvestigationContext, InvestigationState
+from app.publishing.ci import all_completed, label_for, outcome_of
 from app.publishing.naming import (
     branch_name,
     commit_message,
@@ -34,11 +35,13 @@ from app.publishing.naming import (
     pull_request_title,
 )
 from app.publishing.port import PublishError, PublishFile, PublishTarget
-from app.schemas.domain import PrDecision
+from app.schemas.domain import CiRun, PrDecision
 
 logger = logging.getLogger(__name__)
 
 GATE = "pr_approval"
+_sleep = asyncio.sleep  # replaced in tests so waiting for CI takes no time
+BASE_LABEL = "log0"
 MAX_TEXT = 600
 
 
@@ -187,11 +190,52 @@ async def apply_patch(state: InvestigationState, runtime: Runtime[InvestigationC
     return {"commit_sha": sha, "tool_calls": 2}
 
 
+async def run_tests(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    """Wait (bounded) for the repository's own CI on the commit log0 made, and keep what it said.
+
+    log0 never runs customer code: the checks that run on the pushed branch are the repository's own.
+    A repository without CI, or one that does not start a check in time, is ``none``; a check that is still
+    running when the time is up is ``timeout``. Not being able to read the checks is a gap, not a failure.
+    """
+    ctx = runtime.context
+    sha, cause = state["commit_sha"], state["root_cause"]
+    if state["ci_run"] is not None or sha is None or cause is None or ctx.publisher is None:
+        return {}
+    wait = ctx.ci_wait
+    poll = max(wait.poll_seconds, 0.01)
+    waited = 0.0
+    try:
+        target = await _target(state, ctx)
+        while True:
+            checks = await ctx.publisher.check_results(tenant_id=ctx.tenant_id, target=target, commit_sha=sha)
+            if all_completed(checks):
+                outcome = outcome_of(checks)
+                break
+            if waited >= (wait.total_seconds if checks else wait.start_grace_seconds):
+                outcome = "timeout" if checks else "none"
+                break
+            await _sleep(poll)
+            waited += poll
+    except PublishError as exc:
+        return {"gaps": [f"The checks of the repository could not be read: {exc}"]}
+    run = CiRun(outcome=outcome, checks=checks)
+    await ctx.publisher.record_ci_run(tenant_id=ctx.tenant_id, investigation_id=UUID(state["investigation_id"]), commit_sha=sha, run=run)
+    return {"ci_run": run}
+
+
 async def open_draft_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     ctx = runtime.context
     branch, sha, cause = state["branch"], state["commit_sha"], state["root_cause"]
     if state["pull_request"] is not None or branch is None or sha is None or cause is None or ctx.publisher is None:
         return {}
+    ci = state["ci_run"]
+    if ctx.pr_only_on_green and ci is not None and ci.outcome in ("failed", "timeout"):
+        return {
+            "gaps": [
+                f"No pull request was opened: the checks of the repository did not pass and this server only opens pull requests for passing commits (the change is on branch {branch.name})"
+            ]
+        }
+    outcome_label = label_for(ci.outcome) if ci else None
     try:
         pull_request = await ctx.publisher.open_pull_request(
             tenant_id=ctx.tenant_id,
@@ -205,7 +249,9 @@ async def open_draft_pr(state: InvestigationState, runtime: Runtime[Investigatio
                 confidence_band=state["confidence_band"],
                 changes=state["proposed_changes"],
                 files=state["diff_files"],
+                ci_run=ci,
             ),
+            labels=[BASE_LABEL, *([outcome_label] if outcome_label else [])],
         )
     except PublishError as exc:
         return _failed(exc)

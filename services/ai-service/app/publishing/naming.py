@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.diff.builder import FileDiff
 from app.integrations.github_writer import BRANCH_PREFIX, commit_marker
-from app.schemas.domain import CodeChange, RootCause
+from app.schemas.domain import CiRun, CodeChange, RootCause
 from app.security.redaction import redact_text
 
 MAX_TITLE = 100
@@ -42,6 +42,7 @@ def pull_request_body(
     changes: list[CodeChange],
     files: list[FileDiff],
     investigation_url: str | None = None,
+    ci_run: CiRun | None = None,
 ) -> str:
     lines = ["## Root cause", "", _clean(root_cause.statement, MAX_SECTION), ""]
     if confidence_band:
@@ -54,9 +55,27 @@ def pull_request_body(
         lines.append(f"- `{file.file_path}` ({file.operation}, +{file.additions} -{file.deletions}){suffix}")
     if len(files) > MAX_FILES_LISTED:
         lines.append(f"- and {len(files) - MAX_FILES_LISTED} more")
+    lines += _tests_section(ci_run)
     if root_cause.evidence_ids:
         lines += ["", f"Evidence: {', '.join(f'`{e}`' for e in root_cause.evidence_ids[:10])}"]
     if investigation_url:
         lines += ["", f"Investigation: {investigation_url}"]
     lines += ["", "---", FOOTER]
     return "\n".join(lines)
+
+
+_OUTCOME_TEXT = {
+    "passed": "The checks of the repository **passed** on this commit.",
+    "failed": "The checks of the repository **failed** on this commit. Do not merge without looking at them.",
+    "timeout": "The checks were still running when log0 stopped waiting; look at their status before merging.",
+    "none": "The repository has no checks for this commit, so **nothing verified this change**. Run the tests yourself.",
+}
+
+
+def _tests_section(ci_run: CiRun | None) -> list[str]:
+    if ci_run is None:
+        return ["", "## Tests", "", "log0 could not read the checks of the repository. Run the tests yourself."]
+    lines = ["", "## Tests", "", _OUTCOME_TEXT[ci_run.outcome]]
+    for check in ci_run.checks[:MAX_FILES_LISTED]:
+        lines.append(f"- {_clean(check.name, 80)}: {check.conclusion or check.status}")
+    return lines

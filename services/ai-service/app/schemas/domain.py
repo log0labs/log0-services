@@ -246,6 +246,22 @@ class PullRequestRef(BaseModel):
     draft: bool = True
 
 
+class CheckResult(BaseModel):
+    """One CI check on the commit, as GitHub reports it."""
+
+    name: str
+    status: Literal["queued", "in_progress", "completed"]
+    conclusion: str | None = None  # success, failure, neutral, skipped, cancelled, timed_out, ...
+    url: str | None = None
+
+
+class CiRun(BaseModel):
+    """What the repository's own CI said about the commit log0 made."""
+
+    outcome: Literal["passed", "failed", "none", "timeout"]  # none: the repository has no checks for the commit
+    checks: list[CheckResult] = Field(default_factory=list)
+
+
 class RepoContext(BaseModel):
     """Which repository and exact commit the code tools read (filled in M3)."""
 

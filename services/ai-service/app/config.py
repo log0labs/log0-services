@@ -143,6 +143,11 @@ class Settings(BaseSettings):
     github_webhook_secret: SecretStr | None = None
     # Global kill switch for every GitHub write (branch, commit, pull request).
     pr_writes_enabled: bool = False
+    # How long a run waits for the repository's own CI on the commit it made, before opening the draft pull request.
+    ci_wait_seconds: int = 600
+    ci_poll_seconds: float = 15.0
+    ci_start_grace_seconds: int = 60  # no check at all after this long means the repository has no CI for the commit
+    pr_only_on_green: bool = False  # True: do not open the pull request when the checks failed or timed out
 
     # Local copies of tenants' repositories for the code tools (3.4). The cache is disposable:
     # deleting the folder only means the next investigation clones again.

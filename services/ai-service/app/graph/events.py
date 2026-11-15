@@ -126,6 +126,10 @@ def _publish_events(node: str, delta: dict[str, Any]) -> list[EventPair]:
         return [("branch.created", {"name": branch.name, "baseSha": branch.base_sha})]
     if node == "apply_patch" and delta.get("commit_sha"):
         return [("commit.created", {"sha": delta["commit_sha"]})]
+    if node == "run_tests" and delta.get("ci_run") is not None:
+        run = delta["ci_run"]
+        checks = [{"name": c.name, "conclusion": c.conclusion or c.status} for c in run.checks]
+        return [("tests.completed", {"outcome": run.outcome, "checks": checks})]
     if node == "open_draft_pr" and delta.get("pull_request") is not None:
         pr = delta["pull_request"]
         return [("pr.opened", {"number": pr.number, "url": pr.url, "branch": pr.branch, "draft": pr.draft})]
