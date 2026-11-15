@@ -8,6 +8,7 @@ honoured by the next one.
 """
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TypeVar
@@ -27,6 +28,7 @@ from app.publishing.naming import branch_name
 from app.publishing.policy import PrActivity
 from app.publishing.port import PublishError, PublishFile, PublishTarget
 from app.schemas.domain import BranchRef, CheckResult, CiRun, PullRequestRef
+from app.security.redaction import redact_text
 from app.store import github_installations as installations
 from app.store import pull_requests, test_runs, write_audit
 from app.store import repositories as repository_store
@@ -34,6 +36,18 @@ from app.store import repositories as repository_store
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+MAX_FAILED_LOGS = 2
+FAILED_CONCLUSIONS = frozenset({"failure", "timed_out", "cancelled", "action_required", "startup_failure"})
+_TIMESTAMP = re.compile(r"^\ufeff?\d{4}-\d\d-\d\dT[\d:.]+Z ", re.MULTILINE)
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+MAX_LOG_CHARS = 4000
+
+
+def clean_log(raw: str) -> str:
+    """A job log as plain text for a model: no timestamps or colours, secrets hidden, only the end."""
+    text = _ANSI.sub("", _TIMESTAMP.sub("", raw)).replace("\r", "")
+    return redact_text(text.strip()[-MAX_LOG_CHARS:])
 
 _ACCESS = {
     "bad_token": "GitHub rejected the log0 app's credentials",
@@ -110,15 +124,17 @@ class GitHubPublisher:
         branch: BranchRef,
         files: list[PublishFile],
         message: str,
+        parent_sha: str | None = None,
     ) -> str:
         write_target = await self._resolve(tenant_id, target)
+        parent = parent_sha or branch.base_sha
 
         async def make() -> str:
             head = await self._writer.head_of(write_target, branch.name)
-            if head is not None and head != branch.base_sha:
+            if head is not None and head != parent:
                 sha = head  # an earlier attempt already committed (ensure_branch checked the branch is ours)
             else:
-                sha = await self._writer.commit_files(write_target, branch.name, branch.base_sha, files, message)
+                sha = await self._writer.commit_files(write_target, branch.name, branch.base_sha, files, message, parent_sha=parent)
             async with self._sessions() as session:
                 await pull_requests.mark_committed(session, tenant_id=tenant_id, investigation_id=investigation_id, commit_sha=sha)
             return sha
@@ -154,6 +170,21 @@ class GitHubPublisher:
                 repository_last_hour=await pull_requests.count_since(session, tenant_id=tenant_id, since=since, repository_id=target.repository_id),
                 tenant_last_hour=await pull_requests.count_since(session, tenant_id=tenant_id, since=since),
             )
+
+    async def ci_failure_log(self, *, tenant_id: UUID, target: PublishTarget, checks: list[CheckResult]) -> str:
+        """What the failed checks printed, cleaned and redacted. Reading needs ``actions: read``; without it the answer is empty."""
+        write_target = await self._resolve(tenant_id, target)
+        parts: list[str] = []
+        for check in [c for c in checks if c.conclusion in FAILED_CONCLUSIONS and c.id is not None][:MAX_FAILED_LOGS]:
+            try:
+                raw = await self._writer.job_log(write_target, int(check.id or 0))
+            except (GitHubAccessError, GitHubUnavailableError, GitHubAppNotConfiguredError) as exc:
+                logger.info("could not read the log of check %s: %s", check.id, type(exc).__name__)
+                continue
+            cleaned = clean_log(raw)
+            if cleaned:
+                parts.append(f"### {check.name}\n{cleaned}")
+        return "\n\n".join(parts)
 
     async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
         write_target = await self._resolve(tenant_id, target)

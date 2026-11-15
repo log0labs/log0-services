@@ -26,11 +26,14 @@ from app.graph.nodes.human_review import human_review
 from app.graph.nodes.load_context import load_context
 from app.graph.nodes.propose_changes import propose_changes
 from app.graph.nodes.pull_request import (
+    abandon_repair,
     apply_patch,
+    apply_repair,
     approve_pr,
     create_branch,
     offer_pr,
     open_draft_pr,
+    prepare_repair,
     run_tests,
 )
 from app.graph.nodes.root_cause import root_cause
@@ -46,8 +49,10 @@ from app.graph.routing import (
     after_load_context,
     after_offer,
     after_pr_approval,
+    after_prepare_repair,
     after_propose,
     after_review,
+    after_run_tests,
     after_validate,
     after_verify,
     fan_out,
@@ -79,6 +84,9 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder.add_node("create_branch", create_branch)
     builder.add_node("apply_patch", apply_patch)
     builder.add_node("run_tests", run_tests)
+    builder.add_node("prepare_repair", prepare_repair)
+    builder.add_node("apply_repair", apply_repair)
+    builder.add_node("abandon_repair", abandon_repair)
     builder.add_node("open_draft_pr", open_draft_pr)
     builder.add_node("finalize", finalize)
     
@@ -92,13 +100,16 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     builder.add_conditional_edges("verify", after_verify, ["gather_followup", "root_cause"])
     builder.add_edge("root_cause", "human_review")
     builder.add_conditional_edges("human_review", after_review, ["synthesize", "propose_changes", END])
-    builder.add_conditional_edges("propose_changes", after_propose, ["validate_changes", "finalize"])
-    builder.add_conditional_edges("validate_changes", after_validate, ["propose_changes", "offer_pr", "finalize"])
+    builder.add_conditional_edges("propose_changes", after_propose, ["validate_changes", "finalize", "abandon_repair"])
+    builder.add_conditional_edges("validate_changes", after_validate, ["propose_changes", "offer_pr", "finalize", "apply_repair", "abandon_repair"])
     builder.add_conditional_edges("offer_pr", after_offer, ["approve_pr", "finalize"])
     builder.add_conditional_edges("approve_pr", after_pr_approval, ["create_branch", "finalize"])
     builder.add_conditional_edges("create_branch", after_create_branch, ["apply_patch", "finalize"])
     builder.add_conditional_edges("apply_patch", after_apply_patch, ["run_tests", "finalize"])
-    builder.add_edge("run_tests", "open_draft_pr")
+    builder.add_conditional_edges("run_tests", after_run_tests, ["prepare_repair", "open_draft_pr"])
+    builder.add_conditional_edges("prepare_repair", after_prepare_repair, ["propose_changes", "open_draft_pr"])
+    builder.add_edge("apply_repair", "run_tests")
+    builder.add_edge("abandon_repair", "open_draft_pr")
     builder.add_edge("open_draft_pr", "finalize")
     builder.add_edge("finalize", END)
     builder.add_edge("gather_followup", "verify")

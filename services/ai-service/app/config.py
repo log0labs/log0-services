@@ -146,6 +146,7 @@ class Settings(BaseSettings):
     # How long a run waits for the repository's own CI on the commit it made, before opening the draft pull request.
     ci_wait_seconds: int = 600
     ci_poll_seconds: float = 15.0
+    ci_repair_attempts: int = 1  # how many times log0 may fix its change after the repository's checks fail (0: never)
     ci_start_grace_seconds: int = 60  # no check at all after this long means the repository has no CI for the commit
     # Workspaces whose pull request writes are switched off by the operator (tenant ids). Takes effect on the next write.
     pr_writes_disabled_tenants: set[UUID] = Field(default_factory=set)  # JSON in the environment: ["<tenant id>"]

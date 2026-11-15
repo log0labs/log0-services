@@ -58,8 +58,10 @@ class Publisher(Protocol):
         branch: BranchRef,
         files: list[PublishFile],
         message: str,
+        parent_sha: str | None = None,
     ) -> str:
-        """One commit on the branch; returns its sha (the existing one when it was already made)."""
+        """One commit on the branch whose parent is ``parent_sha`` (default: the branch's base); returns its sha
+        (the existing one when it was already made)."""
         ...
 
     async def open_pull_request(
@@ -85,4 +87,8 @@ class Publisher(Protocol):
 
     async def activity(self, *, tenant_id: UUID, target: PublishTarget) -> PrActivity:
         """How many pull requests log0 opened lately on this repository and in this workspace (rate limits)."""
+        ...
+
+    async def ci_failure_log(self, *, tenant_id: UUID, target: PublishTarget, checks: list[CheckResult]) -> str:
+        """The end of the logs of the failed checks, redacted (empty: none could be read). Untrusted text."""
         ...

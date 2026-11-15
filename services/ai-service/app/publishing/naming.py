@@ -43,6 +43,7 @@ def pull_request_body(
     files: list[FileDiff],
     investigation_url: str | None = None,
     ci_run: CiRun | None = None,
+    repaired: bool = False,
 ) -> str:
     lines = ["## Root cause", "", _clean(root_cause.statement, MAX_SECTION), ""]
     if confidence_band:
@@ -56,6 +57,8 @@ def pull_request_body(
     if len(files) > MAX_FILES_LISTED:
         lines.append(f"- and {len(files) - MAX_FILES_LISTED} more")
     lines += _tests_section(ci_run)
+    if repaired:
+        lines += ["", "The first change failed the checks of the repository, so log0 corrected it once; this is the corrected change."]
     if root_cause.evidence_ids:
         lines += ["", f"Evidence: {', '.join(f'`{e}`' for e in root_cause.evidence_ids[:10])}"]
     if investigation_url:

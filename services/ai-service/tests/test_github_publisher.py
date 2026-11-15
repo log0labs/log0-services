@@ -63,7 +63,7 @@ class FakeWriter:
         self._call("head_of", target, branch)
         return self.head
 
-    async def commit_files(self, target: Any, branch: str, base_sha: str, files: list[FileWrite], message: str) -> str:
+    async def commit_files(self, target: Any, branch: str, base_sha: str, files: list[FileWrite], message: str, parent_sha: str | None = None) -> str:
         self._call("commit_files", target, branch, base_sha, files, message)
         return NEW
 
@@ -308,3 +308,73 @@ async def test_reading_checks_is_refused_when_writing_is_no_longer_allowed(facto
     with pytest.raises(PublishError, match="no longer allowed"):
         await publisher.check_results(tenant_id=TENANT, target=target, commit_sha=NEW)
     assert writer.calls == []
+
+
+# ------------------------------------------------------------ repair: reading why the checks failed
+
+
+def _fail(check_id: int | None, name: str = "ci", conclusion: str = "failure") -> CheckResult:
+    return CheckResult(name=name, id=check_id, status="completed", conclusion=conclusion)
+
+
+async def test_only_failed_checks_with_an_id_are_read_and_the_text_is_cleaned(factory) -> None:
+    from app.publishing.github_publisher import clean_log
+
+    _, _ = await _setup(factory)
+    publisher, writer = _publisher(factory)
+    target = await publisher.target_for(tenant_id=TENANT, repo="acme/shop")
+    assert target is not None
+    read: list[int] = []
+
+    async def job_log(_target: Any, job_id: int, **_kw: Any) -> str:
+        read.append(job_id)
+        return "2026-11-15T10:00:00.1234567Z \x1b[31mFAIL: TestX\x1b[0m\r\n2026-11-15T10:00:01.0Z token ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+
+    writer.job_log = job_log  # type: ignore[attr-defined]
+
+    text = await publisher.ci_failure_log(
+        tenant_id=TENANT, target=target, checks=[_fail(1), _fail(None, "no id"), _fail(2, "passed one", "success"), _fail(3, "lint", "timed_out"), _fail(4, "third failure")]
+    )
+
+    assert read == [1, 3]  # at most two, only failures, only ones with an id
+    assert "### ci" in text and "FAIL: TestX" in text and "### lint" in text
+    assert "\x1b" not in text and "2026-11-15T" not in text and "ghp_0123" not in text  # no colours, timestamps or secrets
+    assert clean_log("a" * 9000).endswith("a") and len(clean_log("a" * 9000)) <= 4000
+
+
+async def test_a_log_that_cannot_be_read_is_skipped_not_fatal(factory) -> None:
+    _, _ = await _setup(factory)
+    publisher, writer = _publisher(factory)
+    target = await publisher.target_for(tenant_id=TENANT, repo="acme/shop")
+    assert target is not None
+
+    async def forbidden(*_a: Any, **_k: Any) -> str:
+        raise GitHubAccessError("forbidden")
+
+    writer.job_log = forbidden  # type: ignore[attr-defined]
+
+    assert await publisher.ci_failure_log(tenant_id=TENANT, target=target, checks=[_fail(1)]) == ""
+
+
+async def test_the_second_commit_of_a_repair_is_made_on_the_first_and_an_earlier_one_is_reused(factory) -> None:
+    _, investigation_id = await _setup(factory)
+    publisher, writer = _publisher(factory)
+    target = await publisher.target_for(tenant_id=TENANT, repo="acme/shop")
+    assert target is not None
+    branch = BranchRef(name="log0/fix-aaaaaaaa-bbbbbbbb", base_sha=BASE)
+    calls: list[Any] = []
+    real = writer.commit_files
+
+    async def spy(target_: Any, branch_: str, base: str, files: list[FileWrite], message: str, parent_sha: str | None = None) -> str:
+        calls.append(parent_sha)
+        return await real(target_, branch_, base, files, message)
+
+    writer.commit_files = spy  # type: ignore[method-assign]
+    writer.head = NEW  # the branch already holds the first commit
+
+    again = await publisher.commit(tenant_id=TENANT, target=target, investigation_id=investigation_id, branch=branch, files=[FileWrite("a.py", "x")], message="m", parent_sha=NEW)
+    assert again == NEW and calls == [NEW]  # the branch is at the parent: this is the new commit, built on it
+
+    writer.head = "e" * 40  # a crash after the repair commit: the branch has moved on from the parent
+    reused = await publisher.commit(tenant_id=TENANT, target=target, investigation_id=investigation_id, branch=branch, files=[FileWrite("a.py", "x")], message="m", parent_sha=NEW)
+    assert reused == "e" * 40 and calls == [NEW]  # reused, not committed again

@@ -47,18 +47,24 @@ def after_review(state: InvestigationState) -> Literal["synthesize", "propose_ch
     return "synthesize" if review.action == "refine" else "propose_changes"
 
 
-def after_propose(state: InvestigationState) -> Literal["validate_changes", "finalize"]:
-    """Validate what was proposed; with nothing proposed there is nothing to validate."""
-    return "validate_changes" if state["proposed_changes"] else "finalize"
+def after_propose(state: InvestigationState) -> Literal["validate_changes", "finalize", "abandon_repair"]:
+    """Validate what was proposed; with nothing proposed there is nothing to validate (a repair then gives up)."""
+    if state["proposed_changes"]:
+        return "validate_changes"
+    return "abandon_repair" if state["repairing"] else "finalize"
 
 
 MAX_CHANGE_ATTEMPTS = 2
 
 
-def after_validate(state: InvestigationState) -> Literal["propose_changes", "offer_pr", "finalize"]:
+def after_validate(state: InvestigationState) -> Literal["propose_changes", "offer_pr", "finalize", "apply_repair", "abandon_repair"]:
     """Failed validation goes back to the proposer with the errors, at most ``MAX_CHANGE_ATTEMPTS`` times in all;
     a valid diff goes to ``offer_pr`` (which lets it pass when log0 may not write to the repository);
     the last failed attempt, or nothing to publish, goes on to finalize."""
+    if state["repairing"]:  # the pull request is already approved and its branch exists: a repair never asks again
+        if state["validation_errors"]:
+            return "propose_changes" if state["change_attempts"] < MAX_CHANGE_ATTEMPTS else "abandon_repair"
+        return "apply_repair" if state["diff"] else "abandon_repair"
     if state["validation_errors"]:
         return "propose_changes" if state["change_attempts"] < MAX_CHANGE_ATTEMPTS else "finalize"
     return "offer_pr" if state["diff"] else "finalize"
@@ -93,3 +99,18 @@ def fan_out(state: InvestigationState) -> list[Send]:
     if triage is None:
         return []
     return [Send(BRANCH_NODES[branch], state) for branch in triage.gather]
+
+
+MAX_REPAIR_ATTEMPTS = 1
+
+
+def after_run_tests(state: InvestigationState) -> Literal["prepare_repair", "open_draft_pr"]:
+    """The repository's own checks failed: try to fix the change once. Anything else (passed, none, timeout, a
+    sandbox result, a repair already made) goes on to open the pull request with what the checks said."""
+    run = state["ci_run"]
+    failed = run is not None and run.outcome == "failed" and run.source == "repository"
+    return "prepare_repair" if failed and state["repair_attempts"] < MAX_REPAIR_ATTEMPTS else "open_draft_pr"
+
+
+def after_prepare_repair(state: InvestigationState) -> Literal["propose_changes", "open_draft_pr"]:
+    return "propose_changes" if state["repairing"] else "open_draft_pr"

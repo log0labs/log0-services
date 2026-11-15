@@ -125,6 +125,7 @@ class GraphExecutor:
         wait = CiWait(self._settings.ci_wait_seconds, self._settings.ci_poll_seconds, self._settings.ci_start_grace_seconds)
         return {
             "ci_wait": wait,
+            "ci_repair_attempts": self._settings.ci_repair_attempts,
             "pr_only_on_green": effective_only_on_green(self._settings.pr_only_on_green, rules),
             "sandbox_tests": self._sandbox is not None and effective_sandbox_tests(True, rules),
             "pr_limits": effective_limits(server_limits(self._settings), rules),

@@ -121,6 +121,7 @@ Design: `log0-refs/ai-service/V2-PLAN.md`, `v2-graph-diagram.md`.
 | `PR_WRITES_ENABLED` | Global kill switch, off by default |
 | `PR_WRITES_DISABLED_TENANTS` | JSON list of workspace ids switched off by the operator |
 | `PR_ONLY_ON_GREEN` | Do not open a pull request when the checks failed or timed out |
+| `CI_REPAIR_ATTEMPTS` | How many times log0 may correct its change after the repository's checks fail (1; 0 switches it off). Needs the App permission `actions: read` |
 | `CI_WAIT_SECONDS`, `CI_POLL_SECONDS`, `CI_START_GRACE_SECONDS` | How long to wait for the repository's checks (600, 15, 60) |
 | (GitHub App events) | Subscribe the App to **Pull request** so merges and closes of log0 pull requests are recorded (`pr.merged`, `pr.closed`, `pr.open` events). `installation` events need no subscription |
 | `SANDBOX_ENABLED`, `SANDBOX_DOCKER_HOST`, `SANDBOX_RUNTIME` | Optional test sandbox for repositories without CI (off by default; a workspace must also opt in). Use a dedicated runner daemon, never the host Docker socket; `SANDBOX_RUNTIME=runsc` for gVisor. Build with `--build-arg INSTALL_DOCKER_CLI=true`. Notebook: `coding-notepads/v2/step-9/9.4-isolated-test-runner.md` |

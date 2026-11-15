@@ -126,6 +126,14 @@ class InvestigationState(TypedDict):
     branch: BranchRef | None
     commit_sha: str | None
     ci_run: CiRun | None
+    # repair after the repository's checks failed (9.5): the failing output, the change that is committed meanwhile
+    repair_attempts: int
+    repairing: bool
+    ci_failure: str | None
+    previous_commit: str | None
+    committed_diff: str | None
+    committed_files: list[FileDiff]
+    committed_changes: list[CodeChange]
     pull_request: PullRequestRef | None
     
     # budget and bookkeeping
@@ -172,6 +180,13 @@ def new_state(
         branch=None,
         commit_sha=None,
         ci_run=None,
+        repair_attempts=0,
+        repairing=False,
+        ci_failure=None,
+        previous_commit=None,
+        committed_diff=None,
+        committed_files=[],
+        committed_changes=[],
         pull_request=None,
         tool_calls=0,
         gaps=[],
@@ -208,6 +223,7 @@ class InvestigationContext:
     pr_limits: PrLimits = field(default_factory=PrLimits)  # what a pull request may be (size, files, rate)
     sandbox: Sandbox | None = None  # runs a repository's tests in isolation; None: this server has no sandbox
     sandbox_tests: bool = False  # this workspace opted in (and the server has a sandbox)
+    ci_repair_attempts: int = 1  # how many times log0 may fix its change after the checks fail (0: never)
     pr_only_on_green: bool = False  # do not open a pull request for a commit whose checks failed
     publisher: Publisher | None = None  # opens draft pull requests; None: this server never writes to a repository
     budget: Budget = field(default_factory=Budget)

@@ -36,6 +36,8 @@ class FakePublisher:
         self.checks: list[list[CheckResult]] = [[CheckResult(name="ci / test", status="completed", conclusion="success")]]
         self.recorded: list[CiRun] = []
         self.recent = PrActivity()
+        self.commits = 0
+        self.log = "FAIL: TestPayment\nexpected 3, got 4"
 
     def _record(self, name: str, **kwargs: Any) -> None:
         self.calls.append((name, kwargs))
@@ -56,14 +58,19 @@ class FakePublisher:
         self._record("create_branch", approved_by=approved_by, base_sha=base_sha)
         return BranchRef(name=branch_name(incident_id, investigation_id), base_sha=base_sha)
 
-    async def commit(self, *, tenant_id: UUID, target: PublishTarget, investigation_id: UUID, branch: BranchRef, files: list[PublishFile], message: str) -> str:
-        self._record("commit", files=files, message=message, branch=branch)
-        return COMMIT_SHA
+    async def commit(self, *, tenant_id: UUID, target: PublishTarget, investigation_id: UUID, branch: BranchRef, files: list[PublishFile], message: str, parent_sha: str | None = None) -> str:
+        self._record("commit", files=files, message=message, branch=branch, parent_sha=parent_sha)
+        self.commits += 1
+        return COMMIT_SHA if self.commits == 1 else chr(ord("c") + self.commits - 1) * 40
 
     async def open_pull_request(self, *, tenant_id: UUID, target: PublishTarget, investigation_id: UUID, branch: BranchRef, commit_sha: str, title: str, body: str, labels: list[str]) -> PullRequestRef:
         self._record("open_pull_request", title=title, body=body, commit_sha=commit_sha, labels=labels)
         return PullRequestRef(number=12, url="https://github.com/acme/shop/pull/12", branch=branch.name, commit_sha=commit_sha)
 
+
+    async def ci_failure_log(self, *, tenant_id: UUID, target: PublishTarget, checks: list[CheckResult]) -> str:
+        self.calls.append(("ci_failure_log", {"checks": checks}))
+        return self.log
 
     async def activity(self, *, tenant_id: UUID, target: PublishTarget) -> PrActivity:
         self.calls.append(("activity", {}))

@@ -1,6 +1,7 @@
 """From an approved diff to a draft pull request: the V2 half of the graph.
 
     validate_changes -> offer_pr -> approve_pr -> create_branch -> apply_patch -> run_tests -> open_draft_pr -> finalize
+(a failed run of the repository's checks may loop once through prepare_repair, propose_changes, validate_changes and apply_repair)
 
 ``offer_pr`` decides, once, whether a pull request can be offered (log0 may write to the repository)
 and stores the offer in the state. ``approve_pr`` is a human gate like ``human_review``: it parks the
@@ -297,6 +298,84 @@ async def run_tests(state: InvestigationState, runtime: Runtime[InvestigationCon
     return {"ci_run": run, **({"gaps": extra_gaps} if extra_gaps else {})}
 
 
+def _restore_committed(state: InvestigationState) -> dict[str, Any]:
+    """Put back the change that is already committed (a repair gave up or was refused): it is what the pull request holds."""
+    return {
+        "repairing": False,
+        "ci_failure": None,
+        "diff": state["committed_diff"],
+        "diff_files": state["committed_files"],
+        "proposed_changes": state["committed_changes"],
+        "validation_errors": [],
+    }
+
+
+async def prepare_repair(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    """The repository's checks failed on the commit: read what they printed and let the proposer try once more.
+
+    Nothing is committed here. The change that is on the branch is remembered so that a repair that gives up leaves
+    exactly that in place. Without a readable log (or with repairs switched off) log0 does not guess.
+    """
+    ctx = runtime.context
+    attempts = state["repair_attempts"] + 1
+    if ctx.publisher is None or state["ci_run"] is None or state["commit_sha"] is None or ctx.ci_repair_attempts < attempts:
+        return {"repair_attempts": attempts}
+    try:
+        target = await _target(state, ctx)
+        log = await ctx.publisher.ci_failure_log(tenant_id=ctx.tenant_id, target=target, checks=state["ci_run"].checks)
+    except PublishError:
+        log = ""
+    if not log:
+        return {"repair_attempts": attempts, "gaps": ["The checks failed, but log0 could not read their output, so the change was not corrected"]}
+    return {
+        "repair_attempts": attempts,
+        "repairing": True,
+        "ci_failure": log,
+        "change_attempts": 0,
+        "validation_errors": [],
+        "previous_commit": state["commit_sha"],
+        "committed_diff": state["diff"],
+        "committed_files": state["diff_files"],
+        "committed_changes": state["proposed_changes"],
+    }
+
+
+async def abandon_repair(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    return {**_restore_committed(state), "gaps": ["log0 could not produce a corrected change that validates, so the pull request keeps the first change"]}
+
+
+async def apply_repair(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    """Commit the corrected change on top of the first commit, then wait for the checks again.
+
+    A repair may never widen what the engineer approved: it can only touch files of the approved change. It must also
+    be a different change from the one that failed. Anything else leaves the first change in place.
+    """
+    ctx = runtime.context
+    cause, branch, previous = state["root_cause"], state["branch"], state["previous_commit"]
+    if not state["repairing"] or cause is None or branch is None or previous is None or ctx.publisher is None or ctx.code is None:
+        return {}
+    approved = {f.file_path for f in state["committed_files"]}
+    touched = {f.file_path for f in state["diff_files"]}
+    if not touched <= approved:
+        return {**_restore_committed(state), "gaps": ["The corrected change touches files the engineer did not approve, so it was not committed"]}
+    if state["diff"] == state["committed_diff"]:
+        return {**_restore_committed(state), "gaps": ["The corrected change is the same as the one that failed, so it was not committed again"]}
+    try:
+        files = await _files_to_commit(state, ctx)
+        sha = await ctx.publisher.commit(
+            tenant_id=ctx.tenant_id,
+            target=await _target(state, ctx),
+            investigation_id=UUID(state["investigation_id"]),
+            branch=branch,
+            files=files,
+            message=commit_message(cause, UUID(state["investigation_id"])),
+            parent_sha=previous,
+        )
+    except PublishError as exc:
+        return {**_restore_committed(state), **_failed(exc)}
+    return {"commit_sha": sha, "ci_run": None, "repairing": False, "ci_failure": None, "tool_calls": 2}
+
+
 async def open_draft_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     ctx = runtime.context
     branch, sha, cause = state["branch"], state["commit_sha"], state["root_cause"]
@@ -324,6 +403,7 @@ async def open_draft_pr(state: InvestigationState, runtime: Runtime[Investigatio
                 changes=state["proposed_changes"],
                 files=state["diff_files"],
                 ci_run=ci,
+                repaired=state["repair_attempts"] > 0 and state["commit_sha"] != state["previous_commit"],
             ),
             labels=[BASE_LABEL, *([outcome_label] if outcome_label else [])],
         )

@@ -250,6 +250,7 @@ class CheckResult(BaseModel):
     """One CI check on the commit, as GitHub reports it."""
 
     name: str
+    id: int | None = None  # GitHub's id of the check run (for GitHub Actions: the job whose log can be read)
     status: Literal["queued", "in_progress", "completed"]
     conclusion: str | None = None  # success, failure, neutral, skipped, cancelled, timed_out, ...
     url: str | None = None

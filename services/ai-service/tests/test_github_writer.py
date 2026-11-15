@@ -257,3 +257,71 @@ async def test_a_network_error_is_unavailable_and_the_token_is_not_logged(writer
     with pytest.raises(GitHubUnavailableError):
         await w.ensure_branch(TARGET, BRANCH, BASE, INVESTIGATION)
     assert "ghs_write_token" not in caplog.text
+
+
+# ------------------------------------------------------------ repair: parents and job logs
+
+
+@respx.mock
+async def test_a_repair_commit_keeps_the_original_tree_but_builds_on_the_first_commit(writer) -> None:
+    w, _ = writer
+    respx.get(f"{REPO}/git/commits/{BASE}").mock(return_value=httpx.Response(200, json={"tree": {"sha": "tree0"}}))
+    tree = respx.post(f"{REPO}/git/trees").mock(return_value=httpx.Response(201, json={"sha": "tree1"}))
+    commit = respx.post(f"{REPO}/git/commits").mock(return_value=httpx.Response(201, json={"sha": "d" * 40}))
+    respx.patch(f"{REPO}/git/refs/heads/{BRANCH}").mock(return_value=httpx.Response(200, json={}))
+
+    await w.commit_files(TARGET, BRANCH, BASE, [FileWrite("a.py", "x")], "second try", parent_sha=NEW)
+
+    assert json.loads(tree.calls.last.request.content)["base_tree"] == "tree0"  # replaces the first change, does not add to it
+    assert json.loads(commit.calls.last.request.content)["parents"] == [NEW]
+
+
+JOB = f"{REPO}/actions/jobs/77/logs"
+
+
+@respx.mock
+async def test_a_job_log_is_downloaded_from_the_signed_link_without_our_credentials(writer) -> None:
+    w, _ = writer
+    respx.get(JOB).mock(return_value=httpx.Response(302, headers={"location": "https://logs.example.com/signed?sig=abc"}))
+    download = respx.get("https://logs.example.com/signed").mock(return_value=httpx.Response(200, text="line1\nFAIL: TestX\n"))
+
+    text = await w.job_log(TARGET, 77)
+
+    assert text == "line1\nFAIL: TestX\n"
+    assert "authorization" not in download.calls.last.request.headers  # the signed link needs none, and must not get ours
+
+
+@respx.mock
+async def test_only_the_end_of_a_long_log_is_kept(writer) -> None:
+    w, _ = writer
+    respx.get(JOB).mock(return_value=httpx.Response(200, text="a" * 50000 + "THE END"))
+
+    assert (await w.job_log(TARGET, 77, max_chars=100)).endswith("THE END") and len(await w.job_log(TARGET, 77, max_chars=100)) == 100
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [404, 410])
+async def test_a_log_that_is_gone_is_empty_not_an_error(writer, status: int) -> None:
+    w, _ = writer
+    respx.get(JOB).mock(return_value=httpx.Response(status))
+
+    assert await w.job_log(TARGET, 77) == ""
+
+
+@respx.mock
+@pytest.mark.parametrize("location", ["http://logs.example.com/x", "https://127.0.0.1/x", "https://localhost/x", "file:///etc/passwd", ""])
+async def test_a_redirect_to_somewhere_we_should_not_fetch_is_refused(writer, location: str) -> None:
+    w, _ = writer
+    respx.get(JOB).mock(return_value=httpx.Response(302, headers={"location": location} if location else {}))
+
+    with pytest.raises(GitHubUnavailableError):
+        await w.job_log(TARGET, 77)
+
+
+@respx.mock
+async def test_a_missing_actions_permission_is_an_access_error(writer) -> None:
+    w, _ = writer
+    respx.get(JOB).mock(return_value=httpx.Response(403))
+
+    with pytest.raises(GitHubAccessError):
+        await w.job_log(TARGET, 77)

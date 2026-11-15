@@ -14,6 +14,7 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -113,8 +114,13 @@ class GitHubWriter:
         base_sha: str,
         files: list[FileWrite],
         message: str,
+        parent_sha: str | None = None,
     ) -> str:
-        """One commit on top of ``base_sha`` holding ``files``; moves ``branch`` to it. Returns the commit sha."""
+        """One commit holding ``files`` on top of ``base_sha``'s tree, whose parent is ``parent_sha`` (default ``base_sha``).
+
+        A repair builds on the first commit (the parent) but keeps the original tree as its starting point, so it
+        replaces the first change instead of adding to it. Moves ``branch`` to the new commit (never forced).
+        """
         if not files:
             raise WriteRejectedError("There is nothing to commit")
         self._check_branch_name(target, branch)
@@ -122,7 +128,7 @@ class GitHubWriter:
             base_commit = (await call("GET", f"{self._repo(target)}/git/commits/{base_sha}")).json()
             entries = [_tree_entry(f) for f in files]
             tree = (await call("POST", f"{self._repo(target)}/git/trees", json={"base_tree": base_commit["tree"]["sha"], "tree": entries}, expected=(201,))).json()
-            commit = (await call("POST", f"{self._repo(target)}/git/commits", json={"message": message, "tree": tree["sha"], "parents": [base_sha]}, expected=(201,))).json()
+            commit = (await call("POST", f"{self._repo(target)}/git/commits", json={"message": message, "tree": tree["sha"], "parents": [parent_sha or base_sha]}, expected=(201,))).json()
             await call("PATCH", f"{self._repo(target)}/git/refs/heads/{branch}", json={"sha": commit["sha"], "force": False})
             return str(commit["sha"])
 
@@ -134,6 +140,7 @@ class GitHubWriter:
             return [
                 CheckResult(
                     name=str(row["name"])[:120],
+                    id=int(row["id"]) if isinstance(row.get("id"), int) else None,
                     status=row["status"] if row["status"] in ("queued", "in_progress", "completed") else "in_progress",
                     conclusion=row.get("conclusion"),
                     url=row.get("html_url"),
@@ -142,6 +149,24 @@ class GitHubWriter:
             ]
         except (KeyError, TypeError, ValueError):
             raise GitHubUnavailableError from None
+
+    async def job_log(self, target: WriteTarget, job_id: int, *, max_chars: int = 20000) -> str:
+        """The end of a GitHub Actions job's log (needs the App's ``actions: read``). Empty text when there is none."""
+        async with self._session(target) as call:
+            response = await call("GET", f"{self._repo(target)}/actions/jobs/{int(job_id)}/logs", expected=(200, 302, 404, 410))
+        if response.status_code in (404, 410):
+            return ""  # no log (expired, or the job never ran)
+        if response.status_code == 200:
+            return response.text[-max_chars:]
+        location = response.headers.get("location", "")
+        if not _is_public_https(location):
+            raise GitHubUnavailableError
+        try:  # a signed download link: no credentials are sent to it
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                download = await client.get(location)
+        except httpx.HTTPError:
+            raise GitHubUnavailableError from None
+        return download.text[-max_chars:] if download.status_code == 200 else ""
 
     async def head_of(self, target: WriteTarget, branch: str) -> str | None:
         """The commit a branch points at, or ``None`` when it does not exist."""
@@ -205,6 +230,13 @@ class GitHubWriter:
 
     def _session(self, target: WriteTarget) -> "_Session":
         return _Session(self, target)
+
+
+def _is_public_https(url: str) -> bool:
+    """A redirect target we may fetch: https and a host name (not an address literal, not localhost)."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    return parsed.scheme == "https" and bool(host) and host != "localhost" and not host.replace(".", "").replace(":", "").isdigit()
 
 
 def _tree_entry(file: FileWrite) -> dict[str, Any]:

@@ -121,6 +121,11 @@ def _diff_generated(delta: dict[str, Any]) -> EventPair:
 
 def _publish_events(node: str, delta: dict[str, Any]) -> list[EventPair]:
     """What the three write nodes did, as events: names and links only, never file content or tokens."""
+    if node == "prepare_repair" and delta.get("ci_failure"):
+        lines = delta["ci_failure"].count("\n") + 1
+        return [("repair.started", {"attempt": delta.get("repair_attempts"), "logLines": lines})]
+    if node == "apply_repair" and delta.get("commit_sha"):
+        return [("commit.created", {"sha": delta["commit_sha"], "repair": True})]
     if node == "create_branch" and delta.get("branch") is not None:
         branch = delta["branch"]
         return [("branch.created", {"name": branch.name, "baseSha": branch.base_sha})]
