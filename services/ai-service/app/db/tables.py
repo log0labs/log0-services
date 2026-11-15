@@ -3,20 +3,34 @@
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Identity,
+    Index,
     Integer,
     MetaData,
     Numeric,
     String,
     Table,
     Text,
+    UniqueConstraint,
     false,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+
+from app.schemas.remediation import (
+    ACTIVE_STATUSES,
+    DEPLOYMENT_STATUSES,
+    GATES,
+    KINDS,
+    RELEASE_SOURCES,
+    STATUSES,
+    VERDICTS,
+)
 
 metadata = MetaData(schema="ai")
 
@@ -235,4 +249,140 @@ pr_policy = Table(
     Column("max_per_tenant_per_hour", Integer(), nullable=True),
     Column("updated_by", PGUUID(as_uuid=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+)
+
+
+def _in_list(column: str, values: tuple[str, ...] | frozenset[str]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in sorted(values))})"
+
+
+deploy_target = Table(
+    "deploy_target",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("repository_id", PGUUID(as_uuid=True), ForeignKey("ai.repository_connection.id", ondelete="CASCADE"), nullable=False),
+    Column("workflow_file", String(255), nullable=False),
+    Column("environments", JSONB(), nullable=False, server_default=text("'[]'::jsonb")),
+    Column("updated_by", PGUUID(as_uuid=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    UniqueConstraint("repository_id", name="uq_deploy_target_repository"),
+)
+
+remediation = Table(
+    "remediation",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("pull_request_id", PGUUID(as_uuid=True), ForeignKey("ai.pull_request.id", ondelete="CASCADE"), nullable=False),
+    Column("investigation_id", PGUUID(as_uuid=True), ForeignKey("ai.investigation.id", ondelete="CASCADE"), nullable=False),
+    Column("repository_id", PGUUID(as_uuid=True), ForeignKey("ai.repository_connection.id", ondelete="CASCADE"), nullable=False),
+    Column("environment", String(64), nullable=False),
+    Column("merge_sha", String(64), nullable=False),
+    Column("rollback_target", String(64), nullable=True),
+    Column("status", String(32), nullable=False, server_default="OFFERED"),
+    Column("baseline", JSONB(), nullable=True),
+    Column("policy", JSONB(), nullable=True),
+    Column("outcome", JSONB(), nullable=True),
+    Column("started_by", PGUUID(as_uuid=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    UniqueConstraint("pull_request_id", "environment", name="uq_remediation_pull_request_environment"),
+    CheckConstraint(_in_list("status", STATUSES), name="ck_remediation_status"),
+    Index(
+        "uq_remediation_active_environment",
+        "repository_id",
+        "environment",
+        unique=True,
+        postgresql_where=text(_in_list("status", ACTIVE_STATUSES)),
+    ),
+    Index("ix_remediation_tenant", "tenant_id", "created_at"),
+)
+
+deployment = Table(
+    "deployment",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("remediation_id", PGUUID(as_uuid=True), ForeignKey("ai.remediation.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", String(12), nullable=False),
+    Column("environment", String(64), nullable=False),
+    Column("sha", String(64), nullable=False),
+    Column("correlation_id", PGUUID(as_uuid=True), nullable=False),
+    Column("run_id", BigInteger(), nullable=True),
+    Column("run_url", Text(), nullable=True),
+    Column("status", String(16), nullable=False, server_default="dispatched"),
+    Column("dispatched_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    UniqueConstraint("correlation_id", name="uq_deployment_correlation"),
+    UniqueConstraint("remediation_id", "kind", name="uq_deployment_remediation_kind"),
+    CheckConstraint(_in_list("kind", KINDS), name="ck_deployment_kind"),
+    CheckConstraint(_in_list("status", DEPLOYMENT_STATUSES), name="ck_deployment_status"),
+)
+
+verification = Table(
+    "verification",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("remediation_id", PGUUID(as_uuid=True), ForeignKey("ai.remediation.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", String(12), nullable=False),
+    Column("verdict", String(16), nullable=False),
+    Column("numbers", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
+    Column("window_start", DateTime(timezone=True), nullable=False),
+    Column("window_end", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    CheckConstraint(_in_list("kind", KINDS), name="ck_verification_kind"),
+    CheckConstraint(_in_list("verdict", VERDICTS), name="ck_verification_verdict"),
+    Index("ix_verification_remediation", "remediation_id", "created_at"),
+)
+
+approval = Table(
+    "approval",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("remediation_id", PGUUID(as_uuid=True), ForeignKey("ai.remediation.id", ondelete="CASCADE"), nullable=False),
+    Column("gate", String(12), nullable=False),
+    Column("decision", String(12), nullable=False),
+    Column("user_id", PGUUID(as_uuid=True), nullable=False),
+    Column("role", String(16), nullable=False),
+    Column("environment", String(64), nullable=False),
+    Column("sha", String(64), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    CheckConstraint(_in_list("gate", GATES), name="ck_approval_gate"),
+    Index("ix_approval_remediation", "remediation_id", "created_at"),
+)
+
+release_ledger = Table(
+    "release_ledger",
+    metadata,
+    Column("id", BigInteger(), Identity(), primary_key=True),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("repository_id", PGUUID(as_uuid=True), ForeignKey("ai.repository_connection.id", ondelete="CASCADE"), nullable=False),
+    Column("environment", String(64), nullable=False),
+    Column("sha", String(64), nullable=False),
+    Column("source", String(12), nullable=False),
+    Column("remediation_id", PGUUID(as_uuid=True), ForeignKey("ai.remediation.id", ondelete="SET NULL"), nullable=True),
+    Column("recorded_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    CheckConstraint(_in_list("source", RELEASE_SOURCES), name="ck_release_ledger_source"),
+    Index("ix_release_ledger_environment", "repository_id", "environment", "recorded_at"),
+)
+
+deploy_audit = Table(
+    "deploy_audit",
+    metadata,
+    Column("id", BigInteger(), Identity(), primary_key=True),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("remediation_id", PGUUID(as_uuid=True), nullable=True),
+    Column("actor_id", PGUUID(as_uuid=True), nullable=True),
+    Column("action", String(48), nullable=False),
+    Column("environment", String(64), nullable=False, server_default=""),
+    Column("sha", String(64), nullable=False, server_default=""),
+    Column("result", String(16), nullable=False),
+    Column("detail", Text(), nullable=False, server_default=""),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Index("ix_deploy_audit_tenant", "tenant_id", "created_at"),
 )
