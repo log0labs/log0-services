@@ -16,7 +16,7 @@ from langgraph.types import Command
 
 from app.config import Settings
 from app.deploy.graph import GRAPH_VERSION
-from app.deploy.nodes import GATE, WAIT_GATE
+from app.deploy.nodes import GATE, VERDICT_GATE, WAIT_GATE
 from app.deploy.provider import DeployProvider
 from app.deploy.state import (
     CheckReader,
@@ -121,6 +121,10 @@ class RemediationExecutor:
             if decision is None:
                 return None
             return {"action": decision.decision, "decided_by": str(decision.user_id), "role": decision.role}
+        if gate == VERDICT_GATE:
+            async with context.sessions() as session:
+                decision = await approvals.nth(session, tenant_id=context.tenant_id, remediation_id=row.id, gate="decision", index=int(request.get("round", 0)))
+            return {"action": decision.decision, "decided_by": str(decision.user_id), "role": decision.role} if decision else None
         if gate == WAIT_GATE:
             if row.wake_at is not None and row.wake_at > self._now():
                 return None
@@ -137,6 +141,11 @@ class RemediationExecutor:
                     session, tenant_id=context.tenant_id, remediation_id=row.id, from_status="PREFLIGHT", to="AWAITING_DEPLOY_APPROVAL", wake_at=None
                 )
                 announce = won
+            elif gate == VERDICT_GATE:
+                won = await remediation_store.transition(
+                    session, tenant_id=context.tenant_id, remediation_id=row.id, from_status="VERIFYING", to="AWAITING_DECISION", wake_at=None
+                )
+                announce = won
             elif gate == WAIT_GATE:
                 wake_at = datetime.fromisoformat(str(request["wakeAt"])).astimezone(UTC)
                 await remediation_store.set_fields(session, tenant_id=context.tenant_id, remediation_id=row.id, wake_at=wake_at)
@@ -147,6 +156,6 @@ class RemediationExecutor:
             await event_store.append_event_safely(
                 context.sessions,
                 investigation_id=row.investigation_id,
-                type="remediation.approval_requested",
+                type="remediation.approval_requested" if gate == GATE else "remediation.decision_requested",
                 payload={"remediationId": str(row.id), **{k: v for k, v in request.items() if k != "gate"}},
             )

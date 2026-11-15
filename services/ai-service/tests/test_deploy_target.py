@@ -82,6 +82,14 @@ def test_environments_need_unique_names_a_sensible_order_and_a_sensible_count() 
         DeployTargetConfig.model_validate(_config(environments=[{"name": f"env-{i}"} for i in range(6)]))
 
 
+def test_the_soak_must_outlast_the_grace_period() -> None:
+    with pytest.raises(ValidationError, match="soak"):
+        EnvironmentRule.model_validate({"name": "staging", "soakSeconds": 120})  # the default grace is 120 seconds: nothing left to judge
+    with pytest.raises(ValidationError, match="soak"):
+        EnvironmentRule.model_validate({"name": "staging", "soakSeconds": 900, "thresholds": {"graceSeconds": 900}})
+    assert EnvironmentRule.model_validate({"name": "staging", "soakSeconds": 180}).soak_seconds == 180
+
+
 @pytest.mark.parametrize(
     "field",
     [{"soakSeconds": 5}, {"soakSeconds": 100_000}, {"deployTimeoutSeconds": 0}, {"thresholds": {"improvementMargin": 1}}, {"thresholds": {"improvementMargin": 0}}, {"thresholds": {"minTraffic": 0}}],

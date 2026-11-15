@@ -1,8 +1,10 @@
 """Response shapes of ``/api/v1/remediations``."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
+
+from pydantic import ConfigDict
 
 from app.schemas.base import CamelModel
 
@@ -14,6 +16,19 @@ class DeploymentOut(CamelModel):
     run_url: str | None = None
     dispatched_at: datetime
     finished_at: datetime | None = None
+
+
+class VerificationOut(CamelModel):
+    verdict: str
+    numbers: dict[str, Any]
+    window_end: datetime
+    created_at: datetime
+
+
+class DecisionIn(CamelModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["keep", "extend"]
 
 
 class RemediationOut(CamelModel):
@@ -33,3 +48,4 @@ class RemediationOut(CamelModel):
     updated_at: datetime
     finished_at: datetime | None = None
     deployment: DeploymentOut | None = None
+    verification: VerificationOut | None = None  # the latest verdict, with the numbers it compared

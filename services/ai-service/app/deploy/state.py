@@ -35,6 +35,13 @@ class RemediationState(TypedDict, total=False):
     rule: dict[str, Any]  # the environment's rule when preflight passed (approver, soak, timeouts)
     rollback_target: str | None
     baseline: dict[str, Any]
+    fingerprint: str  # of the investigated error, kept from the baseline so the soak need not ask the incident service again
+    service: str
+    deployed_at: str  # when the pipeline finished: the soak counts from here
+    soak_ends_at: str | None
+    soak_extensions: int
+    judgement: dict[str, Any] | None  # the verdict once decided: verdict, reasons, numbers, window
+    decision: str | None
     approval: dict[str, Any]
     wake_at: str | None  # set while the run waits for a timer; the executor stores it for the sweeper
     outcome: Outcome | None

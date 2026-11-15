@@ -261,3 +261,110 @@ def test_an_environment_taken_out_of_the_target_cannot_be_approved(env: tuple[En
     response = e.client.post(f"{BASE}/{s.offers['staging']}/deploy/approve", headers=e.headers())
 
     assert response.status_code == 409 and _status(s.offers["staging"]) == "AWAITING_DEPLOY_APPROVAL"
+
+
+# ------------------------------------------------------------------- the verdict decision
+
+
+def _undecided(remediation_id: UUID) -> None:
+    _sql("UPDATE ai.remediation SET status = 'AWAITING_DECISION' WHERE id = :i", i=remediation_id)
+
+
+def _decision(e: Env, remediation_id: UUID, action: str, **headers: Any):
+    return e.client.post(f"{BASE}/{remediation_id}/decision", json={"action": action}, headers=e.headers(**headers))
+
+
+def test_a_viewer_cannot_decide_and_another_workspace_gets_404(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _undecided(s.offers["staging"])
+
+    assert _decision(e, s.offers["staging"], "keep", role="VIEWER").status_code == 403
+    assert _decision(e, s.offers["staging"], "keep", tenant=TENANT_B).status_code == 404
+    assert _status(s.offers["staging"]) == "AWAITING_DECISION" and runner.scheduled == []
+
+
+def test_the_decision_needs_the_role_the_environment_asks_for(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, _, s = env
+    _undecided(s.offers["staging"])
+    _undecided(s.offers["production"])
+
+    assert _decision(e, s.offers["production"], "keep", role="ENGINEER").status_code == 403
+    assert _decision(e, s.offers["staging"], "keep", role="ENGINEER").status_code == 202
+    assert _decision(e, s.offers["production"], "keep", role="ADMIN").status_code == 202
+
+
+def test_keeping_a_deploy_ends_it_and_is_recorded(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _undecided(s.offers["staging"])
+
+    response = _decision(e, s.offers["staging"], "keep")
+
+    assert response.status_code == 202 and response.json()["status"] == "VERIFIED"
+    assert [tuple(r) for r in _sql("SELECT gate, decision, role FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"])] == [("decision", "keep", "ADMIN")]
+    assert ("deploy.verdict_keep",) in [tuple(r) for r in _sql("SELECT action FROM ai.deploy_audit WHERE remediation_id = :i", i=s.offers["staging"])]
+    assert len(runner.scheduled) == 1
+
+
+def test_extending_the_soak_puts_the_run_back_to_watching(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _undecided(s.offers["staging"])
+
+    response = _decision(e, s.offers["staging"], "extend")
+
+    assert response.status_code == 202 and response.json()["status"] == "VERIFYING" and response.json()["finishedAt"] is None
+    assert len(runner.scheduled) == 1
+
+
+def test_the_soak_cannot_be_extended_beyond_the_cap_but_can_still_be_kept(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    for _ in range(2):
+        _undecided(s.offers["staging"])
+        assert _decision(e, s.offers["staging"], "extend").status_code == 202
+    _undecided(s.offers["staging"])
+
+    refused = _decision(e, s.offers["staging"], "extend")
+    kept = _decision(e, s.offers["staging"], "keep")
+
+    assert refused.status_code == 409 and "extended" in refused.json()["detail"]
+    assert kept.status_code == 202 and _status(s.offers["staging"]) == "VERIFIED"
+    assert len(runner.scheduled) == 3
+
+
+@pytest.mark.parametrize("status", ["OFFERED", "AWAITING_DEPLOY_APPROVAL", "DEPLOYING", "VERIFYING", "VERIFIED", "FAILED"])
+def test_a_decision_is_only_taken_when_one_is_asked_for(env: tuple[Env, FakeRunner, Seed], status: str) -> None:
+    e, runner, s = env
+    _sql("UPDATE ai.remediation SET status = :s WHERE id = :i", s=status, i=s.offers["staging"])
+
+    assert _decision(e, s.offers["staging"], "keep").status_code == 409
+    assert runner.scheduled == [] and _status(s.offers["staging"]) == status
+    assert _sql("SELECT count(*) FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"]) == [(0,)]
+
+
+def test_a_second_decision_is_a_conflict(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, _, s = env
+    _undecided(s.offers["staging"])
+
+    assert (_decision(e, s.offers["staging"], "keep").status_code, _decision(e, s.offers["staging"], "keep").status_code) == (202, 409)
+    assert _sql("SELECT count(*) FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"]) == [(1,)]
+
+
+@pytest.mark.parametrize("body", [{"action": "rollback"}, {"action": ""}, {}, {"action": "keep", "extra": 1}])
+def test_only_keep_and_extend_are_accepted(env: tuple[Env, FakeRunner, Seed], body: dict) -> None:
+    e, _, s = env
+    _undecided(s.offers["staging"])
+
+    assert e.client.post(f"{BASE}/{s.offers['staging']}/decision", json=body, headers=e.headers()).status_code == 422
+    assert _status(s.offers["staging"]) == "AWAITING_DECISION"
+
+
+def test_the_latest_verdict_is_part_of_the_remediation(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, _, s = env
+    _sql(
+        "INSERT INTO ai.verification (tenant_id, remediation_id, kind, verdict, numbers, window_start, window_end) VALUES (:t, :r, 'deploy', 'inconclusive', CAST(:n AS jsonb), now(), now())",
+        t=TENANT_A, r=s.offers["staging"], n='{"errorsPerMinute": 4.0, "reasons": ["unchanged"]}',
+    )
+
+    body = e.client.get(f"{BASE}/{s.offers['staging']}", headers=e.headers()).json()
+
+    assert body["verification"]["verdict"] == "inconclusive" and body["verification"]["numbers"]["reasons"] == ["unchanged"]
+    assert e.client.get(f"{BASE}/{s.offers['production']}", headers=e.headers()).json()["verification"] is None

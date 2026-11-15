@@ -17,14 +17,17 @@ from langgraph.graph.state import CompiledStateGraph
 from app.deploy.nodes import (
     approve_deploy,
     capture_baseline,
+    decide_verdict,
     park,
     preflight,
+    soak,
     trigger_deploy,
+    verify,
     wait_deploy,
 )
 from app.deploy.state import RemediationContext, RemediationState
 
-GRAPH_VERSION = "v3-deploy-m13"
+GRAPH_VERSION = "v3-deploy-m14"
 Checkpointer = BaseCheckpointSaver | None
 
 
@@ -45,7 +48,28 @@ def after_trigger(state: RemediationState) -> str:
 
 
 def after_wait(state: RemediationState) -> str:
+    if state.get("wake_at"):
+        return "park"
+    return "soak" if state.get("outcome") == "deployed" else END
+
+
+def after_soak(state: RemediationState) -> str:
+    if state.get("judgement"):
+        return "verify"
     return "park" if state.get("wake_at") else END
+
+
+def after_park(state: RemediationState) -> str:
+    """A timer ran out: back to whatever was waiting. Once the deploy succeeded (``outcome == "deployed"``) that is the soak."""
+    return "soak" if state.get("outcome") == "deployed" else "wait_deploy"
+
+
+def after_verify(state: RemediationState) -> str:
+    return END if state.get("outcome") == "verified" else "decide_verdict"
+
+
+def after_decision(state: RemediationState) -> str:
+    return "soak" if state.get("decision") == "extend" else END
 
 
 def build_remediation_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph:
@@ -57,12 +81,18 @@ def build_remediation_graph(checkpointer: Checkpointer = None) -> CompiledStateG
     builder.add_node("trigger_deploy", trigger_deploy)
     builder.add_node("wait_deploy", wait_deploy)
     builder.add_node("park", park)
+    builder.add_node("soak", soak)
+    builder.add_node("verify", verify)
+    builder.add_node("decide_verdict", decide_verdict)
 
     builder.add_edge(START, "preflight")
     builder.add_conditional_edges("preflight", after_preflight, ["capture_baseline", END])
     builder.add_conditional_edges("capture_baseline", after_baseline, ["approve_deploy", END])
     builder.add_conditional_edges("approve_deploy", after_approval, ["trigger_deploy", END])
     builder.add_conditional_edges("trigger_deploy", after_trigger, ["wait_deploy", END])
-    builder.add_conditional_edges("wait_deploy", after_wait, ["park", END])
-    builder.add_edge("park", "wait_deploy")
+    builder.add_conditional_edges("wait_deploy", after_wait, ["park", "soak", END])
+    builder.add_conditional_edges("soak", after_soak, ["verify", "park", END])
+    builder.add_conditional_edges("park", after_park, ["soak", "wait_deploy"])
+    builder.add_conditional_edges("verify", after_verify, ["decide_verdict", END])
+    builder.add_conditional_edges("decide_verdict", after_decision, ["soak", END])
     return builder.compile(checkpointer=checkpointer)

@@ -26,6 +26,7 @@ from app.deploy.provider import DispatchRequest
 from app.deploy.releases import deployed_sha
 from app.deploy.state import RemediationContext, RemediationState
 from app.deploy.target import EnvironmentRule
+from app.deploy.verify import Judgement, Observation, judge
 from app.integrations.clickhouse import ClickHouseError
 from app.integrations.github import GitHubAccessError, GitHubUnavailableError
 from app.integrations.github_app import DEPLOY_PERMISSIONS, missing_permissions
@@ -34,7 +35,7 @@ from app.integrations.incident_service import IncidentNotFoundError
 from app.publishing.ci import all_completed, outcome_of
 from app.schemas.domain import CheckResult
 from app.schemas.remediation import Baseline, PolicyDecision
-from app.store import deploy_audit, deploy_targets, deployments, releases
+from app.store import deploy_audit, deploy_targets, deployments, releases, verifications
 from app.store import events as event_store
 from app.store import github_installations as installations
 from app.store import investigations as investigation_store
@@ -51,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 GATE = "deploy_approval"
 WAIT_GATE = "wait"
+VERDICT_GATE = "verdict_decision"
+MAX_EXTENSIONS = 2  # how many more soak windows a person may ask for
 BASELINE_MINUTES = 30
 DISPATCH_GRACE = timedelta(seconds=120)  # how long GitHub may take to show the run we asked for
 OTHER_FINGERPRINTS_KEPT = 20
@@ -252,7 +255,7 @@ async def capture_baseline(state: RemediationState, runtime: Ctx) -> dict[str, A
     async with ctx.sessions() as session:
         await remediation_store.set_fields(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, baseline=dumped)
     await _emit(ctx, state, "remediation.baseline_captured", errorsPerMinute=round(baseline.errors_per_minute, 3), totalLogs=traffic, minutes=BASELINE_MINUTES)
-    return {"baseline": dumped}
+    return {"baseline": dumped, "fingerprint": incident.fingerprint, "service": incident.service_name}
 
 
 # ---------------------------------------------------------------------- the human gate
@@ -414,10 +417,108 @@ async def _succeeded(ctx: RemediationContext, state: RemediationState, dep: depl
         await remediation_store.transition(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status="DEPLOYING", to="VERIFYING", outcome={"deployed": True})
     await _audit(ctx, state, "deploy.succeeded", "ok", detail=dep.run_url or "")
     await _emit(ctx, state, "deploy.succeeded", runUrl=dep.run_url)
-    return {"outcome": "deployed", "wake_at": None}
+    return {"outcome": "deployed", "wake_at": None, "deployed_at": ctx.now().isoformat()}
 
 
 async def park(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
     """Wait for a timer. The run stops here; the executor stores ``wake_at`` and the sweeper resumes it when it is due."""
     interrupt({"gate": WAIT_GATE, "wakeAt": state.get("wake_at")})
     return {"wake_at": None}
+
+
+# ----------------------------------------------------------------------------- the soak
+
+
+def _parse(value: Any) -> datetime | None:
+    return datetime.fromisoformat(str(value)) if value else None
+
+
+async def _observe(ctx: RemediationContext, state: RemediationState, start: datetime, end: datetime) -> Observation:
+    """What the logs say about ``[start, end]``: the investigated error, the service's traffic, the other errors."""
+    timeline = await get_error_timeline(ctx.logs, tenant_id=ctx.tenant_id, fingerprint=state["fingerprint"], start=start, end=end, bucket="1m")
+    traffic = await get_service_traffic(ctx.logs, tenant_id=ctx.tenant_id, service_name=state["service"], start=start, end=end)
+    others = await get_cooccurring_errors(ctx.logs, tenant_id=ctx.tenant_id, start=start, end=end, exclude_fingerprint=state["fingerprint"], limit=OTHER_FINGERPRINTS_KEPT)
+    return Observation(minutes=(end - start).total_seconds() / 60, errors=timeline.total, traffic=traffic, others={e.fingerprint: e.count for e in others})
+
+
+async def soak(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Look at the logs once. A clear degradation ends the soak early; otherwise the verdict waits for the end of the window.
+
+    The window starts after the grace period (restarts and warm-up are not judged) and grows with every look, so the verdict
+    always rests on everything seen since the deploy. Undecided means "wake me later" (``wake_at``); the run parks in between.
+    """
+    ctx = runtime.context
+    rule = _rule(state)
+    now = ctx.now()
+    deployed_at = _parse(state["deployed_at"])
+    assert deployed_at is not None
+    window_start = deployed_at + timedelta(seconds=rule.thresholds.grace_seconds)
+    ends_at = _parse(state.get("soak_ends_at")) or ((now if state.get("soak_extensions") else deployed_at) + timedelta(seconds=rule.soak_seconds))
+    carry = {"soak_ends_at": ends_at.isoformat()}
+    again = {**carry, "judgement": None, "wake_at": _later(now, ctx.settings.deploy_poll_seconds)}
+    if now <= window_start:
+        return again
+    final = now >= ends_at
+    try:
+        judgement = judge(Baseline.model_validate(state["baseline"]), await _observe(ctx, state, window_start, now), rule.thresholds, final=final)
+    except ClickHouseError:
+        if not final:
+            return again  # a bad moment of the log store: look again, the end of the window still comes
+        judgement = Judgement("inconclusive", ("the logs could not be read at the end of the soak",), {})
+    if judgement.verdict is None:
+        return again
+    decided = {"verdict": judgement.verdict, "reasons": list(judgement.reasons), "numbers": judgement.numbers, "window_start": window_start.isoformat(), "window_end": now.isoformat()}
+    return {**carry, "judgement": decided, "wake_at": None}
+
+
+async def verify(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Write down the verdict with its numbers. Healthy ends the remediation; anything else asks a human what to do."""
+    ctx = runtime.context
+    remediation_id, _ = _ids(state)
+    judgement = state["judgement"]
+    assert judgement is not None
+    verdict = judgement["verdict"]
+    summary = {"verdict": verdict, "reasons": judgement["reasons"], **judgement["numbers"]}
+    async with ctx.sessions() as session:
+        await verifications.record(
+            session,
+            tenant_id=ctx.tenant_id,
+            remediation_id=remediation_id,
+            kind="deploy",
+            verdict=verdict,
+            numbers={**judgement["numbers"], "reasons": judgement["reasons"]},
+            window_start=_parse(judgement["window_start"]),  # type: ignore[arg-type]
+            window_end=_parse(judgement["window_end"]),  # type: ignore[arg-type]
+        )
+        if verdict == "healthy":
+            await remediation_store.transition(
+                session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status="VERIFYING", to="VERIFIED", outcome={"deployed": True, **summary}
+            )
+    await _audit(ctx, state, f"deploy.{verdict}", "ok" if verdict == "healthy" else verdict, detail="; ".join(judgement["reasons"]))
+    await _emit(ctx, state, f"remediation.{verdict}", **summary)
+    return {"outcome": "verified"} if verdict == "healthy" else {}  # anything else keeps ``outcome == "deployed"``: after_park depends on it
+
+
+async def decide_verdict(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """A degraded or inconclusive verdict needs a person: keep the deploy as it is, or watch for another soak window (twice at most)."""
+    judgement = state["judgement"]
+    assert judgement is not None
+    rounds = state.get("soak_extensions", 0)
+    raw = interrupt(
+        {
+            "gate": VERDICT_GATE,
+            "round": rounds,
+            "environment": state["environment"],
+            "sha": state["merge_sha"],
+            "rollbackTarget": state.get("rollback_target"),
+            "verdict": judgement["verdict"],
+            "reasons": judgement["reasons"],
+            "numbers": judgement["numbers"],
+            "canExtend": rounds < MAX_EXTENSIONS,
+            "approver": _rule(state).approver,
+        }
+    )
+    action = raw.get("action") if isinstance(raw, dict) else None
+    if action == "extend" and rounds < MAX_EXTENSIONS:
+        return {"decision": "extend", "soak_extensions": rounds + 1, "soak_ends_at": None, "judgement": None}
+    return {"decision": "keep", "outcome": "kept"}

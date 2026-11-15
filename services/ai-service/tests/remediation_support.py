@@ -135,8 +135,10 @@ class ScriptedLogs:
         self.traffic = traffic
         self.others = others or []
         self.error: Exception | None = None
+        self.queries = 0
 
     async def query(self, sql: str, *, tenant_id: UUID, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        self.queries += 1
         if self.error:
             raise self.error
         parameters = parameters or {}
@@ -165,8 +167,8 @@ class Seed:
     offers: dict[str, UUID] = field(default_factory=dict)
 
 
-STAGING = {"name": "staging", "enabled": True, "approver": "ENGINEER", "soakSeconds": 60, "deployTimeoutSeconds": 600}
-PRODUCTION = {"name": "production", "enabled": True, "requiresPreviousVerified": True, "soakSeconds": 60, "deployTimeoutSeconds": 600}
+STAGING = {"name": "staging", "enabled": True, "approver": "ENGINEER", "soakSeconds": 600, "deployTimeoutSeconds": 600}
+PRODUCTION = {"name": "production", "enabled": True, "requiresPreviousVerified": True, "soakSeconds": 600, "deployTimeoutSeconds": 600}
 
 
 async def seed(
@@ -298,6 +300,27 @@ class Harness:
             )
             assert won
             await approvals.record(session, tenant_id=self.seed.tenant, remediation_id=row.id, gate="deploy", decision=action, user_id=self.seed.user, role=role, environment=environment, sha=row.merge_sha)  # type: ignore[arg-type]
+        await self.run(environment)
+
+    async def decide(self, action: str, environment: str = "staging", role: str = "ADMIN") -> None:
+        """What ``POST /decision`` does, minus the HTTP: the move out of AWAITING_DECISION, then the recorded answer, then the run."""
+        from app.store import approvals
+
+        row = await self.row(environment)
+        async with self.factory() as session:
+            won = await remediation_store.transition(
+                session, tenant_id=self.seed.tenant, remediation_id=row.id, from_status="AWAITING_DECISION", to="VERIFIED" if action == "keep" else "VERIFYING"
+            )
+            assert won
+            await approvals.record(session, tenant_id=self.seed.tenant, remediation_id=row.id, gate="decision", decision=action, user_id=self.seed.user, role=role, environment=environment, sha=row.merge_sha)  # type: ignore[arg-type]
+        await self.run(environment)
+
+    async def deployed(self, environment: str = "staging") -> None:
+        """Start, approve, and let the pipeline succeed: the run is now soaking (clock at the moment the deploy finished)."""
+        await self.start(environment)
+        await self.answer("approve", environment)
+        self.provider.status = "succeeded"
+        self.clock.advance(seconds=31)
         await self.run(environment)
 
     async def events(self) -> list[str]:

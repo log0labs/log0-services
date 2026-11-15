@@ -68,6 +68,12 @@ class EnvironmentRule(CamelModel):
         return value
 
     @model_validator(mode="after")
+    def _the_soak_outlasts_the_grace_period(self) -> Self:
+        if self.soak_seconds < self.thresholds.grace_seconds + 60:
+            raise ValueError("the soak must last at least a minute longer than the grace period, or nothing is left to judge")
+        return self
+
+    @model_validator(mode="after")
     def _production_needs_an_admin(self) -> Self:
         if PRODUCTION_HINT in self.name and self.approver != "ADMIN":
             raise ValueError("an environment that looks like production can only be approved by an ADMIN")

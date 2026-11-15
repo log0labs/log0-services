@@ -67,7 +67,7 @@ async def test_the_approval_request_shows_what_the_approver_needs(h: Harness) ->
         payload = (await session.execute(text("SELECT payload FROM ai.investigation_event WHERE type = 'remediation.approval_requested' AND investigation_id = :i"), {"i": h.seed.investigation_id})).scalar_one()
 
     assert payload["environment"] == "staging" and payload["sha"] == MERGE_SHA and payload["rollbackTarget"] == PREVIOUS_SHA
-    assert payload["approver"] == "ENGINEER" and payload["soakSeconds"] == 60
+    assert payload["approver"] == "ENGINEER" and payload["soakSeconds"] == 600
     assert payload["baseline"]["errorsPerMinute"] == 4.0 and "gate" not in payload
 
 
@@ -113,7 +113,8 @@ async def test_a_successful_run_is_recorded_in_the_ledger_and_the_run_moves_on_t
     await h.run("staging")
 
     row = await h.row("staging")
-    assert row.status == "VERIFYING" and row.wake_at is None and row.outcome == {"deployed": True}
+    assert row.status == "VERIFYING" and row.outcome == {"deployed": True}
+    assert row.wake_at == h.clock.now + timedelta(seconds=30)  # the soak has begun: it looks again in a while
     async with h.factory() as session:
         current = await releases.current(session, tenant_id=h.seed.tenant, repository_id=h.seed.repository_id, environment="staging")
     assert current is not None and current.sha == MERGE_SHA and current.source == "log0" and current.remediation_id == row.id
