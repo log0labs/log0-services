@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 AccessProblem = Literal["bad_token", "not_found", "forbidden"]
 
 
+def api_headers(token: str) -> dict[str, str]:
+    """Headers for GitHub's REST API. The token goes here and nowhere else."""
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "log0-ai-service",
+    }
+
+
 class GitHubAccessError(Exception):
     """GitHub answered, and the answer is "no": the caller can fix it (token, name, permissions)."""
 
@@ -47,12 +57,7 @@ class GitHubClient:
     async def get_repository(self, owner: str, name: str, token: str) -> GitHubRepository:
         """Fetch a repository with the tenant's token. ``owner`` and ``name`` must be validated."""
         url = f"{self._base}/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "log0-ai-service",
-        }
+        headers = api_headers(token)
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.get(url, headers=headers)

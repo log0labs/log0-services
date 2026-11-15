@@ -133,6 +133,17 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     github_timeout_seconds: float = 10.0
 
+    # The log0 GitHub App (V2): the only thing that may write to a customer repository. It signs a
+    # short-lived JWT with its private key (PEM; "\n" escapes are accepted so it fits in one
+    # env line) and swaps it for one-hour installation tokens. Without these the service runs as
+    # in V1 and V2 steps report "GitHub App is not configured".
+    github_app_id: str = ""
+    github_app_private_key: SecretStr | None = None
+    github_app_slug: str = ""  # the app's URL name: https://github.com/apps/<slug>/installations/new
+    github_webhook_secret: SecretStr | None = None
+    # Global kill switch for every GitHub write (branch, commit, pull request).
+    pr_writes_enabled: bool = False
+
     # Local copies of tenants' repositories for the code tools (3.4). The cache is disposable:
     # deleting the folder only means the next investigation clones again.
     repo_cache_dir: str = ".repo-cache"
