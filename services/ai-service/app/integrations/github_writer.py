@@ -247,7 +247,7 @@ def _tree_entry(file: FileWrite) -> dict[str, Any]:
 
 
 class _Session:
-    """``async with writer._session(target) as call``: one installation token, one HTTP client, for a batch of calls."""
+    """``async with writer.session(target) as call``: one installation token, one HTTP client, for a batch of calls."""
 
     def __init__(self, writer: GitHubWriter, target: WriteTarget, permissions: Mapping[str, str]) -> None:
         self._writer = writer
