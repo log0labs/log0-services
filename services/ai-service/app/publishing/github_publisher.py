@@ -56,6 +56,33 @@ _ACCESS = {
 }
 
 
+def describe_failure(exc: Exception) -> str:
+    """A GitHub failure as a sentence that is safe to show: fixed texts, never GitHub's own words or a token."""
+    if isinstance(exc, GitHubAccessError):
+        return _ACCESS[exc.problem]
+    if isinstance(exc, BranchRefusedError | WriteRejectedError):
+        return str(exc)
+    if isinstance(exc, GitHubAppNotConfiguredError):
+        return "the GitHub App is not configured on this server"
+    return "GitHub could not be reached"
+
+
+async def failed_check_logs(writer: GitHubWriter, target: WriteTarget, checks: list[CheckResult]) -> str:
+    """What the failed checks printed (at most two jobs), cleaned and redacted. Empty when none could be read:
+    the App lacks ``actions: read``, the log expired, or GitHub is unreachable."""
+    parts: list[str] = []
+    for check in [c for c in checks if c.conclusion in FAILED_CONCLUSIONS and c.id is not None][:MAX_FAILED_LOGS]:
+        try:
+            raw = await writer.job_log(target, int(check.id or 0))
+        except (GitHubAccessError, GitHubUnavailableError, GitHubAppNotConfiguredError) as exc:
+            logger.info("could not read the log of check %s: %s", check.id, type(exc).__name__)
+            continue
+        cleaned = clean_log(raw)
+        if cleaned:
+            parts.append(f"### {check.name}\n{cleaned}")
+    return "\n\n".join(parts)
+
+
 def _split(repo: str) -> tuple[str, str]:
     owner, _, name = repo.partition("/")
     return owner, name
@@ -173,18 +200,7 @@ class GitHubPublisher:
 
     async def ci_failure_log(self, *, tenant_id: UUID, target: PublishTarget, checks: list[CheckResult]) -> str:
         """What the failed checks printed, cleaned and redacted. Reading needs ``actions: read``; without it the answer is empty."""
-        write_target = await self._resolve(tenant_id, target)
-        parts: list[str] = []
-        for check in [c for c in checks if c.conclusion in FAILED_CONCLUSIONS and c.id is not None][:MAX_FAILED_LOGS]:
-            try:
-                raw = await self._writer.job_log(write_target, int(check.id or 0))
-            except (GitHubAccessError, GitHubUnavailableError, GitHubAppNotConfiguredError) as exc:
-                logger.info("could not read the log of check %s: %s", check.id, type(exc).__name__)
-                continue
-            cleaned = clean_log(raw)
-            if cleaned:
-                parts.append(f"### {check.name}\n{cleaned}")
-        return "\n\n".join(parts)
+        return await failed_check_logs(self._writer, await self._resolve(tenant_id, target), checks)
 
     async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
         write_target = await self._resolve(tenant_id, target)
@@ -242,13 +258,7 @@ class GitHubPublisher:
 
     @staticmethod
     def _safe_message(exc: Exception) -> str:
-        if isinstance(exc, GitHubAccessError):
-            return _ACCESS[exc.problem]
-        if isinstance(exc, BranchRefusedError | WriteRejectedError):
-            return str(exc)
-        if isinstance(exc, GitHubAppNotConfiguredError):
-            return "the GitHub App is not configured on this server"
-        return "GitHub could not be reached"
+        return describe_failure(exc)
 
     async def _audit(self, tenant_id: UUID, investigation_id: UUID, actor_id: UUID | None, action: str, repo: str, ref: str, result: str, detail: str) -> None:
         """The write already happened (or failed): a broken audit must not undo the run, but it is logged loudly."""

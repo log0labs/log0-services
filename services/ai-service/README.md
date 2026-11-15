@@ -171,6 +171,15 @@ ADR-017 in the website docs (architecture, decisions) for the reasoning.
 
 > The scripted model that CI uses scores the harness, not log0. Quality numbers come only from a complete real-model run (below).
 
+### The pull request evaluation (V2)
+
+`uv run python -m evals.pr_run --yes` runs the bug cases through the real graph with the pull request flow on, against a **throwaway** repository
+(`--eval-repo`, `--clone`): the harness approves the offer, log0 branches, commits, waits for the repository's own CI, repairs once if it fails and
+opens a draft pull request. Metrics: pull request opened, CI green first try and after a repair, repair helped, branch and draft safety, no pull request
+for a cause outside the code, plus the V1 fix metrics. It writes branches to a real repository and sends code to the model, so it needs `--yes`. Its
+harness is self-tested offline with the scripted model and an in-memory GitHub (`tests/test_pr_evaluation.py`). No live result is published yet;
+see `coding-notepads/v2/step-11/11.8-live-pull-request-evaluation.md`.
+
 ### Measured so far
 
 The first **complete** real-model run, 2026-11-15: all nine cases, the baseline committed as `evals/baseline.json`.

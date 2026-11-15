@@ -75,7 +75,7 @@ def resolve_repo_path(hint: str, files: list[str], service_prefix: str) -> str |
     return None
 
 
-def _outcome(final: dict, recorder: UsageRecorder, code: RepoCode, case: Case, files: list[str], seconds: float) -> Outcome:
+def build_outcome(final: dict, recorder: UsageRecorder, code: RepoCode, case: Case, files: list[str], seconds: float) -> Outcome:
     prefix = SERVICES[case.service]
     frames = []
     for frame in final.get("stack_frames", []):
@@ -130,7 +130,7 @@ async def run_case(
     try:
         async with asyncio.timeout(CASE_TIMEOUT_SECONDS):
             final = await build_graph().ainvoke(state, run_config(UUID(state["investigation_id"]), recorder, GRAPH_VERSION), context=context)  # type: ignore[arg-type]
-        outcome = _outcome(final, recorder, code, case, files, time.monotonic() - started)
+        outcome = build_outcome(final, recorder, code, case, files, time.monotonic() - started)
     except Exception as exc:  # noqa: BLE001  # a crashed run is a result (score 0 on "completed"), not a crashed evaluation
         outcome = Outcome(failed=f"{type(exc).__name__}: {exc}"[:300], seconds=time.monotonic() - started, code_reads=list(code.reads))
     finally:
