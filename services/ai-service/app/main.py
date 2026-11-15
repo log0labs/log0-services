@@ -8,6 +8,7 @@ from starlette.routing import Route
 
 from app.api import (
     ai_settings,
+    deploy_targets,
     github_app,
     github_webhook,
     health,
@@ -158,6 +159,7 @@ def create_app() -> FastAPI:
     app.include_router(repositories.router)
     app.include_router(repositories.services_router)
     app.include_router(github_app.router)
+    app.include_router(deploy_targets.router)
     app.include_router(github_webhook.router)
     app.include_router(ai_settings.router)
     app.include_router(runbooks.router)
