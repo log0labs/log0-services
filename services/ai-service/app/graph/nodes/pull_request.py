@@ -38,6 +38,7 @@ from app.publishing.naming import (
 )
 from app.publishing.policy import check_diff, check_rate
 from app.publishing.port import PublishError, PublishFile, PublishTarget
+from app.publishing.scope import cited_paths, outside_root_cause
 from app.sandbox.port import SandboxRun
 from app.schemas.domain import CheckResult, CiRun, PrDecision
 
@@ -53,6 +54,7 @@ def pr_request(state: InvestigationState, target: PublishTarget) -> dict[str, An
     """What the engineer is shown while the run waits: where, which branch, which files. Plain JSON, no code."""
     repo, cause, incident = state["repo"], state["root_cause"], state["incident"]
     assert repo is not None and cause is not None and incident is not None
+    outside = outside_root_cause([f.file_path for f in state["diff_files"]], cited_paths(cause, state["evidence"]))
     return {
         "gate": GATE,
         "repository": target.repo,
@@ -62,7 +64,13 @@ def pr_request(state: InvestigationState, target: PublishTarget) -> dict[str, An
         "rootCause": cause.statement[:MAX_TEXT],
         "confidenceBand": state["confidence_band"],
         "files": [
-            {"path": f.file_path, "operation": f.operation, "additions": f.additions, "deletions": f.deletions}
+            {
+                "path": f.file_path,
+                "operation": f.operation,
+                "additions": f.additions,
+                "deletions": f.deletions,
+                "inRootCause": f.file_path not in outside,
+            }
             for f in state["diff_files"]
         ],
     }
@@ -402,6 +410,7 @@ async def open_draft_pr(state: InvestigationState, runtime: Runtime[Investigatio
                 confidence_band=state["confidence_band"],
                 changes=state["proposed_changes"],
                 files=state["diff_files"],
+                outside_root_cause=outside_root_cause([f.file_path for f in state["diff_files"]], cited_paths(cause, state["evidence"])),
                 ci_run=ci,
                 repaired=state["repair_attempts"] > 0 and state["commit_sha"] != state["previous_commit"],
             ),

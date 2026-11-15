@@ -44,6 +44,7 @@ def pull_request_body(
     investigation_url: str | None = None,
     ci_run: CiRun | None = None,
     repaired: bool = False,
+    outside_root_cause: set[str] | None = None,
 ) -> str:
     lines = ["## Root cause", "", _clean(root_cause.statement, MAX_SECTION), ""]
     if confidence_band:
@@ -53,9 +54,12 @@ def pull_request_body(
     for file in files[:MAX_FILES_LISTED]:
         note = explained.get(file.file_path)
         suffix = f": {_clean(note, 200)}" if note else ""
-        lines.append(f"- `{file.file_path}` ({file.operation}, +{file.additions} -{file.deletions}){suffix}")
+        extra = " **(not named in the root cause)**" if file.file_path in (outside_root_cause or set()) else ""
+        lines.append(f"- `{file.file_path}` ({file.operation}, +{file.additions} -{file.deletions}){extra}{suffix}")
     if len(files) > MAX_FILES_LISTED:
         lines.append(f"- and {len(files) - MAX_FILES_LISTED} more")
+    if outside_root_cause:
+        lines += ["", "Files marked above are not part of the root cause: look at them separately and drop them if the fix does not need them."]
     lines += _tests_section(ci_run)
     if repaired:
         lines += ["", "The first change failed the checks of the repository, so log0 corrected it once; this is the corrected change."]

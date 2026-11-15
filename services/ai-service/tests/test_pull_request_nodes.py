@@ -88,7 +88,7 @@ async def test_a_valid_diff_parks_the_run_at_the_gate_and_shows_where_and_what(r
 
     assert request["gate"] == "pr_approval" and request["repository"] == "acme/shop" and request["defaultBranch"] == "main"
     assert request["branch"].startswith("log0/fix-") and request["baseSha"] == state["repo"].sha
-    assert request["files"] == [{"path": PAYMENT, "operation": "modify", "additions": 1, "deletions": 1}]
+    assert request["files"] == [{"path": PAYMENT, "operation": "modify", "additions": 1, "deletions": 1, "inRootCause": True}]
     assert publisher.names() == ["target_for", "activity"]  # nothing was written while waiting
 
 
@@ -272,3 +272,15 @@ async def test_routing_sends_only_a_valid_diff_to_the_gate_and_only_an_approval_
     assert after_create_branch(state) == "finalize"
     assert after_apply_patch(state | {"commit_sha": COMMIT_SHA}) == "run_tests"
     assert after_apply_patch(state) == "finalize"
+
+
+async def test_the_offer_marks_a_file_the_root_cause_does_not_name(repo: Repo) -> None:
+    from app.diff.builder import FileDiff
+
+    state, ctx, _ = await reviewed_state(repo, FakePublisher())
+    extra = FileDiff(file_path="services/payment/src/main/java/com/log0/payment/Seed.java", operation="modify", additions=1, deletions=0)
+    state = state | {"diff_files": [*state["diff_files"], extra]}
+
+    offer = (await offer_pr(state, type("R", (), {"context": ctx})()))["pr_offer"]
+
+    assert {f["path"].rsplit("/", 1)[-1]: f["inRootCause"] for f in offer["files"]} == {"PaymentProcessor.java": True, "Seed.java": False}
