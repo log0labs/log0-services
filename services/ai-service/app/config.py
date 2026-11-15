@@ -150,6 +150,12 @@ class Settings(BaseSettings):
     ci_start_grace_seconds: int = 60  # no check at all after this long means the repository has no CI for the commit
     # Workspaces whose pull request writes are switched off by the operator (tenant ids). Takes effect on the next write.
     pr_writes_disabled_tenants: set[UUID] = Field(default_factory=set)  # JSON in the environment: ["<tenant id>"]
+    # Remediation (V3): deploying a merged fix. Off until an operator turns it on; a workspace is switched off by listing it.
+    deploys_enabled: bool = False
+    deploys_disabled_tenants: set[UUID] = Field(default_factory=set)
+    deploy_max_per_environment_per_hour: int = 3
+    deploy_poll_seconds: float = 30.0  # how often a waiting deploy looks at its pipeline run
+    deploy_sweep_seconds: float = 10.0  # how often the sweeper looks for runs whose wake-up time has come
     # What a pull request may be: no protected files (workflows, locks, keys), at most this much, at most this often.
     pr_max_files: int = 10
     pr_max_changed_lines: int = 400

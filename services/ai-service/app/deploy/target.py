@@ -29,6 +29,24 @@ class Thresholds(CamelModel):
     grace_seconds: int = Field(default=120, ge=0, le=1800)  # right after the deploy: restarts and warm-up are not judged
 
 
+class FreezeWindow(CamelModel):
+    """Hours (UTC) on some weekdays in which log0 does not deploy here, for example Friday afternoons."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: list[int] = Field(min_length=1, max_length=7)  # 0 is Monday, 6 is Sunday
+    start_hour: int = Field(ge=0, le=23)
+    end_hour: int = Field(ge=1, le=24)
+
+    @model_validator(mode="after")
+    def _a_window_is_within_one_day(self) -> Self:
+        if self.start_hour >= self.end_hour:
+            raise ValueError("a freeze window ends after it starts, within one day (use two windows to cross midnight)")
+        if any(day not in range(7) for day in self.days):
+            raise ValueError("days are 0 (Monday) to 6 (Sunday)")
+        return self
+
+
 class EnvironmentRule(CamelModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -39,6 +57,7 @@ class EnvironmentRule(CamelModel):
     soak_seconds: int = Field(default=900, ge=60, le=7200)
     deploy_timeout_seconds: int = Field(default=1200, ge=60, le=7200)
     auto_rollback: bool = False  # opt-in: roll back without asking when the verdict is degraded with enough traffic
+    freeze_windows: list[FreezeWindow] = Field(default_factory=list, max_length=7)
     thresholds: Thresholds = Field(default_factory=Thresholds)
 
     @field_validator("name")
