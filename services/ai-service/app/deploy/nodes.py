@@ -301,10 +301,6 @@ async def _target_and_config(ctx: RemediationContext, state: RemediationState) -
     return write_target, target.config.workflow_file
 
 
-def _summary(dep: deployments.Deployment) -> dict[str, Any]:
-    return {"id": str(dep.id), "status": dep.status, "run_id": dep.run_id, "run_url": dep.run_url}
-
-
 async def _fail(ctx: RemediationContext, state: RemediationState, dep: deployments.Deployment, reason: str, *, status: str = "failed") -> dict[str, Any]:
     remediation_id, _ = _ids(state)
     async with ctx.sessions() as session:
