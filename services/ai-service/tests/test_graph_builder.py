@@ -48,6 +48,11 @@ async def _run(ctx: Any, scope: InvestigationScope | None = None) -> Investigati
     return await build_graph().ainvoke(_start(scope), context=ctx)
 
 
+async def _run_without_code(ctx: Any) -> InvestigationState:
+    """These tests are about the log, history and runbook branches; code is searched whenever it is enabled, so switch it off."""
+    return await _run(ctx, InvestigationScope(code=False))
+
+
 def _refs(state: InvestigationState) -> set[str]:
     return {e.source_ref.split()[0] for e in state["evidence"]}
 
@@ -57,7 +62,7 @@ def _refs(state: InvestigationState) -> set[str]:
 
 @pytest.mark.asyncio
 async def test_logs_and_history_branches_run_in_parallel_and_both_contribute() -> None:
-    final = await _run(make_context())  # triage answers ["logs", "history"]
+    final = await _run_without_code(make_context())  # triage answers ["logs", "history"]
 
     assert final["status"] == InvestigationStatus.RUNNING and final["error"] is None
     assert final["triage"].category == "dependency"
@@ -109,7 +114,7 @@ async def test_only_the_branches_triage_chose_run() -> None:
     ctx = make_context(
         logs=logs, history=history, models=FakeModels(FakeModel(triage_answer(gather=["history"])))
     )
-    final = await _run(ctx, InvestigationScope(logs=False))
+    final = await _run(ctx, InvestigationScope(logs=False, code=False))
     assert final["triage"].gather == ["history"]
     assert len(history.calls) == 1
     assert not any(e.source_ref.startswith("timeline") for e in final["evidence"])
@@ -119,7 +124,7 @@ async def test_only_the_branches_triage_chose_run() -> None:
 @pytest.mark.asyncio
 async def test_logs_always_run_even_when_triage_only_asked_for_history() -> None:
     answer = triage_answer(gather=["history"])
-    final = await _run(make_context(models=FakeModels(FakeModel(answer))))
+    final = await _run_without_code(make_context(models=FakeModels(FakeModel(answer))))
     assert final["triage"].gather == ["logs", "history"]  # normalize_triage's rule from 2.8
     assert any(e.source_ref.startswith("timeline") for e in final["evidence"])
 
@@ -146,7 +151,7 @@ async def test_the_runbook_branch_adds_runbook_evidence_next_to_the_other_branch
     )
     runbooks = FakeRunbooks(RunbookSearchResult(outcome="found", passages=[passage]))
     answer = triage_answer(gather=["logs", "runbooks"])
-    final = await _run(make_context(models=FakeModels(FakeModel(answer)), runbooks=runbooks))
+    final = await _run_without_code(make_context(models=FakeModels(FakeModel(answer)), runbooks=runbooks))
     kinds = {e.kind for e in final["evidence"]}
     assert {"runbook", "log"} <= kinds
     assert runbooks.calls[0]["tenant_id"] == TENANT
@@ -298,7 +303,7 @@ async def test_incident_service_down_also_stops_cleanly() -> None:
 async def test_log_store_down_degrades_every_log_step_to_gaps_but_history_still_runs() -> None:
     down = ClickHouseError("down")
     logs = FakeLogs(errors={"stats": down, "trace": down, "timeline": down, "cooccurring": down, "search": down})
-    final = await _run(make_context(logs=logs))
+    final = await _run_without_code(make_context(logs=logs))
     assert final["status"] == InvestigationStatus.RUNNING
     assert len(final["gaps"]) == 5  # stats, trace, timeline, co-occurring, samples
     assert any(e.summary.startswith("Earlier incident") for e in final["evidence"])  # history unaffected

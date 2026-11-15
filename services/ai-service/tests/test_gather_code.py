@@ -372,10 +372,12 @@ async def test_the_whole_graph_state_has_the_pinned_commit_and_a_shared_budget(r
     assert final["root_cause"] is not None and final["status"].value == "RUNNING"
 
 
-async def test_a_run_without_the_code_branch_never_touches_the_code(repo: Repo) -> None:
+async def test_a_run_with_the_code_source_turned_off_never_touches_the_code(repo: Repo) -> None:
     code = FakeCode(checkout_for(repo))
     ctx, _ = context_with_code(code, gather=["logs", "history"])
-    final = await build_graph().ainvoke(new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope()), context=ctx)
+    final = await build_graph().ainvoke(
+        new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope(code=False)), context=ctx
+    )
     assert code.calls == [] and final["repo"] is None
     assert not any(e.kind in ("code", "commit") for e in final["evidence"])
 

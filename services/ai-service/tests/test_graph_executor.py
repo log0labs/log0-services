@@ -137,7 +137,7 @@ async def _wait_for_end(runner: InvestigationRunner, investigation_id: UUID) -> 
 
 
 async def test_a_run_completes_and_leaves_a_progress_trail(session_factory: SessionFactory) -> None:
-    row = await _create(session_factory)
+    row = await _create(session_factory, code=False)
     backends = Backends(build_graph(InMemorySaver()))
     runner = InvestigationRunner(session_factory, execute=backends.executor.run)
 

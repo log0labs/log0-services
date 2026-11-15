@@ -228,7 +228,7 @@ def test_raw_evidence_content_never_reaches_an_event() -> None:
 @pytest.mark.asyncio
 async def test_the_real_graph_streams_progress_as_each_node_finishes() -> None:
     graph = build_graph(InMemorySaver())
-    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope())
+    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope(code=False))
     config = {"configurable": {"thread_id": "inv"}}
 
     types: list[str] = []
@@ -261,7 +261,7 @@ async def test_the_real_graph_reports_a_verified_hypothesis_after_proposing_it()
         answers={Verification: verification_answer(verdict(first, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID]))},
     )
     ctx = make_context(models=FakeModels(FakeModel(triage_answer()), investigation=investigation))
-    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope())
+    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope(code=False))
 
     events: list[tuple[str, dict]] = []
     async for update in build_graph().astream(state, context=ctx, stream_mode="updates"):

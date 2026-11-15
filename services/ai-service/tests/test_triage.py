@@ -303,6 +303,19 @@ async def test_choosing_only_disabled_branches_means_every_allowed_branch() -> N
     assert final["triage"].gather == ["logs", "history"]
 
 
+def test_code_is_searched_even_when_the_model_skips_it_for_a_dependency_incident() -> None:
+    # a retry storm has no stack trace, and only the code can say whether a fix exists
+    for category in ("dependency", "code_bug", "deployment", "resource", "unknown"):
+        result = normalize_triage(_answer(category=category, gather=["logs"]), InvestigationScope())
+        assert "code" in result.gather, category
+
+
+def test_code_is_left_out_for_a_configuration_problem_and_when_the_user_turned_it_off() -> None:
+    assert "code" not in normalize_triage(_answer(category="config", gather=["logs"]), InvestigationScope()).gather
+    off = InvestigationScope(code=False)
+    assert "code" not in normalize_triage(_answer(category="dependency", gather=["logs", "code"]), off).gather
+
+
 def test_hypotheses_are_trimmed_capped_and_blanks_removed() -> None:
     raw = _answer(
         summary="  padded summary  ",
