@@ -18,6 +18,7 @@ from app.config import Settings
 from app.graph.builder import GRAPH_VERSION
 from app.graph.code_access import CodeAccess
 from app.graph.events import events_from_update
+from app.graph.gates import Gate, gate_for
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.graph.usage import Prices, UsageRecorder, run_config
@@ -26,6 +27,7 @@ from app.llm.models import PurposeChatModels
 from app.llm.purpose import Purpose
 from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.observability import tracing_allowed, tracing_scope
+from app.publishing.port import Publisher
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
@@ -39,8 +41,6 @@ from app.tools.incidents import IncidentApi, RelatedIncidentSource
 from app.tools.logs import LogBackend
 
 logger = logging.getLogger(__name__)
-
-MAX_REVIEW_TEXT = 300  # cap on the root cause text copied into the review.requested event
 
 
 def pending_interrupts(snapshot: Any) -> list[Any]:
@@ -89,6 +89,7 @@ class GraphExecutor:
         settings: Settings | None = None,
         require_review: bool = False,
         secret_box: SecretBox | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
         self._graph = graph
         self._logs = logs
@@ -102,6 +103,7 @@ class GraphExecutor:
         self._settings = settings
         self._require_review = require_review
         self._secret_box = secret_box
+        self._publisher = publisher
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         allowed = True  # without settings (tests) nothing is restricted
@@ -169,17 +171,19 @@ class GraphExecutor:
             runbooks=self._runbooks,
             memory=self._memory,
             require_review=self._require_review,
+            publisher=self._publisher,
         )
 
         snapshot = await self._graph.aget_state(config)
         waiting = pending_interrupts(snapshot)
         if waiting:
-            # The graph is paused at the review gate. Resume it only with the decision the API recorded.
-            decision = await self._decision_for_review(session_factory, tenant_id, investigation_id)
+            # The graph is paused at a human gate. Resume it only with the decision the API recorded.
+            gate = gate_for(waiting[0].value)
+            decision = await self._decision_for_gate(gate, session_factory, tenant_id, investigation_id)
             if decision is None:  # resumed without a decision (a resume that did not complete): wait again
-                await self._await_review(session_factory, investigation_id, tenant_id, waiting[0].value, announce=False)
+                await self._await_gate(gate, session_factory, investigation_id, tenant_id, waiting[0].value, announce=False)
                 return
-            logger.info("Resuming investigation %s with the review decision %s", investigation_id, decision["action"])
+            logger.info("Resuming investigation %s with the %s decision %s", investigation_id, gate.name, decision["action"])
             await self._stream(Command(resume=decision), config, context, session_factory, investigation_id)
         elif snapshot.next:
             # The service stopped mid-run (restart, deploy): continue from the last checkpoint,
@@ -207,8 +211,8 @@ class GraphExecutor:
         recorder.log_summary(investigation_id)
 
         waiting = pending_interrupts(snapshot)
-        if waiting:  # the run reached the review gate: stop here, nothing is running while it waits
-            await self._await_review(session_factory, investigation_id, tenant_id, waiting[0].value, announce=True)
+        if waiting:  # the run reached a human gate: stop here, nothing is running while it waits
+            await self._await_gate(gate_for(waiting[0].value), session_factory, investigation_id, tenant_id, waiting[0].value, announce=True)
             return
 
         if final["status"] == InvestigationStatus.FAILED:
@@ -254,8 +258,9 @@ class GraphExecutor:
         except Exception:  # embedding or database trouble: the investigation itself succeeded
             logger.warning("could not store the memory of investigation %s", investigation_id, exc_info=True)
 
-    async def _await_review(
+    async def _await_gate(
         self,
+        gate: Gate,
         session_factory: SessionFactory,
         investigation_id: UUID,
         tenant_id: UUID,
@@ -263,47 +268,40 @@ class GraphExecutor:
         *,
         announce: bool,
     ) -> None:
-        """Mark the investigation AWAITING_REVIEW and (the first time) tell the stream why."""
+        """Mark the investigation as waiting at ``gate`` and (the first time) tell the stream why."""
         async with session_factory() as session:
             await investigation_store.transition_status(
-                session, investigation_id=investigation_id, tenant_id=tenant_id, status=InvestigationStatus.AWAITING_REVIEW
+                session, investigation_id=investigation_id, tenant_id=tenant_id, status=gate.paused
             )
         if announce:
             await event_store.append_event_safely(
                 session_factory,
                 investigation_id=investigation_id,
-                type="review.requested",
-                payload={
-                    "round": request.get("round"),
-                    "refinesLeft": request.get("refinesLeft"),
-                    "rootCause": str(request.get("rootCause", ""))[:MAX_REVIEW_TEXT],
-                    "confidenceBand": request.get("confidenceBand"),
-                    "evidenceIds": list(request.get("evidenceIds") or []),
-                    "recommendation": (str(request["recommendation"])[:MAX_REVIEW_TEXT] if request.get("recommendation") else None),
-                },
+                type=gate.requested_event,
+                payload=gate.announce(request),
             )
 
     @staticmethod
-    async def _decision_for_review(
-        session_factory: SessionFactory, tenant_id: UUID, investigation_id: UUID
+    async def _decision_for_gate(
+        gate: Gate, session_factory: SessionFactory, tenant_id: UUID, investigation_id: UUID
     ) -> dict[str, Any] | None:
-        """The first decision recorded after the latest review request, or ``None``.
+        """The first decision recorded after the latest request of this gate, or ``None``.
 
-        The API writes ``review.decided`` before the run is resumed, so the event log is the durable
+        The API writes the decided event before the run is resumed, so the event log is the durable
         hand-over: it survives a restart between the engineer's click and the resume. Taking the first
         decision after the *latest request* means an old round's decision is never reused and a
         racing second answer is ignored.
         """
         async with session_factory() as session:
             requested = await event_store.latest_of_type(
-                session, tenant_id=tenant_id, investigation_id=investigation_id, type="review.requested"
+                session, tenant_id=tenant_id, investigation_id=investigation_id, type=gate.requested_event
             )
             events = await event_store.list_after(
                 session, tenant_id=tenant_id, investigation_id=investigation_id, after_seq=requested.seq if requested else 0
             )
         for event in events:
-            if event.type == "review.decided":
-                return {"action": event.payload.get("action"), "note": event.payload.get("note")}
+            if event.type == gate.decided_event:
+                return gate.resume_value(event.payload)
         return None
 
     async def _stream(

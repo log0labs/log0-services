@@ -12,6 +12,7 @@ from app.api import (
     github_webhook,
     health,
     investigations,
+    pull_requests,
     repositories,
     runbooks,
     summaries,
@@ -26,6 +27,7 @@ from app.integrations.code_access import DbCodeAccess
 from app.integrations.github import GitHubClient
 from app.integrations.github_app import GitHubAppAuth
 from app.integrations.github_app_client import GitHubAppClient
+from app.integrations.github_writer import GitHubWriter
 from app.integrations.incident_db import IncidentReader
 from app.integrations.incident_service import IncidentApiClient
 from app.integrations.repo_cache import RepoCache
@@ -34,6 +36,7 @@ from app.llm.models import PurposeChatModels
 from app.mcp.http import LazyMount, build_http_app
 from app.mcp.server import McpBackends, build_mcp_server
 from app.observability import configure_tracing
+from app.publishing.github_publisher import GitHubPublisher
 from app.retrieval.embeddings import build_embedder
 from app.retrieval.memory import PgMemory
 from app.retrieval.runbooks import RunbookSearcher
@@ -65,7 +68,13 @@ async def _lifespan(app: FastAPI):
     # invalid is a configuration error and stops the start-up instead.
     app.state.secret_box = secret_box_from_settings(settings) if settings.secrets_keys else None
     app.state.github = GitHubClient(settings)
-    app.state.github_app = GitHubAppClient(settings, GitHubAppAuth(settings))
+    github_app_auth = GitHubAppAuth(settings)
+    app.state.github_app = GitHubAppClient(settings, github_app_auth)
+    publisher = GitHubPublisher(
+        session_factory,
+        GitHubWriter(settings, github_app_auth),
+        enabled=settings.pr_writes_enabled and github_app_auth.configured,
+    )
     app.state.connection_checker = check_connection
     app.state.embedder = build_embedder(settings)  # runbook search and memory (M5)
     app.state.memory = PgMemory(session_factory, app.state.embedder)
@@ -111,6 +120,7 @@ async def _lifespan(app: FastAPI):
                 settings=settings,
                 code=code_access,
                 secret_box=app.state.secret_box,
+                publisher=publisher,
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(
@@ -140,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(summaries.router)
     app.include_router(investigations.router)
+    app.include_router(pull_requests.router)
     app.include_router(repositories.router)
     app.include_router(repositories.services_router)
     app.include_router(github_app.router)

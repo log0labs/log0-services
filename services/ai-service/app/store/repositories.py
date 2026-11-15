@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -129,6 +129,19 @@ async def get(session: AsyncSession, *, tenant_id: UUID, repository_id: UUID) ->
     result = await session.execute(
         select(repository_connection).where(
             repository_connection.c.tenant_id == tenant_id, repository_connection.c.id == repository_id
+        )
+    )
+    row = result.first()
+    return _to_connection(row) if row else None
+
+
+async def get_by_name(session: AsyncSession, *, tenant_id: UUID, owner: str, name: str) -> RepositoryConnection | None:
+    """The tenant's repository by GitHub owner and name, ignoring case."""
+    result = await session.execute(
+        select(repository_connection).where(
+            repository_connection.c.tenant_id == tenant_id,
+            func.lower(repository_connection.c.owner) == owner.lower(),
+            func.lower(repository_connection.c.name) == name.lower(),
         )
     )
     row = result.first()

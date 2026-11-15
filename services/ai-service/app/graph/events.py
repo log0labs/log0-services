@@ -119,6 +119,19 @@ def _diff_generated(delta: dict[str, Any]) -> EventPair:
     }
 
 
+def _publish_events(node: str, delta: dict[str, Any]) -> list[EventPair]:
+    """What the three write nodes did, as events: names and links only, never file content or tokens."""
+    if node == "create_branch" and delta.get("branch") is not None:
+        branch = delta["branch"]
+        return [("branch.created", {"name": branch.name, "baseSha": branch.base_sha})]
+    if node == "apply_patch" and delta.get("commit_sha"):
+        return [("commit.created", {"sha": delta["commit_sha"]})]
+    if node == "open_draft_pr" and delta.get("pull_request") is not None:
+        pr = delta["pull_request"]
+        return [("pr.opened", {"number": pr.number, "url": pr.url, "branch": pr.branch, "draft": pr.draft})]
+    return []
+
+
 def events_from_update(update: dict[str, Any]) -> list[EventPair]:
     """Events for one ``updates`` chunk, in a stable order: the node's own event, then its
     evidence, then its hypotheses, then its root cause, then its gaps."""
@@ -144,5 +157,6 @@ def events_from_update(update: dict[str, Any]) -> list[EventPair]:
             events.append(_changes_validated(delta))
             if delta.get("diff"):
                 events.append(_diff_generated(delta))
+        events.extend(_publish_events(node, delta))
         events.extend(("gap.recorded", {"message": _cap(gap)}) for gap in delta.get("gaps") or [])
     return events

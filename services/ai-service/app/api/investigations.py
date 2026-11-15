@@ -10,8 +10,10 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.gate_resume import answer_gate
 from app.config import Settings, get_settings
 from app.db.session import get_db
+from app.graph.gates import REVIEW
 from app.retrieval.embeddings import EmbeddingError
 from app.retrieval.memory import Memory, NewMemory
 from app.schemas.investigation import (
@@ -173,40 +175,16 @@ async def resume_investigation(
     checkpoint in the background; the response only says it was accepted. Two answers at once cannot
     both win: the status change AWAITING_REVIEW -> RUNNING is a single conditional UPDATE.
     """
-    row = await investigation_store.get_by_id(session, tenant_id=user.tenant_id, investigation_id=investigation_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    won = row.status == InvestigationStatus.AWAITING_REVIEW and await investigation_store.transition_status_if(
-        session,
+    return await answer_gate(
+        gate=REVIEW,
+        action=body.action,
+        payload={"note": body.note},
         investigation_id=investigation_id,
-        tenant_id=user.tenant_id,
-        from_status=InvestigationStatus.AWAITING_REVIEW,
-        to_status=InvestigationStatus.RUNNING,
+        user=user,
+        session=session,
+        request=request,
+        not_waiting="Investigation is not waiting for a review",
     )
-    if not won:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Investigation is not waiting for a review")
-    try:
-        await event_store.append_event(
-            session,
-            investigation_id=investigation_id,
-            type="review.decided",
-            payload={"action": body.action, "note": body.note, "decidedBy": str(user.user_id)},
-        )
-    except Exception:  # noqa: BLE001 - whatever went wrong, the status must be put back
-        # The decision is what resumes the run: without it the status must go back, or the run is lost.
-        await session.rollback()
-        await investigation_store.transition_status_if(
-            session,
-            investigation_id=investigation_id,
-            tenant_id=user.tenant_id,
-            from_status=InvestigationStatus.RUNNING,
-            to_status=InvestigationStatus.AWAITING_REVIEW,
-        )
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="The decision could not be recorded; try again") from None
-    runner = request.app.state.investigation_runner
-    await runner.wait_idle(investigation_id)
-    runner.schedule(investigation_id, tenant_id=user.tenant_id)
-    return CreateInvestigationResponse(investigation_id=investigation_id, status=InvestigationStatus.RUNNING)
 
 
 def get_memory(request: Request) -> Memory:

@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import case, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,7 +138,7 @@ async def mark_running(session: AsyncSession, *, investigation_id: UUID, tenant_
             investigation.c.tenant_id == tenant_id,
             investigation.c.status.in_(_EXECUTING),
         )
-        .values(status=InvestigationStatus.RUNNING.value, started_at=func.coalesce(investigation.c.started_at, now), updated_at=now)
+        .values(status=case((investigation.c.status == InvestigationStatus.PUBLISHING.value, InvestigationStatus.PUBLISHING.value), else_=InvestigationStatus.RUNNING.value), started_at=func.coalesce(investigation.c.started_at, now), updated_at=now)
     )
     result = await session.execute(stmt)
     await session.commit()
