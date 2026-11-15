@@ -158,3 +158,14 @@ def test_an_investigation_without_a_pull_request_or_of_another_tenant_is_404() -
         add_pull_request(s)
         assert s.client.get(f"{BASE}/{s.id}/pull-request", headers=headers(tenant_id=TENANT_B)).status_code == 404
         assert s.client.get(f"{BASE}/{s.id}/pull-request").status_code == 401
+
+
+def test_the_latest_list_says_which_investigation_has_a_pull_request() -> None:
+    with scene(status="COMPLETED") as s:
+        incident = sql("SELECT incident_id FROM ai.investigation WHERE id = :i", i=s.id)[0][0]
+        url = f"{BASE}/latest?incidentIds={incident}"
+        before = s.client.get(url, headers=headers(tenant_id=TENANT_A)).json()
+        add_pull_request(s)
+        after = s.client.get(url, headers=headers(tenant_id=TENANT_A)).json()
+
+        assert before[0]["hasPullRequest"] is False and after[0]["hasPullRequest"] is True

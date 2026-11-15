@@ -309,6 +309,7 @@ def test_latest_gives_the_newest_investigation_per_incident_and_only_this_tenant
             rows = client.get(url, headers=a).json()
             assert [r["incidentId"] for r in rows] == [INCIDENT_ID]  # the other incident has none: left out
             assert rows[0]["investigationId"] == first and rows[0]["hasDiff"] is False
+            assert rows[0]["hasPullRequest"] is False
             # another tenant sees nothing for the same incident ids
             assert client.get(url, headers=_auth_headers(secret, tenant_id=TENANT_B)).json() == []
             assert client.get("/api/v1/investigations/latest?incidentIds=not-a-uuid", headers=a).status_code == 422

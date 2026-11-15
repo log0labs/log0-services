@@ -5,11 +5,11 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, insert, select, update
+from sqlalchemy import case, exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.tables import investigation
+from app.db.tables import investigation, pull_request
 from app.schemas.investigation import (
     Investigation,
     InvestigationScope,
@@ -261,6 +261,7 @@ async def latest_for_incidents(session: AsyncSession, *, tenant_id: UUID, incide
             investigation.c.status,
             investigation.c.confidence_band,
             (investigation.c.diff.is_not(None)).label("has_diff"),
+            exists().where(pull_request.c.investigation_id == investigation.c.id).label("has_pull_request"),
             investigation.c.created_at,
         )
         .where(investigation.c.tenant_id == tenant_id, investigation.c.incident_id.in_(incident_ids))

@@ -139,4 +139,5 @@ class LatestInvestigation(CamelModel):
     status: InvestigationStatus
     confidence_band: Literal["high", "medium", "low"] | None = None
     has_diff: bool = False
+    has_pull_request: bool = False
     created_at: datetime
