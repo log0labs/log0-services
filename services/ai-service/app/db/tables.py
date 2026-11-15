@@ -202,6 +202,8 @@ pull_request = Table(
     Column("approved_by", PGUUID(as_uuid=True), nullable=False),
     Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
     Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("merge_commit_sha", String(64), nullable=True),
+    Column("merged_at", DateTime(timezone=True), nullable=True),
 )
 
 test_run = Table(

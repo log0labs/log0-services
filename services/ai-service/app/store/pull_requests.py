@@ -31,6 +31,8 @@ class PullRequestRow:
     approved_by: UUID
     created_at: datetime
     updated_at: datetime
+    merge_commit_sha: str | None = None
+    merged_at: datetime | None = None
 
 
 def _to_row(row) -> PullRequestRow:
@@ -105,13 +107,21 @@ async def count_since(session: AsyncSession, *, tenant_id: UUID, since: datetime
 
 
 async def sync_state(
-    session: AsyncSession, *, installation_id: int, github_repository_id: int, number: int, state: str
+    session: AsyncSession,
+    *,
+    installation_id: int,
+    github_repository_id: int,
+    number: int,
+    state: str,
+    merge_commit_sha: str | None = None,
 ) -> PullRequestRow | None:
     """A pull request log0 opened was merged, closed or reopened on GitHub: record it.
 
     The row is found by what GitHub tells us (installation, repository id, pull request number) joined to the
-    tenant's own repository connection, so an event for a pull request log0 did not open changes nothing.
+    tenant's own repository connection, so an event for a pull request log0 did not open changes nothing. A merge also
+    records the commit it made (``merge_commit_sha``) and when, which is what a deploy would ship.
     """
+    merged = {"merge_commit_sha": merge_commit_sha, "merged_at": func.now()} if state == "merged" and merge_commit_sha else {}
     result = await session.execute(
         update(pull_request)
         .where(
@@ -123,7 +133,7 @@ async def sync_state(
                 )
             ),
         )
-        .values(state=state, updated_at=func.now())
+        .values(state=state, updated_at=func.now(), **merged)
         .returning(pull_request)
     )
     row = result.first()
