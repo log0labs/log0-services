@@ -2,6 +2,7 @@
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    false,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -127,6 +129,14 @@ repository_connection = Table(
     Column("key_id", String(64), nullable=False),
     Column("created_by", PGUUID(as_uuid=True), nullable=False),
     Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("github_repository_id", BigInteger(), nullable=True),
+    Column(
+        "installation_id",
+        BigInteger(),
+        ForeignKey("ai.github_installation.installation_id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("pr_writes_enabled", Boolean(), nullable=False, server_default=false()),
 )
 
 service_repository = Table(
@@ -136,4 +146,79 @@ service_repository = Table(
     Column("service_name", String(255), primary_key=True),
     Column("repository_id", PGUUID(as_uuid=True), nullable=False),
     Column("path_prefix", Text(), nullable=False, server_default=""),
+)
+
+github_installation = Table(
+    "github_installation",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("installation_id", BigInteger(), nullable=False, unique=True),
+    Column("account_login", String(128), nullable=False),
+    Column("account_type", String(32), nullable=False),
+    Column("suspended_at", DateTime(timezone=True), nullable=True),
+    Column("created_by", PGUUID(as_uuid=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+)
+
+pull_request = Table(
+    "pull_request",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column(
+        "investigation_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("ai.investigation.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+    Column(
+        "repository_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("ai.repository_connection.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("branch", String(255), nullable=False),
+    Column("base_sha", String(64), nullable=False),
+    Column("commit_sha", String(64), nullable=True),
+    Column("number", Integer(), nullable=True),
+    Column("url", Text(), nullable=True),
+    Column("state", String(24), nullable=False, server_default="branch_created"),
+    Column("approved_by", PGUUID(as_uuid=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+)
+
+test_run = Table(
+    "test_run",
+    metadata,
+    Column("id", PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column(
+        "investigation_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("ai.investigation.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("commit_sha", String(64), nullable=False),
+    Column("outcome", String(16), nullable=False),
+    Column("checks", JSONB(astext_type=Text()), nullable=False, server_default=text("'[]'::jsonb")),
+    Column("started_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+)
+
+write_audit = Table(
+    "write_audit",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column("tenant_id", PGUUID(as_uuid=True), nullable=False),
+    Column("investigation_id", PGUUID(as_uuid=True), nullable=True),
+    Column("actor_id", PGUUID(as_uuid=True), nullable=True),
+    Column("action", String(48), nullable=False),
+    Column("repository", String(300), nullable=False),
+    Column("target", Text(), nullable=False, server_default=""),
+    Column("result", String(16), nullable=False),
+    Column("detail", Text(), nullable=False, server_default=""),
+    Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
 )
