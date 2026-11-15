@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.integrations.github import GitHubAccessError, GitHubUnavailableError
 from app.integrations.github_app import GitHubAppNotConfiguredError
 from app.integrations.github_app_client import GitHubAppClient, InstalledRepository
+from app.publishing.policy import PrLimits, TenantRules, server_limits
 from app.schemas.ai_config import RepositoryOut
 from app.schemas.github_app import (
     AuditEntryOut,
@@ -27,6 +28,9 @@ from app.schemas.github_app import (
     InstallationIn,
     InstallationOut,
     InstalledRepositoryOut,
+    PrPolicyIn,
+    PrPolicyLimits,
+    PrPolicyOut,
     WritesIn,
 )
 from app.security.install_state import (
@@ -36,6 +40,7 @@ from app.security.install_state import (
 )
 from app.security.jwt import CurrentUser, require_admin
 from app.store import github_installations as installations
+from app.store import pr_policy as policy_store
 from app.store import repositories as repository_store
 from app.store import write_audit
 
@@ -251,3 +256,58 @@ async def audit_log(
         )
         for row in rows
     ]
+
+
+def _policy_out(rules: TenantRules | None, settings: Settings) -> PrPolicyOut:
+    rules = rules or TenantRules()
+    ceilings = server_limits(settings)
+    return PrPolicyOut(
+        only_on_green=rules.only_on_green,
+        max_files=rules.max_files,
+        max_changed_lines=rules.max_changed_lines,
+        max_per_repository_per_hour=rules.max_per_repository_per_hour,
+        max_per_tenant_per_hour=rules.max_per_tenant_per_hour,
+        server=PrPolicyLimits(
+            max_files=ceilings.max_files,
+            max_changed_lines=ceilings.max_changed_lines,
+            max_per_repository_per_hour=ceilings.max_per_repository_per_hour,
+            max_per_tenant_per_hour=ceilings.max_per_tenant_per_hour,
+        ),
+        server_only_on_green=settings.pr_only_on_green,
+    )
+
+
+@router.get("/policy", response_model=PrPolicyOut)
+async def get_policy(
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PrPolicyOut:
+    return _policy_out(await policy_store.get(session, tenant_id=admin.tenant_id), settings)
+
+
+@router.put("/policy", response_model=PrPolicyOut)
+async def put_policy(
+    body: PrPolicyIn,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PrPolicyOut:
+    """Make the pull request rules of this workspace stricter than the server's. Looser values are refused."""
+    ceilings: PrLimits = server_limits(settings)
+    for name in ("max_files", "max_changed_lines", "max_per_repository_per_hour", "max_per_tenant_per_hour"):
+        chosen, ceiling = getattr(body, name), getattr(ceilings, name)
+        if chosen is not None and chosen > ceiling:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"{name} cannot be above the server limit of {ceiling}")
+    rules = TenantRules(**{name: getattr(body, name) for name in TenantRules.__dataclass_fields__})
+    saved = await policy_store.upsert(session, tenant_id=admin.tenant_id, rules=rules, updated_by=admin.user_id)
+    return _policy_out(saved, settings)
+
+
+@router.delete("/policy", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_policy(
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    await policy_store.delete_for(session, tenant_id=admin.tenant_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

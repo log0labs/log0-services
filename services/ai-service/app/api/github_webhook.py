@@ -1,4 +1,4 @@
-"""``POST /api/v1/github/webhook``: GitHub tells us when the app is removed, suspended or loses repositories.
+"""``POST /api/v1/github/webhook``: GitHub tells us when the app is removed, suspended or loses repositories, and when a pull request log0 opened is merged or closed.
 
 There is no user here: the request is trusted only if its HMAC signature matches
 ``GITHUB_WEBHOOK_SECRET``. Handling is idempotent (GitHub redelivers), ignores events it does not
@@ -17,7 +17,9 @@ from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.integrations.github_app_client import GitHubAppClient
 from app.security.webhook_signature import verify_github_signature
+from app.store import events as event_store
 from app.store import github_installations as installations
+from app.store import pull_requests
 from app.store import repositories as repository_store
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/github", tags=["github"])
 
 MAX_BODY_BYTES = 1_000_000
-_INSTALLATION_EVENTS = {"installation", "installation_repositories"}
+_INSTALLATION_EVENTS = {"installation", "installation_repositories", "pull_request"}
 
 
 @router.post("/webhook", status_code=status.HTTP_202_ACCEPTED)
@@ -58,6 +60,8 @@ async def _handle(event: str | None, payload: dict[str, Any], installation_id: i
     if installation_id is None:
         return False
     action = payload.get("action")
+    if event == "pull_request":
+        return await _pull_request_changed(payload, installation_id, action, session)
     if event == "installation":
         if action == "deleted":
             await installations.delete_by_installation(session, installation_id=installation_id)
@@ -72,4 +76,26 @@ async def _handle(event: str | None, payload: dict[str, Any], installation_id: i
     if action == "removed" and removed:
         await repository_store.disable_writes_for_github_repositories(session, installation_id=installation_id, github_repository_ids=removed)
     client.auth.forget(installation_id)  # cached tokens were narrowed to the old repository list
+    return True
+
+
+_PULL_REQUEST_STATES = {"closed": None, "reopened": "open"}  # closed is merged or closed, decided by the payload
+
+
+async def _pull_request_changed(payload: dict[str, Any], installation_id: int, action: Any, session: AsyncSession) -> bool:
+    """A human merged, closed or reopened a pull request: keep the record, and say so in the investigation's log."""
+    if action not in _PULL_REQUEST_STATES:
+        return False
+    try:
+        number = int(payload["pull_request"]["number"])
+        repository_id = int(payload["repository"]["id"])
+        merged = bool(payload["pull_request"].get("merged"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    state = _PULL_REQUEST_STATES[action] or ("merged" if merged else "closed")
+    row = await pull_requests.sync_state(session, installation_id=installation_id, github_repository_id=repository_id, number=number, state=state)
+    if row is None:
+        return False
+    await event_store.append_event(session, investigation_id=row.investigation_id, type=f"pr.{state}", payload={"number": number})
+    logger.info("pull request %s of investigation %s is now %s", number, row.investigation_id, state)
     return True

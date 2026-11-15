@@ -28,7 +28,11 @@ from app.llm.purpose import Purpose
 from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.observability import tracing_allowed, tracing_scope
 from app.publishing.ci import CiWait
-from app.publishing.policy import PrLimits
+from app.publishing.policy import (
+    effective_limits,
+    effective_only_on_green,
+    server_limits,
+)
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
@@ -38,6 +42,7 @@ from app.security.crypto import CryptoError, SecretBox, secret_context
 from app.security.redaction import redact_text
 from app.store import events as event_store
 from app.store import investigations as investigation_store
+from app.store import pr_policy as pr_policy_store
 from app.store import provider_config as provider_config_store
 from app.tools.incidents import IncidentApi, RelatedIncidentSource
 from app.tools.logs import LogBackend
@@ -107,18 +112,18 @@ class GraphExecutor:
         self._secret_box = secret_box
         self._publisher = publisher
 
-    def _ci_policy(self) -> dict[str, Any]:
-        """The CI wait and the only-on-green rule from settings (the defaults when there are none, as in tests)."""
+    async def _policy_for(self, session_factory: SessionFactory, tenant_id: UUID) -> dict[str, Any]:
+        """The CI wait and the pull request rules for this run: the server's settings, made stricter by the workspace's own rules."""
         if self._settings is None:
             return {}
+        async with session_factory() as session:
+            rules = await pr_policy_store.get(session, tenant_id=tenant_id)
         wait = CiWait(self._settings.ci_wait_seconds, self._settings.ci_poll_seconds, self._settings.ci_start_grace_seconds)
-        limits = PrLimits(
-            self._settings.pr_max_files,
-            self._settings.pr_max_changed_lines,
-            self._settings.pr_max_per_repository_per_hour,
-            self._settings.pr_max_per_tenant_per_hour,
-        )
-        return {"ci_wait": wait, "pr_only_on_green": self._settings.pr_only_on_green, "pr_limits": limits}
+        return {
+            "ci_wait": wait,
+            "pr_only_on_green": effective_only_on_green(self._settings.pr_only_on_green, rules),
+            "pr_limits": effective_limits(server_limits(self._settings), rules),
+        }
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         allowed = True  # without settings (tests) nothing is restricted
@@ -187,7 +192,7 @@ class GraphExecutor:
             memory=self._memory,
             require_review=self._require_review,
             publisher=self._publisher,
-            **self._ci_policy(),
+            **await self._policy_for(session_factory, tenant_id),
         )
 
         snapshot = await self._graph.aget_state(config)

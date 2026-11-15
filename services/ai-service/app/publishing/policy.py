@@ -7,8 +7,12 @@ and a repository (or a workspace) cannot be flooded with pull requests.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.diff.builder import FileDiff
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 _PROTECTED_DIRECTORIES = (".github", ".git", ".circleci", ".gitlab")
 _PROTECTED_NAMES = frozenset(
@@ -86,3 +90,45 @@ def check_rate(activity: PrActivity, limits: PrLimits) -> list[str]:
     if activity.tenant_last_hour >= limits.max_per_tenant_per_hour:
         reasons.append(f"this workspace already has {activity.tenant_last_hour} log0 pull requests in the last hour")
     return reasons
+
+
+@dataclass(frozen=True)
+class TenantRules:
+    """What a workspace chose. ``None`` means "use the server's value"."""
+
+    only_on_green: bool = False
+    max_files: int | None = None
+    max_changed_lines: int | None = None
+    max_per_repository_per_hour: int | None = None
+    max_per_tenant_per_hour: int | None = None
+
+
+def _tighter(server: int, chosen: int | None) -> int:
+    return server if chosen is None else min(server, chosen)
+
+
+def effective_limits(server: PrLimits, rules: TenantRules | None) -> PrLimits:
+    """The server's limits are ceilings: a workspace can make them stricter, never looser."""
+    if rules is None:
+        return server
+    return PrLimits(
+        max_files=_tighter(server.max_files, rules.max_files),
+        max_changed_lines=_tighter(server.max_changed_lines, rules.max_changed_lines),
+        max_per_repository_per_hour=_tighter(server.max_per_repository_per_hour, rules.max_per_repository_per_hour),
+        max_per_tenant_per_hour=_tighter(server.max_per_tenant_per_hour, rules.max_per_tenant_per_hour),
+    )
+
+
+def effective_only_on_green(server: bool, rules: TenantRules | None) -> bool:
+    """Either the server or the workspace can require passing checks; neither can switch the other off."""
+    return server or bool(rules and rules.only_on_green)
+
+
+def server_limits(settings: "Settings") -> PrLimits:
+    """The limits the server's settings allow: the ceilings for every workspace."""
+    return PrLimits(
+        settings.pr_max_files,
+        settings.pr_max_changed_lines,
+        settings.pr_max_per_repository_per_hour,
+        settings.pr_max_per_tenant_per_hour,
+    )

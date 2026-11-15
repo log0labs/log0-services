@@ -178,7 +178,7 @@ async def test_deleting_an_investigation_removes_its_pull_request_and_test_runs(
 
     await session.execute(text("DELETE FROM ai.investigation WHERE id = :i"), {"i": investigation_id})
 
-    assert (await session.execute(select(pull_request.c.id))).first() is None
+    assert (await session.execute(select(pull_request.c.id).where(pull_request.c.tenant_id == TENANT_A))).first() is None
     assert (await session.execute(select(test_run.c.id).where(test_run.c.tenant_id == TENANT_A))).first() is None
 
 

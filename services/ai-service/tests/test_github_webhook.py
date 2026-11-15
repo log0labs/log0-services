@@ -34,6 +34,14 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Env, FakeAppClient]]:
         e.app.dependency_overrides[get_github_app] = lambda: fake  # type: ignore[attr-defined]
         _seed()
         yield e, fake
+        _delete_investigations()
+
+
+def _delete_investigations() -> None:
+    engine = create_engine(get_settings().database_url)
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM ai.investigation WHERE tenant_id = :t"), {"t": TENANT_A})
+    engine.dispose()
 
 
 def _seed() -> None:
@@ -166,3 +174,77 @@ def test_an_unreadable_payload_is_a_client_error(env: tuple[Env, FakeAppClient])
     e, _ = env
 
     assert _post(e, "installation", {"action": "deleted"}).status_code == 400
+
+
+# ------------------------------------------------------------- pull request state
+
+
+def _add_pull_request(number: int = 5) -> str:
+    engine = create_engine(get_settings().database_url)
+    with engine.begin() as conn:
+        investigation_id = conn.execute(
+            text("INSERT INTO ai.investigation (tenant_id, incident_id, requested_by, status) VALUES (:t, gen_random_uuid(), :u, 'COMPLETED') RETURNING id"),
+            {"t": TENANT_A, "u": USER_ID},
+        ).scalar_one()
+        repository_id = conn.execute(text("SELECT id FROM ai.repository_connection WHERE tenant_id = :t"), {"t": TENANT_A}).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO ai.pull_request (tenant_id, investigation_id, repository_id, branch, base_sha, number, state, approved_by) "
+                "VALUES (:t, :i, :r, 'log0/fix-a-b', 'a', :n, 'open', :u)"
+            ),
+            {"t": TENANT_A, "i": investigation_id, "r": repository_id, "n": number, "u": USER_ID},
+        )
+    engine.dispose()
+    return str(investigation_id)
+
+
+def _pr_payload(action: str, *, number: int = 5, merged: bool = False, repository: int = 7) -> dict:
+    return {
+        "action": action,
+        "installation": {"id": INSTALLATION},
+        "repository": {"id": repository},
+        "pull_request": {"number": number, "merged": merged},
+    }
+
+
+def _state_and_events(investigation_id: str) -> tuple[str, list[str]]:
+    engine = create_engine(get_settings().database_url)
+    with engine.connect() as conn:
+        state = conn.execute(text("SELECT state FROM ai.pull_request WHERE investigation_id = :i"), {"i": investigation_id}).scalar_one()
+        events = [r[0] for r in conn.execute(text("SELECT type FROM ai.investigation_event WHERE investigation_id = :i ORDER BY seq"), {"i": investigation_id})]
+    engine.dispose()
+    return state, events
+
+
+@pytest.mark.parametrize(
+    ("action", "merged", "state"),
+    [("closed", True, "merged"), ("closed", False, "closed"), ("reopened", False, "open")],
+)
+def test_a_pull_request_merged_closed_or_reopened_on_github_is_recorded(env: tuple[Env, FakeAppClient], action: str, merged: bool, state: str) -> None:
+    e, _ = env
+    investigation_id = _add_pull_request()
+
+    response = _post(e, "pull_request", _pr_payload(action, merged=merged))
+
+    assert response.status_code == 202 and response.json() == {"handled": True}
+    assert _state_and_events(investigation_id) == (state, [f"pr.{state}"])
+
+
+def test_events_for_other_pull_requests_or_repositories_change_nothing(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+    investigation_id = _add_pull_request(number=5)
+
+    for payload in (_pr_payload("closed", number=6), _pr_payload("closed", repository=999), _pr_payload("opened"), _pr_payload("labeled")):
+        assert _post(e, "pull_request", payload).json() == {"handled": False}
+
+    assert _state_and_events(investigation_id) == ("open", [])
+
+
+def test_a_pull_request_event_for_an_unreadable_payload_is_ignored(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+    investigation_id = _add_pull_request()
+
+    broken = {"action": "closed", "installation": {"id": INSTALLATION}, "pull_request": {"number": "x"}}
+
+    assert _post(e, "pull_request", broken).json() == {"handled": False}
+    assert _state_and_events(investigation_id)[0] == "open"

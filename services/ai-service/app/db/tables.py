@@ -222,3 +222,16 @@ write_audit = Table(
     Column("detail", Text(), nullable=False, server_default=""),
     Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
 )
+
+pr_policy = Table(
+    "pr_policy",
+    metadata,
+    Column("tenant_id", PGUUID(as_uuid=True), primary_key=True),
+    Column("only_on_green", Boolean(), nullable=False, server_default=false()),
+    Column("max_files", Integer(), nullable=True),
+    Column("max_changed_lines", Integer(), nullable=True),
+    Column("max_per_repository_per_hour", Integer(), nullable=True),
+    Column("max_per_tenant_per_hour", Integer(), nullable=True),
+    Column("updated_by", PGUUID(as_uuid=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
+)

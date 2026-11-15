@@ -99,6 +99,7 @@ All under JWT auth (the tenant comes from the token). ADMIN and ENGINEER can sta
 | `POST .../{id}/pr/approve`, `POST .../{id}/pr/decline`, `GET .../{id}/pull-request` | Answer the draft pull request gate (ADMIN or ENGINEER); read the pull request |
 | `GET /api/v1/github/app`, `POST/GET/DELETE /api/v1/github/installations`, `GET .../{id}/repositories`, `PUT /api/v1/github/repositories/{id}/writes` | Install and link the GitHub App, choose writable repositories (ADMIN) |
 | `GET /api/v1/github/audit` | Every write log0 made (ADMIN) |
+| `GET/PUT/DELETE /api/v1/github/policy` | The workspace's pull request rules, stricter than the server's limits (ADMIN) |
 | `POST /api/v1/github/webhook` | GitHub's signed events: uninstall, suspend, repositories removed |
 | `GET/PUT/DELETE /api/v1/ai-settings/{purpose}`, `POST .../test` | Per-tenant model settings (ADMIN) |
 | `POST/GET/DELETE /api/v1/repositories`, `/api/v1/service-repositories` | Connect GitHub repositories, map services (ADMIN) |
@@ -121,6 +122,7 @@ Design: `log0-refs/ai-service/V2-PLAN.md`, `v2-graph-diagram.md`.
 | `PR_WRITES_DISABLED_TENANTS` | JSON list of workspace ids switched off by the operator |
 | `PR_ONLY_ON_GREEN` | Do not open a pull request when the checks failed or timed out |
 | `CI_WAIT_SECONDS`, `CI_POLL_SECONDS`, `CI_START_GRACE_SECONDS` | How long to wait for the repository's checks (600, 15, 60) |
+| (GitHub App events) | Subscribe the App to **Pull request** so merges and closes of log0 pull requests are recorded (`pr.merged`, `pr.closed`, `pr.open` events). `installation` events need no subscription |
 | `PR_MAX_FILES`, `PR_MAX_CHANGED_LINES`, `PR_MAX_PER_REPOSITORY_PER_HOUR`, `PR_MAX_PER_TENANT_PER_HOUR` | Size and rate limits (10, 400, 3, 10) |
 
 ## MCP

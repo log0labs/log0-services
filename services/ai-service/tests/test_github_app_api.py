@@ -59,6 +59,7 @@ class FakeAppClient:
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Env, FakeAppClient]]:
     monkeypatch.setenv("GITHUB_APP_SLUG", "log0-test")
+    monkeypatch.setenv("PR_WRITES_ENABLED", "false")  # the developer .env may have switched writing on
     with make_env(monkeypatch) as e:
         fake = FakeAppClient()
         e.app.dependency_overrides[get_github_app] = lambda: fake  # type: ignore[attr-defined]
@@ -313,3 +314,71 @@ def test_the_audit_log_shows_an_admin_only_their_own_workspace_writes(env: tuple
         with engine.begin() as conn:
             conn.execute(text("DELETE FROM ai.write_audit WHERE tenant_id IN (:a, :b)"), {"a": TENANT_A, "b": TENANT_B})
         engine.dispose()
+
+
+# ------------------------------------------------------------------ pull request rules
+
+
+POLICY = f"{BASE}/policy"
+
+
+@pytest.fixture(autouse=True)
+def _clean_policy() -> Iterator[None]:
+    def wipe() -> None:
+        engine = create_engine(get_settings().database_url)
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM ai.pr_policy WHERE tenant_id IN (:a, :b)"), {"a": TENANT_A, "b": TENANT_B})
+        engine.dispose()
+
+    wipe()
+    yield
+    wipe()
+
+
+def test_the_rules_start_as_the_servers_and_show_the_ceilings(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+
+    body = e.client.get(POLICY, headers=e.headers()).json()
+
+    assert body["onlyOnGreen"] is False and body["maxFiles"] is None
+    assert body["server"] == {"maxFiles": 10, "maxChangedLines": 400, "maxPerRepositoryPerHour": 3, "maxPerTenantPerHour": 10}
+
+
+def test_an_admin_can_make_the_rules_stricter_and_reset_them(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+
+    saved = e.client.put(POLICY, json={"onlyOnGreen": True, "maxFiles": 3, "maxChangedLines": 100}, headers=e.headers())
+
+    assert saved.status_code == 200 and saved.json()["maxFiles"] == 3 and saved.json()["onlyOnGreen"] is True
+    assert e.client.get(POLICY, headers=e.headers()).json()["maxChangedLines"] == 100
+    assert e.client.delete(POLICY, headers=e.headers()).status_code == 204
+    assert e.client.get(POLICY, headers=e.headers()).json()["maxFiles"] is None
+
+
+@pytest.mark.parametrize("body", [{"maxFiles": 11}, {"maxChangedLines": 401}, {"maxPerRepositoryPerHour": 4}, {"maxPerTenantPerHour": 11}])
+def test_rules_looser_than_the_server_allows_are_refused(env: tuple[Env, FakeAppClient], body: dict) -> None:
+    e, _ = env
+
+    response = e.client.put(POLICY, json=body, headers=e.headers())
+
+    assert response.status_code == 422 and "server limit" in response.json()["detail"]
+    assert e.client.get(POLICY, headers=e.headers()).json()["maxFiles"] is None
+
+
+@pytest.mark.parametrize("body", [{"maxFiles": 0}, {"maxFiles": -1}, {"unknown": 1}, {"maxFiles": "x"}])
+def test_nonsense_rules_are_refused(env: tuple[Env, FakeAppClient], body: dict) -> None:
+    e, _ = env
+
+    assert e.client.put(POLICY, json=body, headers=e.headers()).status_code == 422
+
+
+def test_rules_belong_to_one_workspace_and_to_admins(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+    e.client.put(POLICY, json={"maxFiles": 2}, headers=e.headers())
+
+    assert e.client.get(POLICY, headers=e.headers(tenant=TENANT_B)).json()["maxFiles"] is None
+    for role in ("ENGINEER", "VIEWER"):
+        assert e.client.get(POLICY, headers=e.headers(role=role)).status_code == 403
+        assert e.client.put(POLICY, json={}, headers=e.headers(role=role)).status_code == 403
+        assert e.client.delete(POLICY, headers=e.headers(role=role)).status_code == 403
+    assert e.client.get(POLICY).status_code == 401

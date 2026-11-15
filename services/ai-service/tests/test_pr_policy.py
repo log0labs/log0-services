@@ -260,3 +260,47 @@ async def test_the_installation_token_appears_only_in_authorization_headers(fact
     assert "ghs_write_token" not in audit
     assert json.dumps({"id": str(repository_id)})
     assert APPROVER
+
+
+# -------------------------------------------------- per-workspace rules (stricter only)
+
+
+def test_a_workspace_can_make_the_limits_stricter_but_never_looser() -> None:
+    from app.publishing.policy import TenantRules, effective_limits
+
+    server = PrLimits(max_files=10, max_changed_lines=400, max_per_repository_per_hour=3, max_per_tenant_per_hour=10)
+
+    assert effective_limits(server, None) == server
+    assert effective_limits(server, TenantRules()) == server  # nothing chosen: the server's values
+    assert effective_limits(server, TenantRules(max_files=2, max_changed_lines=50)) == PrLimits(2, 50, 3, 10)
+    assert effective_limits(server, TenantRules(max_files=99, max_per_tenant_per_hour=99)) == server  # asking for more changes nothing
+
+
+def test_requiring_green_checks_can_be_turned_on_by_either_side_and_off_by_neither() -> None:
+    from app.publishing.policy import TenantRules, effective_only_on_green
+
+    assert effective_only_on_green(False, None) is False
+    assert effective_only_on_green(False, TenantRules(only_on_green=True)) is True
+    assert effective_only_on_green(True, TenantRules(only_on_green=False)) is True
+    assert effective_only_on_green(True, None) is True
+
+
+@pytest.mark.asyncio
+async def test_the_executor_builds_each_runs_rules_from_the_server_and_the_workspace(factory) -> None:  # noqa: F811
+    from app.config import Settings
+    from app.graph.executor import GraphExecutor
+    from app.publishing.policy import TenantRules
+    from app.store import pr_policy as policy_store
+
+    settings = Settings(_env_file=None, pr_max_files=10, pr_only_on_green=False)  # type: ignore[call-arg]
+    executor = GraphExecutor(object(), logs=object(), incidents=object(), history=object(), models=object(), settings=settings)  # type: ignore[arg-type]
+
+    async with factory() as session:
+        before = await executor._policy_for(factory, TENANT)
+        await policy_store.upsert(session, tenant_id=TENANT, rules=TenantRules(only_on_green=True, max_files=3), updated_by=USER)
+    after = await executor._policy_for(factory, TENANT)
+    async with factory() as session:
+        await policy_store.delete_for(session, tenant_id=TENANT)
+
+    assert before["pr_limits"].max_files == 10 and before["pr_only_on_green"] is False
+    assert after["pr_limits"].max_files == 3 and after["pr_only_on_green"] is True

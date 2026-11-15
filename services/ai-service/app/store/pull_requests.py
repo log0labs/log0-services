@@ -13,7 +13,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.tables import pull_request
+from app.db.tables import pull_request, repository_connection
 
 
 @dataclass(frozen=True)
@@ -102,3 +102,30 @@ async def count_since(session: AsyncSession, *, tenant_id: UUID, since: datetime
     if repository_id is not None:
         query = query.where(pull_request.c.repository_id == repository_id)
     return int((await session.execute(query)).scalar_one())
+
+
+async def sync_state(
+    session: AsyncSession, *, installation_id: int, github_repository_id: int, number: int, state: str
+) -> PullRequestRow | None:
+    """A pull request log0 opened was merged, closed or reopened on GitHub: record it.
+
+    The row is found by what GitHub tells us (installation, repository id, pull request number) joined to the
+    tenant's own repository connection, so an event for a pull request log0 did not open changes nothing.
+    """
+    result = await session.execute(
+        update(pull_request)
+        .where(
+            pull_request.c.number == number,
+            pull_request.c.repository_id.in_(
+                select(repository_connection.c.id).where(
+                    repository_connection.c.installation_id == installation_id,
+                    repository_connection.c.github_repository_id == github_repository_id,
+                )
+            ),
+        )
+        .values(state=state, updated_at=func.now())
+        .returning(pull_request)
+    )
+    row = result.first()
+    await session.commit()
+    return _to_row(row) if row else None
