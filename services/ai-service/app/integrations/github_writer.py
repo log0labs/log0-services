@@ -25,7 +25,7 @@ from app.integrations.github import (
     api_headers,
     raise_for_status,
 )
-from app.integrations.github_app import GitHubAppAuth
+from app.integrations.github_app import WRITE_PERMISSIONS, GitHubAppAuth
 from app.schemas.domain import CheckResult
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class GitHubWriter:
     async def ensure_branch(self, target: WriteTarget, name: str, base_sha: str, investigation_id: str) -> BranchState:
         """Create ``name`` at ``base_sha``, or accept it if it already exists and is ours."""
         self._check_branch_name(target, name)
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             existing = await self._head(call, target, name)
             if existing is None:
                 response = await call("POST", f"{self._repo(target)}/git/refs", json={"ref": f"refs/heads/{name}", "sha": base_sha}, expected=(201, 422))
@@ -124,7 +124,7 @@ class GitHubWriter:
         if not files:
             raise WriteRejectedError("There is nothing to commit")
         self._check_branch_name(target, branch)
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             base_commit = (await call("GET", f"{self._repo(target)}/git/commits/{base_sha}")).json()
             entries = [_tree_entry(f) for f in files]
             tree = (await call("POST", f"{self._repo(target)}/git/trees", json={"base_tree": base_commit["tree"]["sha"], "tree": entries}, expected=(201,))).json()
@@ -134,7 +134,7 @@ class GitHubWriter:
 
     async def check_runs(self, target: WriteTarget, sha: str) -> list[CheckResult]:
         """The check runs (GitHub Actions and other checks apps) on a commit."""
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             response = await call("GET", f"{self._repo(target)}/commits/{sha}/check-runs", params={"per_page": "100"})
         try:
             return [
@@ -152,7 +152,7 @@ class GitHubWriter:
 
     async def job_log(self, target: WriteTarget, job_id: int, *, max_chars: int = 20000) -> str:
         """The end of a GitHub Actions job's log (needs the App's ``actions: read``). Empty text when there is none."""
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             response = await call("GET", f"{self._repo(target)}/actions/jobs/{int(job_id)}/logs", expected=(200, 302, 404, 410))
         if response.status_code in (404, 410):
             return ""  # no log (expired, or the job never ran)
@@ -170,7 +170,7 @@ class GitHubWriter:
 
     async def head_of(self, target: WriteTarget, branch: str) -> str | None:
         """The commit a branch points at, or ``None`` when it does not exist."""
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             return await self._head(call, target, branch)
 
     async def open_draft_pull_request(
@@ -178,7 +178,7 @@ class GitHubWriter:
     ) -> OpenedPullRequest:
         """Open a draft pull request from ``branch`` into the default branch, or return the one already open."""
         self._check_branch_name(target, branch)
-        async with self._session(target) as call:
+        async with self.session(target) as call:
             found = await self._find_pull_request(call, target, branch)
             if found is not None:
                 return OpenedPullRequest(found[0], found[1], created=False)
@@ -228,8 +228,9 @@ class GitHubWriter:
         except (GitHubAccessError, GitHubUnavailableError, WriteRejectedError) as exc:  # a label is cosmetic
             logger.info("could not label pull request %s: %s", number, type(exc).__name__)
 
-    def _session(self, target: WriteTarget) -> "_Session":
-        return _Session(self, target)
+    def session(self, target: WriteTarget, permissions: Mapping[str, str] = WRITE_PERMISSIONS) -> "_Session":
+        """``async with writer.session(target) as call``: a token with ``permissions`` for one repository, for a batch of calls."""
+        return _Session(self, target, permissions)
 
 
 def _is_public_https(url: str) -> bool:
@@ -248,14 +249,17 @@ def _tree_entry(file: FileWrite) -> dict[str, Any]:
 class _Session:
     """``async with writer._session(target) as call``: one installation token, one HTTP client, for a batch of calls."""
 
-    def __init__(self, writer: GitHubWriter, target: WriteTarget) -> None:
+    def __init__(self, writer: GitHubWriter, target: WriteTarget, permissions: Mapping[str, str]) -> None:
         self._writer = writer
         self._target = target
+        self._permissions = permissions
         self._client: httpx.AsyncClient | None = None
         self._headers: Mapping[str, str] = {}
 
     async def __aenter__(self):
-        token = await self._writer._auth.installation_token(self._target.installation_id, [self._target.github_repository_id])
+        token = await self._writer._auth.installation_token(
+            self._target.installation_id, [self._target.github_repository_id], self._permissions
+        )
         self._headers = api_headers(token.token.get_secret_value())
         self._client = httpx.AsyncClient(timeout=self._writer._timeout)
         return self._call
