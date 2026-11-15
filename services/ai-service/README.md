@@ -177,8 +177,9 @@ ADR-017 in the website docs (architecture, decisions) for the reasoning.
 (`--eval-repo`, `--clone`): the harness approves the offer, log0 branches, commits, waits for the repository's own CI, repairs once if it fails and
 opens a draft pull request. Metrics: pull request opened, CI green first try and after a repair, repair helped, branch and draft safety, no pull request
 for a cause outside the code, plus the V1 fix metrics. It writes branches to a real repository and sends code to the model, so it needs `--yes`. Its
-harness is self-tested offline with the scripted model and an in-memory GitHub (`tests/test_pr_evaluation.py`). No live result is published yet;
-see `coding-notepads/v2/step-11/11.8-live-pull-request-evaluation.md`.
+harness is self-tested offline with the scripted model and an in-memory GitHub (`tests/test_pr_evaluation.py`). First live run (2026-11-15, one run, Gemini 3.5 Flash Lite, 8 cases): a draft pull request opened in 6 of 7 code cases, the repository's CI was green on the final commit in 6 of 6
+(5 of 6 on the first try; one failing run was repaired once), and no pull request was opened for the rotated-key case. Eight cases, one run: a first measurement, not a benchmark; the services' own
+tests are weak (see `evals/pr_live_2026-11-15.json` and `coding-notepads/v2/step-11/11.8-live-pull-request-evaluation.md`).
 
 ### Measured so far
 
