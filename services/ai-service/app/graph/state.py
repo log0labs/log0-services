@@ -25,6 +25,7 @@ from app.publishing.policy import PrLimits
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory
 from app.retrieval.runbooks import RunbookSource
+from app.sandbox.port import Sandbox
 from app.schemas.domain import (
     BranchRef,
     CheckResult,
@@ -205,6 +206,8 @@ class InvestigationContext:
     require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
     ci_wait: CiWait = field(default_factory=CiWait)  # how long to wait for the repository's checks
     pr_limits: PrLimits = field(default_factory=PrLimits)  # what a pull request may be (size, files, rate)
+    sandbox: Sandbox | None = None  # runs a repository's tests in isolation; None: this server has no sandbox
+    sandbox_tests: bool = False  # this workspace opted in (and the server has a sandbox)
     pr_only_on_green: bool = False  # do not open a pull request for a commit whose checks failed
     publisher: Publisher | None = None  # opens draft pull requests; None: this server never writes to a repository
     budget: Budget = field(default_factory=Budget)

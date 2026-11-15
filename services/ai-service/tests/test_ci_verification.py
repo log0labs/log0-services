@@ -203,7 +203,7 @@ def test_the_tests_event_carries_names_and_conclusions_only() -> None:
     run = CiRun(outcome="failed", checks=[check(conclusion="failure"), check("lint", status="in_progress", conclusion=None)])
 
     assert events_from_update({"run_tests": {"ci_run": run}}) == [
-        ("tests.completed", {"outcome": "failed", "checks": [{"name": "ci / test", "conclusion": "failure"}, {"name": "lint", "conclusion": "in_progress"}]})
+        ("tests.completed", {"outcome": "failed", "checks": [{"name": "ci / test", "conclusion": "failure"}, {"name": "lint", "conclusion": "in_progress"}], "source": "repository"})
     ]
 
 

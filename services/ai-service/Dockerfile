@@ -9,6 +9,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git ripgrep ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Optional: the docker client the test sandbox uses (talks to a dedicated runner daemon through DOCKER_HOST).
+ARG INSTALL_DOCKER_CLI=false
+RUN if [ "$INSTALL_DOCKER_CLI" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends curl \
+        && curl -fsSL "https://download.docker.com/linux/static/stable/$(uname -m)/docker-27.3.1.tgz" \
+           | tar -xz --strip-components=1 -C /usr/local/bin docker/docker \
+        && apt-get purge -y curl && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

@@ -63,6 +63,7 @@ class PrPolicyIn(CamelModel):
     model_config = ConfigDict(extra="forbid")
 
     only_on_green: bool = False
+    sandbox_tests: bool = False
     max_files: int | None = Field(default=None, ge=1)
     max_changed_lines: int | None = Field(default=None, ge=1)
     max_per_repository_per_hour: int | None = Field(default=None, ge=1)
@@ -78,9 +79,11 @@ class PrPolicyLimits(CamelModel):
 
 class PrPolicyOut(CamelModel):
     only_on_green: bool
+    sandbox_tests: bool
     max_files: int | None
     max_changed_lines: int | None
     max_per_repository_per_hour: int | None
     max_per_tenant_per_hour: int | None
     server: PrPolicyLimits  # the ceilings: a workspace can only be stricter
     server_only_on_green: bool  # when true the workspace cannot switch it off
+    server_sandbox_available: bool  # the server has a test sandbox a workspace can opt in to

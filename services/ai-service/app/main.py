@@ -41,6 +41,7 @@ from app.retrieval.embeddings import build_embedder
 from app.retrieval.memory import PgMemory
 from app.retrieval.runbooks import RunbookSearcher
 from app.runner import InvestigationRunner
+from app.sandbox.docker import build_sandbox
 from app.security.crypto import secret_box_from_settings
 
 logging.basicConfig(
@@ -70,6 +71,7 @@ async def _lifespan(app: FastAPI):
     app.state.github = GitHubClient(settings)
     github_app_auth = GitHubAppAuth(settings)
     app.state.github_app = GitHubAppClient(settings, github_app_auth)
+    sandbox = build_sandbox(settings)
     publisher = GitHubPublisher(
         session_factory,
         GitHubWriter(settings, github_app_auth),
@@ -122,6 +124,7 @@ async def _lifespan(app: FastAPI):
                 code=code_access,
                 secret_box=app.state.secret_box,
                 publisher=publisher,
+                sandbox=sandbox,
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(

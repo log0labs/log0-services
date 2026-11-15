@@ -263,6 +263,7 @@ def _policy_out(rules: TenantRules | None, settings: Settings) -> PrPolicyOut:
     ceilings = server_limits(settings)
     return PrPolicyOut(
         only_on_green=rules.only_on_green,
+        sandbox_tests=rules.sandbox_tests,
         max_files=rules.max_files,
         max_changed_lines=rules.max_changed_lines,
         max_per_repository_per_hour=rules.max_per_repository_per_hour,
@@ -274,6 +275,7 @@ def _policy_out(rules: TenantRules | None, settings: Settings) -> PrPolicyOut:
             max_per_tenant_per_hour=ceilings.max_per_tenant_per_hour,
         ),
         server_only_on_green=settings.pr_only_on_green,
+        server_sandbox_available=settings.sandbox_enabled,
     )
 
 
@@ -299,6 +301,8 @@ async def put_policy(
         chosen, ceiling = getattr(body, name), getattr(ceilings, name)
         if chosen is not None and chosen > ceiling:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"{name} cannot be above the server limit of {ceiling}")
+    if body.sandbox_tests and not settings.sandbox_enabled:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="The test sandbox is not available on this server")
     rules = TenantRules(**{name: getattr(body, name) for name in TenantRules.__dataclass_fields__})
     saved = await policy_store.upsert(session, tenant_id=admin.tenant_id, rules=rules, updated_by=admin.user_id)
     return _policy_out(saved, settings)

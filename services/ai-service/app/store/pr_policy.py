@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.tables import pr_policy
 from app.publishing.policy import TenantRules
 
-_FIELDS = ("only_on_green", "max_files", "max_changed_lines", "max_per_repository_per_hour", "max_per_tenant_per_hour")
+_FIELDS = ("only_on_green", "sandbox_tests", "max_files", "max_changed_lines", "max_per_repository_per_hour", "max_per_tenant_per_hour")
 
 
 async def get(session: AsyncSession, *, tenant_id: UUID) -> TenantRules | None:

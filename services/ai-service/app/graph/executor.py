@@ -31,12 +31,14 @@ from app.publishing.ci import CiWait
 from app.publishing.policy import (
     effective_limits,
     effective_only_on_green,
+    effective_sandbox_tests,
     server_limits,
 )
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
+from app.sandbox.port import Sandbox
 from app.schemas.investigation import InvestigationStatus
 from app.security.crypto import CryptoError, SecretBox, secret_context
 from app.security.redaction import redact_text
@@ -97,6 +99,7 @@ class GraphExecutor:
         require_review: bool = False,
         secret_box: SecretBox | None = None,
         publisher: Publisher | None = None,
+        sandbox: Sandbox | None = None,
     ) -> None:
         self._graph = graph
         self._logs = logs
@@ -111,6 +114,7 @@ class GraphExecutor:
         self._require_review = require_review
         self._secret_box = secret_box
         self._publisher = publisher
+        self._sandbox = sandbox
 
     async def _policy_for(self, session_factory: SessionFactory, tenant_id: UUID) -> dict[str, Any]:
         """The CI wait and the pull request rules for this run: the server's settings, made stricter by the workspace's own rules."""
@@ -122,6 +126,7 @@ class GraphExecutor:
         return {
             "ci_wait": wait,
             "pr_only_on_green": effective_only_on_green(self._settings.pr_only_on_green, rules),
+            "sandbox_tests": self._sandbox is not None and effective_sandbox_tests(True, rules),
             "pr_limits": effective_limits(server_limits(self._settings), rules),
         }
 
@@ -192,6 +197,7 @@ class GraphExecutor:
             memory=self._memory,
             require_review=self._require_review,
             publisher=self._publisher,
+            sandbox=self._sandbox,
             **await self._policy_for(session_factory, tenant_id),
         )
 

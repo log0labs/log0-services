@@ -16,6 +16,7 @@ A failed write is a gap, never a failed run: the diff from V1 is still the resul
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -36,7 +37,8 @@ from app.publishing.naming import (
 )
 from app.publishing.policy import check_diff, check_rate
 from app.publishing.port import PublishError, PublishFile, PublishTarget
-from app.schemas.domain import CiRun, PrDecision
+from app.sandbox.port import SandboxRun
+from app.schemas.domain import CheckResult, CiRun, PrDecision
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +207,56 @@ async def apply_patch(state: InvestigationState, runtime: Runtime[InvestigationC
     return {"commit_sha": sha, "tool_calls": 2}
 
 
+_SANDBOX_CONCLUSION = {"passed": "success", "failed": "failure", "timeout": "timed_out"}
+
+
+def _apply_files(root: Path, files: list[PublishFile]) -> None:
+    """Write the change into the private snapshot, refusing any path that leaves it."""
+    base = root.resolve()
+    for file in files:
+        target = (base / file.path).resolve()
+        if not target.is_relative_to(base):
+            raise PublishError("a changed file lies outside the repository")
+        if file.content is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(file.content.encode("utf-8"))
+
+
+def _ci_run_from(run: SandboxRun) -> CiRun | None:
+    if run.status == "error":
+        return None
+    check = CheckResult(name=f"log0 sandbox: {run.name}", status="completed", conclusion=_SANDBOX_CONCLUSION[run.status])
+    return CiRun(
+        outcome=run.status,
+        checks=[check],
+        source="sandbox",
+        detail=None if run.status == "passed" else run.output_tail,
+    )
+
+
+async def _run_in_sandbox(state: InvestigationState, ctx: InvestigationContext) -> tuple[CiRun | None, str | None]:
+    """Run the repository's tests in log0's isolated sandbox on the reviewed change. ``(run, gap)``: a failed sandbox is a gap."""
+    repo, incident = state["repo"], state["incident"]
+    assert ctx.sandbox is not None and ctx.code is not None and repo is not None and incident is not None
+    try:
+        files = await _files_to_commit(state, ctx)  # the same rebuild-and-compare as the commit: it is the reviewed change
+        async with ctx.code.snapshot(tenant_id=ctx.tenant_id, service_name=incident.service_name, sha=repo.sha) as checkout:
+            if checkout is None:
+                return None, "The tests could not be run in the sandbox: the repository is no longer connected"
+            await asyncio.to_thread(_apply_files, checkout.code.root, files)
+            result = await ctx.sandbox.run(source=checkout.code.root, subdir=repo.path_prefix)
+    except (PublishError, CodeAccessError, ValueError, OSError) as exc:
+        return None, f"The tests could not be run in the sandbox: {exc}"
+    if result is None:
+        return None, None  # a toolchain the sandbox does not know: the pull request says nothing verified the change
+    run = _ci_run_from(result)
+    if run is None:
+        return None, f"The sandbox could not run the tests: {result.output_tail}"
+    return run, None
+
+
 async def run_tests(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     """Wait (bounded) for the repository's own CI on the commit log0 made, and keep what it said.
 
@@ -234,8 +286,15 @@ async def run_tests(state: InvestigationState, runtime: Runtime[InvestigationCon
     except PublishError as exc:
         return {"gaps": [f"The checks of the repository could not be read: {exc}"]}
     run = CiRun(outcome=outcome, checks=checks)
+    extra_gaps: list[str] = []
+    if run.outcome == "none" and ctx.sandbox is not None and ctx.sandbox_tests:
+        sandboxed, problem = await _run_in_sandbox(state, ctx)
+        if sandboxed is not None:
+            run = sandboxed
+        if problem:
+            extra_gaps.append(problem)
     await ctx.publisher.record_ci_run(tenant_id=ctx.tenant_id, investigation_id=UUID(state["investigation_id"]), commit_sha=sha, run=run)
-    return {"ci_run": run}
+    return {"ci_run": run, **({"gaps": extra_gaps} if extra_gaps else {})}
 
 
 async def open_draft_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:

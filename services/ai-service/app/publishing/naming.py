@@ -72,10 +72,22 @@ _OUTCOME_TEXT = {
 }
 
 
+_SANDBOX_TEXT = {
+    "passed": "The repository has no checks, so log0 ran its tests in an isolated sandbox (no network): they **passed**. That is not your CI environment.",
+    "failed": "The repository has no checks, so log0 ran its tests in an isolated sandbox (no network): they **failed**. Do not merge without looking at them.",
+    "timeout": "The repository has no checks, so log0 ran its tests in an isolated sandbox, and they did not finish in time.",
+    "none": "",
+}
+MAX_DETAIL = 1500
+
+
 def _tests_section(ci_run: CiRun | None) -> list[str]:
     if ci_run is None:
         return ["", "## Tests", "", "log0 could not read the checks of the repository. Run the tests yourself."]
-    lines = ["", "## Tests", "", _OUTCOME_TEXT[ci_run.outcome]]
+    text = (_SANDBOX_TEXT if ci_run.source == "sandbox" else _OUTCOME_TEXT)[ci_run.outcome] or _OUTCOME_TEXT["none"]
+    lines = ["", "## Tests", "", text]
     for check in ci_run.checks[:MAX_FILES_LISTED]:
         lines.append(f"- {_clean(check.name, 80)}: {check.conclusion or check.status}")
+    if ci_run.detail:
+        lines += ["", "<details><summary>Output</summary>", "", "```", ci_run.detail[-MAX_DETAIL:].replace("```", "'''"), "```", "</details>"]
     return lines

@@ -97,6 +97,7 @@ class TenantRules:
     """What a workspace chose. ``None`` means "use the server's value"."""
 
     only_on_green: bool = False
+    sandbox_tests: bool = False  # run the repository's tests in log0's sandbox when it has no checks of its own
     max_files: int | None = None
     max_changed_lines: int | None = None
     max_per_repository_per_hour: int | None = None
@@ -132,3 +133,8 @@ def server_limits(settings: "Settings") -> PrLimits:
         settings.pr_max_per_repository_per_hour,
         settings.pr_max_per_tenant_per_hour,
     )
+
+
+def effective_sandbox_tests(server_enabled: bool, rules: TenantRules | None) -> bool:
+    """The sandbox runs only where the server has one and the workspace asked for it: neither side can force the other."""
+    return server_enabled and bool(rules and rules.sandbox_tests)

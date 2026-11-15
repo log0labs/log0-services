@@ -260,6 +260,8 @@ class CiRun(BaseModel):
 
     outcome: Literal["passed", "failed", "none", "timeout"]  # none: the repository has no checks for the commit
     checks: list[CheckResult] = Field(default_factory=list)
+    source: Literal["repository", "sandbox"] = "repository"  # whose tests: its own CI, or log0's isolated sandbox
+    detail: str | None = None  # the end of the test output (sandbox runs only), already redacted
 
 
 class RepoContext(BaseModel):

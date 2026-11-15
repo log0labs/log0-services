@@ -382,3 +382,24 @@ def test_rules_belong_to_one_workspace_and_to_admins(env: tuple[Env, FakeAppClie
         assert e.client.put(POLICY, json={}, headers=e.headers(role=role)).status_code == 403
         assert e.client.delete(POLICY, headers=e.headers(role=role)).status_code == 403
     assert e.client.get(POLICY).status_code == 401
+
+
+def test_a_workspace_cannot_opt_in_to_a_sandbox_the_server_does_not_have(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env  # the test environment has no SANDBOX_ENABLED
+
+    state = e.client.get(POLICY, headers=e.headers()).json()
+    refused = e.client.put(POLICY, json={"sandboxTests": True}, headers=e.headers())
+
+    assert state["serverSandboxAvailable"] is False and state["sandboxTests"] is False
+    assert refused.status_code == 422 and "sandbox is not available" in refused.json()["detail"]
+
+
+def test_a_workspace_can_opt_in_when_the_server_has_a_sandbox(env: tuple[Env, FakeAppClient], monkeypatch: pytest.MonkeyPatch) -> None:
+    e, _ = env
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    get_settings.cache_clear()
+
+    saved = e.client.put(POLICY, json={"sandboxTests": True}, headers=e.headers())
+
+    assert saved.status_code == 200 and saved.json()["sandboxTests"] is True and saved.json()["serverSandboxAvailable"] is True
+    get_settings.cache_clear()

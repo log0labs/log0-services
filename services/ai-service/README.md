@@ -123,6 +123,9 @@ Design: `log0-refs/ai-service/V2-PLAN.md`, `v2-graph-diagram.md`.
 | `PR_ONLY_ON_GREEN` | Do not open a pull request when the checks failed or timed out |
 | `CI_WAIT_SECONDS`, `CI_POLL_SECONDS`, `CI_START_GRACE_SECONDS` | How long to wait for the repository's checks (600, 15, 60) |
 | (GitHub App events) | Subscribe the App to **Pull request** so merges and closes of log0 pull requests are recorded (`pr.merged`, `pr.closed`, `pr.open` events). `installation` events need no subscription |
+| `SANDBOX_ENABLED`, `SANDBOX_DOCKER_HOST`, `SANDBOX_RUNTIME` | Optional test sandbox for repositories without CI (off by default; a workspace must also opt in). Use a dedicated runner daemon, never the host Docker socket; `SANDBOX_RUNTIME=runsc` for gVisor. Build with `--build-arg INSTALL_DOCKER_CLI=true`. Notebook: `coding-notepads/v2/step-9/9.4-isolated-test-runner.md` |
+| `SANDBOX_PREPARE_NETWORK`, `SANDBOX_PREPARE_PROXY`, `SANDBOX_PREPARE_OPEN` | The dependency-fetch step's egress-restricted network and proxy (none: the step is skipped); `OPEN` is for development only |
+| `SANDBOX_IMAGES`, `SANDBOX_MEMORY`, `SANDBOX_CPUS`, `SANDBOX_PIDS`, `SANDBOX_TEST_TIMEOUT_SECONDS`, `SANDBOX_PREPARE_TIMEOUT_SECONDS`, `SANDBOX_MAX_WORKDIR_MB` | Pinned images (JSON) and the limits (1g, 1.0, 256, 300, 300, 700) |
 | `PR_MAX_FILES`, `PR_MAX_CHANGED_LINES`, `PR_MAX_PER_REPOSITORY_PER_HOUR`, `PR_MAX_PER_TENANT_PER_HOUR` | Size and rate limits (10, 400, 3, 10) |
 
 ## MCP

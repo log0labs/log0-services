@@ -228,6 +228,7 @@ pr_policy = Table(
     metadata,
     Column("tenant_id", PGUUID(as_uuid=True), primary_key=True),
     Column("only_on_green", Boolean(), nullable=False, server_default=false()),
+    Column("sandbox_tests", Boolean(), nullable=False, server_default=false()),
     Column("max_files", Integer(), nullable=True),
     Column("max_changed_lines", Integer(), nullable=True),
     Column("max_per_repository_per_hour", Integer(), nullable=True),
