@@ -42,6 +42,7 @@ class DeployFacts:
     ci_outcome: str | None  # passed, failed, none, timeout, or None when it was not read
     previous_environment: str | None = None  # the environment this one waits for, if its rule says so
     previous_verified: bool = False
+    already_deployed: bool = False  # the environment already runs the commit
 
 
 def switches(settings: "Settings", tenant_id: UUID) -> tuple[bool, bool]:
@@ -88,6 +89,10 @@ def check_start(facts: DeployFacts) -> PolicyDecision:
         reasons.append(f"the change touches a migration or schema file ({', '.join(risky[:3])}); a rollback cannot undo data changes")
     if facts.ci_outcome in ("failed", "timeout"):
         reasons.append("the checks of the merge commit did not pass")
+    if facts.ci_outcome == "pending":
+        reasons.append("the checks of the merge commit are still running")
+    if facts.already_deployed:
+        reasons.append(f"'{facts.environment}' already runs this commit")
     if rule.requires_previous_verified and not facts.previous_verified:
         reasons.append(f"'{facts.previous_environment or 'the previous environment'}' has not verified this change yet")
     if facts.deploys_last_hour >= facts.max_per_hour:

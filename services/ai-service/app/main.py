@@ -14,20 +14,26 @@ from app.api import (
     health,
     investigations,
     pull_requests,
+    remediations,
     repositories,
     runbooks,
     summaries,
 )
 from app.config import get_settings
 from app.db.session import create_db_engine, create_session_factory
+from app.deploy.executor import RemediationExecutor
+from app.deploy.graph import build_remediation_graph
+from app.deploy.runner import RemediationRunner
 from app.graph.builder import build_graph
 from app.graph.checkpoint import open_checkpointer
 from app.graph.executor import GraphExecutor
 from app.integrations.clickhouse import LogStore
 from app.integrations.code_access import DbCodeAccess
 from app.integrations.github import GitHubClient
+from app.integrations.github_actions import GitHubActionsProvider
 from app.integrations.github_app import GitHubAppAuth
 from app.integrations.github_app_client import GitHubAppClient
+from app.integrations.github_deploys import GitHubDeploys
 from app.integrations.github_writer import GitHubWriter
 from app.integrations.incident_db import IncidentReader
 from app.integrations.incident_service import IncidentApiClient
@@ -73,9 +79,10 @@ async def _lifespan(app: FastAPI):
     github_app_auth = GitHubAppAuth(settings)
     app.state.github_app = GitHubAppClient(settings, github_app_auth)
     sandbox = build_sandbox(settings)
+    github_writer = GitHubWriter(settings, github_app_auth)
     publisher = GitHubPublisher(
         session_factory,
-        GitHubWriter(settings, github_app_auth),
+        github_writer,
         enabled=settings.pr_writes_enabled and github_app_auth.configured,
         disabled_tenants=frozenset(settings.pr_writes_disabled_tenants),
     )
@@ -128,6 +135,8 @@ async def _lifespan(app: FastAPI):
                 sandbox=sandbox,
             )
         app.state.graph_executor = executor
+        remediation_runner = _build_remediation_runner(app, settings, session_factory, github_writer, stack_saver=saver if executor else None, logs=log_store, incidents=incident_api)
+        app.state.remediation_runner = remediation_runner
         runner = InvestigationRunner(
             session_factory,
             max_concurrent=settings.investigation_max_concurrent,
@@ -135,7 +144,11 @@ async def _lifespan(app: FastAPI):
         )
         app.state.investigation_runner = runner
         await runner.recover_on_startup()
+        if executor:
+            await remediation_runner.recover_on_startup()
+            remediation_runner.start_sweeper()
         yield
+        await remediation_runner.shutdown()
         await runner.shutdown()
 
     if hasattr(app.state.embedder, "close"):
@@ -143,6 +156,27 @@ async def _lifespan(app: FastAPI):
     await log_store.close()
     await incident_reader.close()
     await engine.dispose()
+
+
+def _build_remediation_runner(app: FastAPI, settings, session_factory, writer: GitHubWriter, *, stack_saver, logs, incidents) -> RemediationRunner:
+    """The runner of deploys (V3). Without a checkpointer (the graph switched off, as in most tests) it runs nothing."""
+
+    async def nothing(*_args) -> None:
+        return None
+
+    execute = nothing
+    if stack_saver is not None:
+        execute = RemediationExecutor(
+            build_remediation_graph(stack_saver),
+            provider=GitHubActionsProvider(writer),
+            deploys=GitHubDeploys(writer),
+            checks=writer,
+            installations=app.state.github_app,
+            logs=logs,
+            incidents=incidents,
+            settings=settings,
+        ).run
+    return RemediationRunner(session_factory, execute, sweep_seconds=settings.deploy_sweep_seconds)
 
 
 def create_app() -> FastAPI:
@@ -160,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(repositories.services_router)
     app.include_router(github_app.router)
     app.include_router(deploy_targets.router)
+    app.include_router(remediations.router)
     app.include_router(github_webhook.router)
     app.include_router(ai_settings.router)
     app.include_router(runbooks.router)

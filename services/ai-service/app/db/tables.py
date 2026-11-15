@@ -291,6 +291,7 @@ remediation = Table(
     Column("created_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
     Column("updated_at", DateTime(timezone=True), server_default=text("now()"), nullable=False),
     Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("wake_at", DateTime(timezone=True), nullable=True),
     UniqueConstraint("pull_request_id", "environment", name="uq_remediation_pull_request_environment"),
     CheckConstraint(_in_list("status", STATUSES), name="ck_remediation_status"),
     Index(
@@ -301,6 +302,7 @@ remediation = Table(
         postgresql_where=text(_in_list("status", ACTIVE_STATUSES)),
     ),
     Index("ix_remediation_tenant", "tenant_id", "created_at"),
+    Index("ix_remediation_wake", "wake_at", postgresql_where=text("wake_at IS NOT NULL")),
 )
 
 deployment = Table(

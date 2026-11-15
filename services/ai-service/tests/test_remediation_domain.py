@@ -56,6 +56,7 @@ def test_an_offer_does_not_hold_the_environment_but_a_started_run_does() -> None
     [
         ("OFFERED", "PREFLIGHT"),
         ("PREFLIGHT", "AWAITING_DEPLOY_APPROVAL"),
+        ("PREFLIGHT", "OFFERED"),  # refused by policy: the offer stands and can be tried again
         ("AWAITING_DEPLOY_APPROVAL", "DEPLOYING"),
         ("DEPLOYING", "VERIFYING"),
         ("VERIFYING", "VERIFIED"),

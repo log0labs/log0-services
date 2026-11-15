@@ -331,6 +331,23 @@ async def get_log_stats(
     )
 
 
+_TRAFFIC_SQL = """
+SELECT count() AS n
+FROM log_events
+WHERE tenant_id = {tenant_id:String}
+  AND service_name = {service:String}
+  AND timestamp >= {start:DateTime64(3)}
+  AND timestamp < {end:DateTime64(3)}
+"""
+
+
+async def get_service_traffic(backend: LogBackend, *, tenant_id: UUID, service_name: str, start: datetime, end: datetime) -> int:
+    """How many log events of any kind a service wrote in the window: the volume a verdict needs before it can say anything."""
+    start, end = _check_window(start, end)
+    rows = await backend.query(_TRAFFIC_SQL, tenant_id=tenant_id, parameters={"service": service_name, "start": start, "end": end})
+    return int(rows[0]["n"]) if rows else 0
+
+
 # The one place that reads log0's misnamed trace_id column: it holds the stack trace.
 _STACK_TRACE_SQL = """
 SELECT trace_id AS stack_trace, count() AS n

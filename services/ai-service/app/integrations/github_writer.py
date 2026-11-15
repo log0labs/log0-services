@@ -132,9 +132,9 @@ class GitHubWriter:
             await call("PATCH", f"{self._repo(target)}/git/refs/heads/{branch}", json={"sha": commit["sha"], "force": False})
             return str(commit["sha"])
 
-    async def check_runs(self, target: WriteTarget, sha: str) -> list[CheckResult]:
-        """The check runs (GitHub Actions and other checks apps) on a commit."""
-        async with self.session(target) as call:
+    async def check_runs(self, target: WriteTarget, sha: str, permissions: Mapping[str, str] = WRITE_PERMISSIONS) -> list[CheckResult]:
+        """The check runs (GitHub Actions and other checks apps) on a commit, read with the token of ``permissions``."""
+        async with self.session(target, permissions) as call:
             response = await call("GET", f"{self._repo(target)}/commits/{sha}/check-runs", params={"per_page": "100"})
         try:
             return [

@@ -68,6 +68,8 @@ def test_checks_that_did_not_pass_block(ci: str) -> None:
         ({"rule": _rule(enabled=False)}, "switched off"),
         ({"rule": None}, "not an environment"),
         ({"deploys_last_hour": 3}, "3 deploys in the last hour"),
+        ({"ci_outcome": "pending"}, "still running"),
+        ({"already_deployed": True}, "already runs this commit"),
         ({"changed_paths": ("db/migrate/001_users.rb",)}, "migration"),
     ],
 )
