@@ -9,7 +9,7 @@ change it, and it never lands in a checkpoint a user could resume with another t
 import operator
 import time
 from dataclasses import dataclass, field
-from typing import Annotated, Protocol, TypedDict
+from typing import Annotated, Any, Protocol, TypedDict
 from uuid import UUID
 
 from langchain_core.language_models import BaseChatModel
@@ -20,6 +20,7 @@ from app.graph.budget import Budget
 from app.graph.code_access import CodeAccess
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
+from app.publishing.port import Publisher
 from app.retrieval.memory import Memory
 from app.retrieval.runbooks import RunbookSource
 from app.schemas.domain import (
@@ -115,6 +116,7 @@ class InvestigationState(TypedDict):
     read_paths: list[str]  # files the change proposer was shown: what validation checks the changes against
 
     # V2: from an approved diff to a draft pull request
+    pr_offer: dict[str, Any] | None  # what the engineer is asked to approve (set by offer_pr)
     pr_decision: PrDecision | None
     branch: BranchRef | None
     commit_sha: str | None
@@ -159,6 +161,7 @@ def new_state(
         diff=None,
         diff_files=[],
         read_paths=[],
+        pr_offer=None,
         pr_decision=None,
         branch=None,
         commit_sha=None,
@@ -194,6 +197,7 @@ class InvestigationContext:
     runbooks: RunbookSource | None = None  # the tenant's runbooks; None: no runbook search on this server
     memory: Memory | None = None  # what past investigations concluded; None: no long-term memory on this server
     require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
+    publisher: Publisher | None = None  # opens draft pull requests; None: this server never writes to a repository
     budget: Budget = field(default_factory=Budget)
     # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
     # so its clock starts again: the limit is per process run, not across restarts.

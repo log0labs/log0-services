@@ -1,0 +1,212 @@
+"""From an approved diff to a draft pull request: the V2 half of the graph.
+
+    validate_changes -> offer_pr -> approve_pr -> create_branch -> apply_patch -> open_draft_pr -> finalize
+
+``offer_pr`` decides, once, whether a pull request can be offered (log0 may write to the repository)
+and stores the offer in the state. ``approve_pr`` is a human gate like ``human_review``: it parks the
+run with ``interrupt()`` and waits for an engineer; because the offer is already in the state, resuming
+re-runs nothing that could change its mind. The three write nodes then run only for an approved decision, each one idempotent: it first checks whether its result is
+already in the state, and the publisher itself returns an existing branch, commit or pull request
+instead of making a second one, so a run resumed after a crash continues where it stopped.
+
+The model plays no part here. What is committed is rebuilt from the validated changes at the
+pinned commit and must produce exactly the diff the engineer reviewed, otherwise nothing is written.
+A failed write is a gap, never a failed run: the diff from V1 is still the result.
+"""
+
+import asyncio
+import logging
+from typing import Any
+from uuid import UUID
+
+from langgraph.runtime import Runtime
+from langgraph.types import interrupt
+from pydantic import ValidationError
+
+from app.diff.builder import build_checked_diff, file_modes
+from app.diff.validator import validate_changes as validate
+from app.graph.code_access import CodeAccessError
+from app.graph.state import InvestigationContext, InvestigationState
+from app.publishing.naming import (
+    branch_name,
+    commit_message,
+    pull_request_body,
+    pull_request_title,
+)
+from app.publishing.port import PublishError, PublishFile, PublishTarget
+from app.schemas.domain import PrDecision
+
+logger = logging.getLogger(__name__)
+
+GATE = "pr_approval"
+MAX_TEXT = 600
+
+
+def pr_request(state: InvestigationState, target: PublishTarget) -> dict[str, Any]:
+    """What the engineer is shown while the run waits: where, which branch, which files. Plain JSON, no code."""
+    repo, cause, incident = state["repo"], state["root_cause"], state["incident"]
+    assert repo is not None and cause is not None and incident is not None
+    return {
+        "gate": GATE,
+        "repository": target.repo,
+        "defaultBranch": target.default_branch,
+        "branch": branch_name(UUID(state["incident_id"]), UUID(state["investigation_id"])),
+        "baseSha": repo.sha,
+        "rootCause": cause.statement[:MAX_TEXT],
+        "confidenceBand": state["confidence_band"],
+        "files": [
+            {"path": f.file_path, "operation": f.operation, "additions": f.additions, "deletions": f.deletions}
+            for f in state["diff_files"]
+        ],
+    }
+
+
+def read_pr_decision(raw: Any) -> PrDecision | None:
+    """The resume value as a decision, or ``None`` when it is not a usable one (an approval needs a user id)."""
+    try:
+        decision = PrDecision.model_validate(raw)
+        if decision.action == "approve":
+            UUID(str(decision.decided_by))
+    except (ValidationError, ValueError):
+        return None
+    return decision
+
+
+def _eligible(state: InvestigationState, ctx: InvestigationContext) -> bool:
+    return bool(
+        ctx.publisher
+        and state["diff"]
+        and not state["validation_errors"]
+        and state["repo"]
+        and state["incident"]
+        and state["root_cause"]
+    )
+
+
+async def offer_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    """Decide whether a draft pull request can be offered for the validated diff; store the offer if so."""
+    ctx = runtime.context
+    if not _eligible(state, ctx):
+        return {"pr_offer": None}
+    assert ctx.publisher is not None and state["repo"] is not None
+    target = await ctx.publisher.target_for(tenant_id=ctx.tenant_id, repo=state["repo"].repo)
+    if target is None:
+        return {"pr_offer": None}  # writing is off for this repository: the diff is the result, as in V1
+    return {"pr_offer": pr_request(state, target)}
+
+
+async def approve_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    """Wait for the engineer's answer to the stored offer."""
+    offer = state["pr_offer"]
+    assert offer is not None
+    raw = interrupt(offer)
+
+    decision = read_pr_decision(raw)
+    if decision is None:
+        logger.warning("approve_pr: the resume value was not a valid decision, no pull request is opened")
+        return {"pr_decision": PrDecision(action="decline"), "gaps": ["The pull request decision could not be read, so none was opened"]}
+    return {"pr_decision": decision}
+
+
+def _approved(state: InvestigationState) -> bool:
+    return state["pr_decision"] is not None and state["pr_decision"].action == "approve"
+
+
+async def _target(state: InvestigationState, ctx: InvestigationContext) -> PublishTarget:
+    assert ctx.publisher is not None and state["repo"] is not None
+    target = await ctx.publisher.target_for(tenant_id=ctx.tenant_id, repo=state["repo"].repo)
+    if target is None:
+        raise PublishError("writing to this repository is no longer allowed")
+    return target
+
+
+def _failed(error: PublishError) -> dict[str, Any]:
+    return {"gaps": [f"No pull request was opened: {error}"]}
+
+
+async def create_branch(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    ctx = runtime.context
+    decision = state["pr_decision"]
+    if state["branch"] is not None or not _approved(state) or decision is None or ctx.publisher is None or state["repo"] is None:
+        return {}
+    try:
+        target = await _target(state, ctx)
+        branch = await ctx.publisher.create_branch(
+            tenant_id=ctx.tenant_id,
+            target=target,
+            investigation_id=UUID(state["investigation_id"]),
+            incident_id=UUID(state["incident_id"]),
+            base_sha=state["repo"].sha,
+            approved_by=UUID(str(decision.decided_by)),
+        )
+    except PublishError as exc:
+        return _failed(exc)
+    return {"branch": branch, "tool_calls": 1}
+
+
+async def _files_to_commit(state: InvestigationState, ctx: InvestigationContext) -> list[PublishFile]:
+    """The files of the commit, rebuilt from the validated changes at the pinned commit; refuses to proceed
+    unless they produce exactly the diff the engineer reviewed."""
+    repo, incident = state["repo"], state["incident"]
+    assert ctx.code is not None and repo is not None and incident is not None
+    try:
+        async with ctx.code.snapshot(tenant_id=ctx.tenant_id, service_name=incident.service_name, sha=repo.sha) as checkout:
+            if checkout is None:
+                raise PublishError("the repository is no longer connected")
+            root = checkout.code.root
+            report = await asyncio.to_thread(validate, root, state["proposed_changes"], read_paths=state["read_paths"])
+            if not report.ok:
+                raise PublishError("the change no longer validates against the reviewed commit")
+            built = await build_checked_diff(report.edits, root, git_binary=checkout.git.git_binary)
+            if not built.applies or built.diff != state["diff"]:
+                raise PublishError("the change to publish differs from the reviewed diff, so nothing was written")
+            existing = [e.file_path for e in report.edits if e.original is not None and e.updated is not None]
+            modes = await asyncio.to_thread(file_modes, checkout.git.git_binary, root, existing)
+    except CodeAccessError as exc:
+        raise PublishError(str(exc)) from None
+    return [PublishFile(e.file_path, e.updated, modes.get(e.file_path) == "100755") for e in report.edits]
+
+
+async def apply_patch(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    ctx = runtime.context
+    branch, cause = state["branch"], state["root_cause"]
+    if state["commit_sha"] is not None or branch is None or cause is None or ctx.publisher is None or ctx.code is None:
+        return {}
+    try:
+        files = await _files_to_commit(state, ctx)
+        sha = await ctx.publisher.commit(
+            tenant_id=ctx.tenant_id,
+            target=await _target(state, ctx),
+            investigation_id=UUID(state["investigation_id"]),
+            branch=branch,
+            files=files,
+            message=commit_message(cause, UUID(state["investigation_id"])),
+        )
+    except PublishError as exc:
+        return _failed(exc)
+    return {"commit_sha": sha, "tool_calls": 2}
+
+
+async def open_draft_pr(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
+    ctx = runtime.context
+    branch, sha, cause = state["branch"], state["commit_sha"], state["root_cause"]
+    if state["pull_request"] is not None or branch is None or sha is None or cause is None or ctx.publisher is None:
+        return {}
+    try:
+        pull_request = await ctx.publisher.open_pull_request(
+            tenant_id=ctx.tenant_id,
+            target=await _target(state, ctx),
+            investigation_id=UUID(state["investigation_id"]),
+            branch=branch,
+            commit_sha=sha,
+            title=pull_request_title(cause),
+            body=pull_request_body(
+                root_cause=cause,
+                confidence_band=state["confidence_band"],
+                changes=state["proposed_changes"],
+                files=state["diff_files"],
+            ),
+        )
+    except PublishError as exc:
+        return _failed(exc)
+    return {"pull_request": pull_request, "tool_calls": 1}

@@ -150,7 +150,7 @@ def _run_git(git: str, args: list[str], root: Path, *, data: bytes | None = None
     )
 
 
-def _file_modes(git: str, root: Path, paths: list[str]) -> dict[str, str]:
+def file_modes(git: str, root: Path, paths: list[str]) -> dict[str, str]:
     """The git mode (``100644`` or ``100755``) of existing files, from the index of the snapshot."""
     modes: dict[str, str] = {}
     for path in paths:
@@ -194,7 +194,7 @@ async def check_diff_applies(diff: str, root: Path, *, git_binary: str = "git") 
 async def build_checked_diff(edits: list[FileEdit], root: Path, *, git_binary: str = "git") -> DiffResult:
     """Build the diff for ``edits`` and check it against the snapshot at ``root``."""
     deleted = [e.file_path for e in edits if e.updated is None]
-    modes = await asyncio.to_thread(_file_modes, git_binary, root, deleted) if deleted else {}
+    modes = await asyncio.to_thread(file_modes, git_binary, root, deleted) if deleted else {}
     built = build_diff(edits, modes=modes)
     if not built.files:
         return DiffResult(diff="", files=[], applies=False, error="there is nothing to apply: no change alters a file")

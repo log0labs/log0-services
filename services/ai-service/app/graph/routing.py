@@ -55,12 +55,32 @@ def after_propose(state: InvestigationState) -> Literal["validate_changes", "fin
 MAX_CHANGE_ATTEMPTS = 2
 
 
-def after_validate(state: InvestigationState) -> Literal["propose_changes", "finalize"]:
+def after_validate(state: InvestigationState) -> Literal["propose_changes", "offer_pr", "finalize"]:
     """Failed validation goes back to the proposer with the errors, at most ``MAX_CHANGE_ATTEMPTS`` times in all;
-    a valid diff (no errors), or the last attempt, goes on to finalize."""
-    if state["validation_errors"] and state["change_attempts"] < MAX_CHANGE_ATTEMPTS:
-        return "propose_changes"
-    return "finalize"
+    a valid diff goes to ``offer_pr`` (which lets it pass when log0 may not write to the repository);
+    the last failed attempt, or nothing to publish, goes on to finalize."""
+    if state["validation_errors"]:
+        return "propose_changes" if state["change_attempts"] < MAX_CHANGE_ATTEMPTS else "finalize"
+    return "offer_pr" if state["diff"] else "finalize"
+
+
+def after_offer(state: InvestigationState) -> Literal["approve_pr", "finalize"]:
+    """Ask the engineer only when there is an offer to make."""
+    return "approve_pr" if state["pr_offer"] is not None else "finalize"
+
+
+def after_pr_approval(state: InvestigationState) -> Literal["create_branch", "finalize"]:
+    """Only an explicit approval from an engineer leads to a write."""
+    decision = state["pr_decision"]
+    return "create_branch" if decision is not None and decision.action == "approve" else "finalize"
+
+
+def after_create_branch(state: InvestigationState) -> Literal["apply_patch", "finalize"]:
+    return "apply_patch" if state["branch"] is not None else "finalize"
+
+
+def after_apply_patch(state: InvestigationState) -> Literal["open_draft_pr", "finalize"]:
+    return "open_draft_pr" if state["commit_sha"] is not None else "finalize"
 
 
 def fan_out(state: InvestigationState) -> list[Send]:
