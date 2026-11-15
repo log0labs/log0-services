@@ -146,7 +146,8 @@ async def load_context(state: InvestigationState, runtime: Runtime[Investigation
         frames = parsed.frames
         evidence.append(stack_trace_evidence(incident.fingerprint, trace, parsed))
         if not frames:
-            gaps.append("The stack trace could not be parsed into frames")
+            first_line = " ".join(trace.strip().splitlines()[:1])[:100]
+            gaps.append(f"The recorded stack trace has no frames to follow (it holds only: {first_line!r}), so there is no code location to start from")
         elif parsed.first_in_app_frame() is None:
             gaps.append("The stack trace contains only library frames")
 

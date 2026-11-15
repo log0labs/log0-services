@@ -21,11 +21,16 @@ from app.graph.events import events_from_update
 from app.graph.result import result_for_row
 from app.graph.state import ChatModels, InvestigationContext, new_state
 from app.graph.usage import Prices, UsageRecorder, run_config
+from app.llm.model_spec import ModelSpec
+from app.llm.models import PurposeChatModels
+from app.llm.purpose import Purpose
+from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.observability import tracing_allowed, tracing_scope
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
 from app.runner import SessionFactory
 from app.schemas.investigation import InvestigationStatus
+from app.security.crypto import CryptoError, SecretBox, secret_context
 from app.security.redaction import redact_text
 from app.store import events as event_store
 from app.store import investigations as investigation_store
@@ -83,6 +88,7 @@ class GraphExecutor:
         memory: Memory | None = None,
         settings: Settings | None = None,
         require_review: bool = False,
+        secret_box: SecretBox | None = None,
     ) -> None:
         self._graph = graph
         self._logs = logs
@@ -95,6 +101,7 @@ class GraphExecutor:
         self._memory = memory
         self._settings = settings
         self._require_review = require_review
+        self._secret_box = secret_box
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         allowed = True  # without settings (tests) nothing is restricted
@@ -106,6 +113,36 @@ class GraphExecutor:
                 logger.info("tracing is off for investigation %s: the tenant uses its own LLM key and has not opted in", investigation_id)
         with tracing_scope(allowed):
             await self._run(session_factory, investigation_id, tenant_id)
+
+    async def _models_for(self, session_factory: SessionFactory, tenant_id: UUID) -> ChatModels:
+        """The platform models, unless the workspace saved its own choice (model, key, temperature, token limit) in
+        Settings, AI. A stored key that cannot be read is skipped with a warning and the platform key is used."""
+        if self._settings is None:
+            return self._models
+        async with session_factory() as session:
+            rows = await provider_config_store.list_for_tenant(session, tenant_id=tenant_id)
+        if not rows:
+            return self._models
+        specs: dict[Purpose, ModelSpec] = {}
+        keys: dict[str, Any] = {}
+        overrides: dict[Purpose, tuple[float | None, int | None]] = {}
+        order = {"investigation": 0, "triage": 1, "summary": 2, "evaluation": 3}
+        for row in sorted(rows, key=lambda r: order.get(r.purpose, 9)):
+            try:
+                purpose = Purpose(row.purpose)
+            except ValueError:
+                continue
+            specs[purpose] = ModelSpec(provider=row.provider, model=row.model)
+            overrides[purpose] = (row.temperature, row.max_tokens)
+            stored = row.stored_key()
+            if stored is not None and self._secret_box is not None and row.provider not in keys:
+                try:
+                    context = secret_context(tenant_id, "provider_config", purpose.value)
+                    keys[row.provider] = self._secret_box.decrypt(stored.ciphertext, key_id=stored.key_id, context=context)
+                except CryptoError:
+                    logger.warning("a stored %s key of tenant %s could not be read; the platform key is used", row.provider, tenant_id)
+        resolver = TenantLlmResolver(PlatformLlmResolver(self._settings), specs, keys)
+        return PurposeChatModels(self._settings, resolver, overrides=overrides)
 
     async def _run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         # The row is the authority on who owns this investigation and what was asked.
@@ -127,7 +164,7 @@ class GraphExecutor:
             logs=self._logs,
             incidents=self._incidents,
             history=self._history,
-            models=self._models,
+            models=await self._models_for(session_factory, tenant_id),
             code=self._code,
             runbooks=self._runbooks,
             memory=self._memory,

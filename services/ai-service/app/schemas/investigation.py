@@ -112,3 +112,14 @@ class InvestigationEvent(CamelModel):
     type: str
     payload: dict
     created_at: datetime
+
+
+class LatestInvestigation(CamelModel):
+    """The newest investigation of one incident, in the few fields a list needs (the incident list's AI column)."""
+
+    incident_id: UUID
+    investigation_id: UUID
+    status: InvestigationStatus
+    confidence_band: Literal["high", "medium", "low"] | None = None
+    has_diff: bool = False
+    created_at: datetime

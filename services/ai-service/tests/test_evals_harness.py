@@ -402,6 +402,17 @@ def test_the_services_own_tests_pass_with_the_reference_fix_applied_and_fail_whe
     assert run_service_tests(case, "this is not a diff", REPO).score == 0.0
 
 
+@requires_repo
+def test_a_test_tool_that_is_not_installed_is_not_measured_instead_of_crashing_the_run(monkeypatch):
+    import shutil
+
+    case = BY_ID["bug-04-nil-map"]
+    diff = diff_for_reference_fix(case)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    metric = run_service_tests(case, diff, REPO)
+    assert metric.score is None and "not installed" in metric.detail
+
+
 # ------------------------------------------------------------------------------ the CLI
 
 

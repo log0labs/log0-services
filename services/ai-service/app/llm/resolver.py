@@ -37,5 +37,25 @@ class PlatformLlmResolver:
         return key
 
 
-# M3: class TenantLlmResolver(PlatformLlmResolver):
-#   """Override model_for / api_key_for from ai.provider_config (decrypted BYOK) with fallback to platform."""
+class TenantLlmResolver:
+    """A workspace's own choices over the platform defaults.
+
+    ``specs`` holds the model the workspace picked per purpose and ``keys`` the API keys it stored, by provider (if
+    two purposes of one provider hold different keys, the first of investigation, triage, summary, evaluation wins).
+    A purpose with no saved model uses the platform model; a provider with no saved key uses the platform key.
+    """
+
+    def __init__(self, platform: PlatformLlmResolver, specs: dict[Purpose, ModelSpec], keys: dict[str, SecretStr]):
+        self._platform = platform
+        self._specs = specs
+        self._keys = keys
+
+    def model_for(self, purpose: Purpose) -> ModelSpec:
+        return self._specs.get(purpose) or self._platform.model_for(purpose)
+
+    def api_key_for(self, provider: str) -> SecretStr:
+        return self._keys.get(provider) or self._platform.api_key_for(provider)
+
+    def is_platform_model(self, purpose: Purpose) -> bool:
+        return purpose not in self._specs
+

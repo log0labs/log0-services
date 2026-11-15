@@ -17,6 +17,7 @@ Layers, as in the evaluation design:
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -320,12 +321,19 @@ def tests_pass_after(case: Case, diff: str | None, repo: Path, *, timeout: float
         if apply.returncode != 0:
             return Metric("tests_pass", 0.0, f"the diff does not apply: {apply.stderr.decode(errors='replace').strip()[:200]}")
         for command in commands:
-            run = subprocess.run(command, cwd=worktree / folder, capture_output=True, text=True, timeout=timeout, check=False)
+            # a bare "npm" is "npm.cmd" on Windows, which CreateProcess cannot find; which() resolves it. A tool that is
+            # not installed means the check could not run (not measured), not that the fix failed.
+            executable = shutil.which(command[0])
+            if executable is None:
+                return Metric("tests_pass", None, f"`{command[0]}` is not installed here, so the service's tests were not run")
+            run = subprocess.run([executable, *command[1:]], cwd=worktree / folder, capture_output=True, text=True, timeout=timeout, check=False)
             if run.returncode != 0:
                 return Metric("tests_pass", 0.0, f"`{' '.join(command)}` failed: {(run.stdout + run.stderr).strip()[-200:]}")
         return Metric("tests_pass", 1.0, f"{case.service} tests pass with the fix applied")
     except subprocess.TimeoutExpired:
         return Metric("tests_pass", 0.0, "the tests timed out")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return Metric("tests_pass", None, f"the tests could not be run here: {str(exc)[:160]}")
     finally:
         subprocess.run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo, capture_output=True, check=False)
         subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True, check=False)

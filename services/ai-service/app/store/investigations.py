@@ -245,3 +245,23 @@ async def record_run_result(
     )
     await session.execute(stmt)
     await session.commit()
+
+
+async def latest_for_incidents(session: AsyncSession, *, tenant_id: UUID, incident_ids: list[UUID]) -> list[dict[str, Any]]:
+    """The newest investigation of each given incident (those that have one), for this tenant only."""
+    if not incident_ids:
+        return []
+    result = await session.execute(
+        select(
+            investigation.c.incident_id,
+            investigation.c.id.label("investigation_id"),
+            investigation.c.status,
+            investigation.c.confidence_band,
+            (investigation.c.diff.is_not(None)).label("has_diff"),
+            investigation.c.created_at,
+        )
+        .where(investigation.c.tenant_id == tenant_id, investigation.c.incident_id.in_(incident_ids))
+        .distinct(investigation.c.incident_id)
+        .order_by(investigation.c.incident_id, investigation.c.created_at.desc())
+    )
+    return [dict(row._mapping) for row in result.all()]

@@ -294,3 +294,26 @@ def test_stream_waits_through_quiet_periods(monkeypatch):
             ]
     finally:
         _delete_tenant_investigations(TENANT_A)
+
+
+@INTEGRATION
+def test_latest_gives_the_newest_investigation_per_incident_and_only_this_tenants():
+    secret = get_settings().jwt_secret.get_secret_value()
+    other_incident = "a0000020-0000-4000-8000-000000000020"
+    try:
+        with TestClient(create_app()) as client:
+            a = _auth_headers(secret, tenant_id=TENANT_A)
+            first = client.post("/api/v1/investigations", json=_sample_body(), headers=a).json()["investigationId"]
+            assert first
+            url = f"/api/v1/investigations/latest?incidentIds={INCIDENT_ID},{other_incident}"
+            rows = client.get(url, headers=a).json()
+            assert [r["incidentId"] for r in rows] == [INCIDENT_ID]  # the other incident has none: left out
+            assert rows[0]["investigationId"] == first and rows[0]["hasDiff"] is False
+            # another tenant sees nothing for the same incident ids
+            assert client.get(url, headers=_auth_headers(secret, tenant_id=TENANT_B)).json() == []
+            assert client.get("/api/v1/investigations/latest?incidentIds=not-a-uuid", headers=a).status_code == 422
+            too_many = ",".join(f"a0000099-0000-4000-8000-{i:012d}" for i in range(101))
+            assert client.get(f"/api/v1/investigations/latest?incidentIds={too_many}", headers=a).status_code == 422
+            assert client.get(url).status_code == 401
+    finally:
+        _delete_tenant_investigations(TENANT_A)

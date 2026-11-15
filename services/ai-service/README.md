@@ -72,6 +72,18 @@ configured provider. The ones you are likely to touch:
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `TRACING_OPT_IN_TENANTS` | LangSmith; bring-your-own-key tenants are traced only if listed |
 | `LLM_PRICES` | USD per million tokens per model, so cost is computed; unpriced models report no cost |
 
+**Choosing a model.** Investigations need tool calling and structured JSON, and make 10 to 20 calls with 5 to 10k tokens each.
+On Groq's free tier `gpt-oss-120b` runs out of its 200k tokens a day within one evaluation pass and keeps calling an invented
+`apply_patch` tool; `gpt-oss-20b` cannot do structured output reliably. What works on a free tier is **Gemini 3.5 Flash Lite**
+(`LLM_INVESTIGATION=google_genai:gemini-3.5-flash-lite`, `LLM_INVESTIGATION_OUTPUT_METHOD=function_calling`): about 15
+requests a minute and 500 a day. The other Gemini Flash models allow only 20 requests a day. The service waits out a short
+per-minute rate limit as long as the provider asks (up to three times) but never a daily cap. Free-tier prompts may be used by
+the provider for training: use only synthetic data. After editing `.env`, recreate the container
+(`docker compose up -d --force-recreate ai-service`); a plain `up -d` does not re-read it.
+
+**Per-workspace models.** A workspace's saved choice (model, key, temperature, token limit; Settings, AI) now drives its own
+investigations. Purposes it did not set use the platform model, and a provider without a saved key uses the platform key.
+
 ## API
 
 All under JWT auth (the tenant comes from the token). ADMIN and ENGINEER can start, cancel and resume; VIEWER reads.
@@ -83,9 +95,11 @@ All under JWT auth (the tenant comes from the token). ADMIN and ENGINEER can sta
 | `GET .../{id}/stream`, `GET .../{id}/events?after=` | Server-Sent Events from a persisted event log; resume with `Last-Event-ID` |
 | `POST .../{id}/cancel`, `POST .../{id}/resume` | Cancel; answer the review gate |
 | `POST .../{id}/feedback` | Helpful, partly or wrong: feeds memory |
+| `GET /api/v1/investigations/latest?incidentIds=a,b` | The newest investigation of each listed incident (at most 100), for the incident list's AI column |
 | `GET/PUT/DELETE /api/v1/ai-settings/{purpose}`, `POST .../test` | Per-tenant model settings (ADMIN) |
 | `POST/GET/DELETE /api/v1/repositories`, `/api/v1/service-repositories` | Connect GitHub repositories, map services (ADMIN) |
-| `POST/GET/DELETE /api/v1/runbooks` | Markdown runbooks (ADMIN to change) |
+| `POST/GET/DELETE /api/v1/runbooks` | Runbooks (ADMIN to change). Upload JSON is `{title, markdown, format}` (`markdown` or `text`) or `{title, fileBase64, fileType}` (`pdf` or `docx`, up to 5 MB); PDF and Word text is extracted and indexed |
+| `GET /api/v1/runbooks/{id}`, `GET .../{id}/file` | The runbook as uploaded (text, kind) and its original PDF or Word file |
 
 ## MCP
 
@@ -127,26 +141,37 @@ non-code cause, no forbidden output or secret in the answer, calibration, latenc
 precision and recall. A baseline file gates regressions. Read `evals/run.py` for every option and
 ADR-017 in the website docs (architecture, decisions) for the reasoning.
 
-> The scripted model that CI uses scores the harness, not log0. Quality numbers come only from a complete real-model run.
+> The scripted model that CI uses scores the harness, not log0. Quality numbers come only from a complete real-model run (below).
 
 ### Measured so far
 
-Model-independent, deterministic, offline:
+The first **complete** real-model run, 2026-11-15: all nine cases, the baseline committed as `evals/baseline.json`.
+Investigation, triage and judge all ran on **Gemini 3.5 Flash Lite** (free tier); no case was degraded by a provider
+failure (`model_available` 1.00). 183 tool calls, p50 33 s and p95 65 s per case, 335k input and 13k output tokens; cost
+is not priced (free tier).
 
-| What | Result |
-|---|---|
-| A stack trace leads to the right repository file, with no model (Node, Go, Rust) | 6 of 6 applicable cases |
-| Runbook retrieval with the built-in lexical embedder, 7 labelled queries | context precision 0.71, recall 0.86 |
-| Harness self-test: a perfect scripted run / a wrong one | 1.00 on every metric / 0 on cause, location and fix |
+| Metric | Result | Of |
+|---|---|---|
+| Root cause judged correct | **7 of 9** (0.78) | all cases |
+| Right file named first (hit@1, also hit@3) | 6 of 8 (0.75) | cases with a code cause |
+| Fix pattern matches the planted fix | 5 of 8 (0.62) | cases with a code cause |
+| Diff applies and shows the expected change | 6 of 8 (0.75) | cases with a code cause |
+| The service's own tests pass with the diff applied | 5 of 8 (0.62) | cases with a code cause |
+| Stack trace leads to the right file with no model | 5 of 5 | cases with a trace |
+| Triage routes to the expected category | 8 of 9 (0.89) | all cases |
+| Cited evidence ids are real (grounding) | 1.00 | all cases |
+| No false fix for the non-code cause (a rotated key) | 1.00 | 1 case |
+| Planted prompt injection not obeyed, no secret in any answer | 1.00 | canary, all cases |
+| Runbook retrieval, lexical embedder | precision 0.71, recall 0.86 | 7 queries |
 
-**First real-model run: incomplete, not a baseline.** Groq `gpt-oss-120b` (investigation, judge) and `gpt-oss-20b` (triage)
-on the free tier, 9 cases, 0.047 USD. Three of nine root causes were judged correct (the Node lower-case SKU, the Go nil
-map, the Rust `unwrap`); no case produced a located file or a diff. The provider rejected several of the model's tool calls
-(it invented a tool called `apply_patch`) and the free tier's daily token cap (200,000 for that model) was reached, so the
-run could not be repeated. Treat those figures as a first look at one cheap model, not as log0's quality. The harness now
-marks cases with model failures as degraded, leaves them out of the averages, and refuses to write a baseline from such a
-run (exit code 3). A valid run needs a provider tier whose daily quota covers about 200,000 tokens per pass.
+What failed, from the report: **bug 2** (lower-case SKU) triaged as configuration and blamed the load test, so no file and
+no diff; **bug 8** (a lock held across a slow audit write) blamed downstream timeouts, so no file and no diff; **bug 3**
+produced a valid diff that did not match the expected change; **bug 5**'s diff applied but left an unused import, so the Go
+service no longer compiled. Calibration is weak: root causes marked "high" were right 4 of 5 times, "low" 3 of 4.
 
+Read these as a first measurement, not a benchmark. There are nine cases and one run, so one case moves a metric by 11
+points; the model is non-deterministic; the judge is the same model family as the investigator; and every case is a bug
+planted in one small repository. Treat them as a regression baseline and a starting point for comparing models.
 
 ## Layout
 
@@ -165,6 +190,5 @@ tests/            75 test modules; tests that need Postgres or ClickHouse skip w
 
 ## Known limits
 
-GitHub only, with a personal access token; no pull requests are opened. Saved per-tenant model settings are stored and
-testable but the graph still uses the platform models. The default runbook embedder is lexical. The evaluation set is
-small (a regression gate, not a benchmark), and no complete real-model run exists yet (see "Measured so far").
+GitHub only, with a personal access token; no pull requests are opened. The default runbook embedder is lexical. The evaluation set is
+small (a regression gate, not a benchmark), and the one complete real-model run is a first look (see "Measured so far").

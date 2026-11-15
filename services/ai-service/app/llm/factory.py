@@ -13,6 +13,9 @@ from app.llm.resolver import LlmResolver
 # Providers answer 429 when a per-minute token limit is hit and say how long to wait; the SDK waits and retries.
 # Free tiers hit this on the large investigation steps, so be patient (the per-call timeout still bounds it).
 MAX_RETRIES = 4
+# Gemini's free tier allows 15 requests a minute and its client backs off for only a few seconds, so a burst of
+# calls (an investigation, or an evaluation run) needs many more attempts to ride out the minute.
+MAX_RETRIES_BY_PROVIDER = {"google_genai": 10}
 
 
 @dataclass(frozen=True)
@@ -35,7 +38,7 @@ def build_chat_model(
         "temperature": generation.temperature,
         "max_tokens": generation.max_tokens,
         "timeout": generation.timeout_seconds,
-        "max_retries": MAX_RETRIES,
+        "max_retries": MAX_RETRIES_BY_PROVIDER.get(provider, MAX_RETRIES),
     }
     if spec.base_url:
         kwargs["base_url"] = spec.base_url

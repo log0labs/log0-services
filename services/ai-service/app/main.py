@@ -105,6 +105,7 @@ async def _lifespan(app: FastAPI):
                 memory=app.state.memory,
                 settings=settings,
                 code=code_access,
+                secret_box=app.state.secret_box,
             )
         app.state.graph_executor = executor
         runner = InvestigationRunner(

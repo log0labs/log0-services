@@ -21,6 +21,7 @@ from app.schemas.investigation import (
     Investigation,
     InvestigationEvent,
     InvestigationStatus,
+    LatestInvestigation,
     ResumeInvestigationRequest,
 )
 from app.security.jwt import CurrentUser, get_current_user, require_investigation_writer
@@ -99,6 +100,26 @@ async def list_investigations(
         tenant_id=user.tenant_id,
         incident_id=incident_id,
     )
+
+
+MAX_LATEST_INCIDENTS = 100
+
+
+@router.get("/latest", response_model=list[LatestInvestigation])
+async def latest_investigations(
+    incident_ids: Annotated[str, Query(alias="incidentIds", description="Comma-separated incident ids, at most 100")],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[LatestInvestigation]:
+    """The newest investigation of each listed incident, for a list view. Incidents with none are left out."""
+    try:
+        ids = list(dict.fromkeys(UUID(part) for part in incident_ids.split(",") if part.strip()))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="incidentIds must be UUIDs") from None
+    if len(ids) > MAX_LATEST_INCIDENTS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"at most {MAX_LATEST_INCIDENTS} incident ids")
+    rows = await investigation_store.latest_for_incidents(session, tenant_id=user.tenant_id, incident_ids=ids)
+    return [LatestInvestigation(**row) for row in rows]
 
 
 @router.get("/{investigation_id}", response_model=Investigation)

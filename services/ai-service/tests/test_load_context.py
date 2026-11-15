@@ -209,7 +209,8 @@ async def test_library_only_trace_is_kept_but_flagged() -> None:
 async def test_unparseable_trace_keeps_the_raw_text_as_evidence() -> None:
     final = await _run(FakeApi(_payload()), FakeLogs(trace="something went wrong, no frames here"))
     assert final["stack_frames"] == []
-    assert final["gaps"] == ["The stack trace could not be parsed into frames"]
+    assert len(final["gaps"]) == 1
+    assert "no frames to follow" in final["gaps"][0] and "something went wrong, no frames here" in final["gaps"][0]
     trace_evidence = next(e for e in final["evidence"] if e.source_ref.startswith("stacktrace"))
     assert "unrecognised format" in trace_evidence.summary and "something went wrong" in trace_evidence.content
 
