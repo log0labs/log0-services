@@ -147,6 +147,13 @@ class Settings(BaseSettings):
     ci_wait_seconds: int = 600
     ci_poll_seconds: float = 15.0
     ci_start_grace_seconds: int = 60  # no check at all after this long means the repository has no CI for the commit
+    # Workspaces whose pull request writes are switched off by the operator (tenant ids). Takes effect on the next write.
+    pr_writes_disabled_tenants: set[UUID] = Field(default_factory=set)  # JSON in the environment: ["<tenant id>"]
+    # What a pull request may be: no protected files (workflows, locks, keys), at most this much, at most this often.
+    pr_max_files: int = 10
+    pr_max_changed_lines: int = 400
+    pr_max_per_repository_per_hour: int = 3
+    pr_max_per_tenant_per_hour: int = 10
     pr_only_on_green: bool = False  # True: do not open the pull request when the checks failed or timed out
 
     # Local copies of tenants' repositories for the code tools (3.4). The cache is disposable:

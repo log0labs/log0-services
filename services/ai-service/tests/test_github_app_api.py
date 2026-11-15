@@ -291,3 +291,25 @@ def test_state_tokens_are_not_access_tokens(env: tuple[Env, FakeAppClient]) -> N
     response = e.client.get(REPOS, headers={"Authorization": f"Bearer {_state()}"})
 
     assert response.status_code == 401
+
+
+def test_the_audit_log_shows_an_admin_only_their_own_workspace_writes(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+    engine = create_engine(get_settings().database_url)
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM ai.write_audit WHERE tenant_id IN (:a, :b)"), {"a": TENANT_A, "b": TENANT_B})
+        for tenant, action in ((TENANT_A, "branch.create"), (TENANT_A, "pull_request.open"), (TENANT_B, "branch.create")):
+            conn.execute(
+                text("INSERT INTO ai.write_audit (tenant_id, action, repository, result) VALUES (:t, :a, 'acme/shop', 'ok')"),
+                {"t": tenant, "a": action},
+            )
+    try:
+        mine = e.client.get(f"{BASE}/audit", headers=e.headers()).json()
+        assert [row["action"] for row in mine] == ["pull_request.open", "branch.create"]  # newest first, only tenant A
+        assert e.client.get(f"{BASE}/audit", headers=e.headers(role="ENGINEER")).status_code == 403
+        assert e.client.get(f"{BASE}/audit").status_code == 401
+        assert e.client.get(f"{BASE}/audit?limit=0", headers=e.headers()).status_code == 422
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM ai.write_audit WHERE tenant_id IN (:a, :b)"), {"a": TENANT_A, "b": TENANT_B})
+        engine.dispose()

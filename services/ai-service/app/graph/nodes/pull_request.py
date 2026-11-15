@@ -34,6 +34,7 @@ from app.publishing.naming import (
     pull_request_body,
     pull_request_title,
 )
+from app.publishing.policy import check_diff, check_rate
 from app.publishing.port import PublishError, PublishFile, PublishTarget
 from app.schemas.domain import CiRun, PrDecision
 
@@ -95,6 +96,11 @@ async def offer_pr(state: InvestigationState, runtime: Runtime[InvestigationCont
     target = await ctx.publisher.target_for(tenant_id=ctx.tenant_id, repo=state["repo"].repo)
     if target is None:
         return {"pr_offer": None}  # writing is off for this repository: the diff is the result, as in V1
+    reasons = check_diff(state["diff_files"], ctx.pr_limits)
+    if not reasons:
+        reasons = check_rate(await ctx.publisher.activity(tenant_id=ctx.tenant_id, target=target), ctx.pr_limits)
+    if reasons:
+        return {"pr_offer": None, "gaps": [f"No pull request was offered: {'; '.join(reasons)}. The diff is the fix."]}
     return {"pr_offer": pr_request(state, target)}
 
 
@@ -111,8 +117,15 @@ async def approve_pr(state: InvestigationState, runtime: Runtime[InvestigationCo
     return {"pr_decision": decision}
 
 
-def _approved(state: InvestigationState) -> bool:
-    return state["pr_decision"] is not None and state["pr_decision"].action == "approve"
+def _approver(state: InvestigationState) -> UUID | None:
+    """The engineer who approved, or ``None`` when there is no approval that names one (nothing may be written)."""
+    decision = state["pr_decision"]
+    if decision is None or decision.action != "approve":
+        return None
+    try:
+        return UUID(str(decision.decided_by))
+    except ValueError:
+        return None
 
 
 async def _target(state: InvestigationState, ctx: InvestigationContext) -> PublishTarget:
@@ -129,8 +142,8 @@ def _failed(error: PublishError) -> dict[str, Any]:
 
 async def create_branch(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     ctx = runtime.context
-    decision = state["pr_decision"]
-    if state["branch"] is not None or not _approved(state) or decision is None or ctx.publisher is None or state["repo"] is None:
+    approver = _approver(state)
+    if state["branch"] is not None or approver is None or ctx.publisher is None or state["repo"] is None:
         return {}
     try:
         target = await _target(state, ctx)
@@ -140,7 +153,7 @@ async def create_branch(state: InvestigationState, runtime: Runtime[Investigatio
             investigation_id=UUID(state["investigation_id"]),
             incident_id=UUID(state["incident_id"]),
             base_sha=state["repo"].sha,
-            approved_by=UUID(str(decision.decided_by)),
+            approved_by=approver,
         )
     except PublishError as exc:
         return _failed(exc)
@@ -152,6 +165,8 @@ async def _files_to_commit(state: InvestigationState, ctx: InvestigationContext)
     unless they produce exactly the diff the engineer reviewed."""
     repo, incident = state["repo"], state["incident"]
     assert ctx.code is not None and repo is not None and incident is not None
+    if reasons := check_diff(state["diff_files"], ctx.pr_limits):
+        raise PublishError(f"the change is not allowed in a pull request: {reasons[0]}")
     try:
         async with ctx.code.snapshot(tenant_id=ctx.tenant_id, service_name=incident.service_name, sha=repo.sha) as checkout:
             if checkout is None:

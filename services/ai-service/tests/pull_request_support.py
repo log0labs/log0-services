@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from app.graph.nodes.validate_changes import validate_changes
 from app.graph.state import InvestigationContext, InvestigationState
 from app.publishing.naming import branch_name
+from app.publishing.policy import PrActivity
 from app.publishing.port import PublishError, PublishFile, PublishTarget
 from app.schemas.domain import BranchRef, CheckResult, CiRun, CodeChange, PullRequestRef
 from tests.code_graph_support import (
@@ -34,6 +35,7 @@ class FakePublisher:
         self.fail: dict[str, PublishError] = {}
         self.checks: list[list[CheckResult]] = [[CheckResult(name="ci / test", status="completed", conclusion="success")]]
         self.recorded: list[CiRun] = []
+        self.recent = PrActivity()
 
     def _record(self, name: str, **kwargs: Any) -> None:
         self.calls.append((name, kwargs))
@@ -62,6 +64,10 @@ class FakePublisher:
         self._record("open_pull_request", title=title, body=body, commit_sha=commit_sha, labels=labels)
         return PullRequestRef(number=12, url="https://github.com/acme/shop/pull/12", branch=branch.name, commit_sha=commit_sha)
 
+
+    async def activity(self, *, tenant_id: UUID, target: PublishTarget) -> PrActivity:
+        self.calls.append(("activity", {}))
+        return self.recent
 
     async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
         self._record("check_results", commit_sha=commit_sha)

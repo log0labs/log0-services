@@ -10,6 +10,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.integrations.github_writer import FileWrite
+from app.publishing.policy import PrActivity
 from app.schemas.domain import BranchRef, CheckResult, CiRun, PullRequestRef
 
 PublishFile = FileWrite
@@ -80,4 +81,8 @@ class Publisher(Protocol):
 
     async def record_ci_run(self, *, tenant_id: UUID, investigation_id: UUID, commit_sha: str, run: CiRun) -> None:
         """Keep the outcome of the checks with the investigation (best effort: it is a record, not a decision)."""
+        ...
+
+    async def activity(self, *, tenant_id: UUID, target: PublishTarget) -> PrActivity:
+        """How many pull requests log0 opened lately on this repository and in this workspace (rate limits)."""
         ...

@@ -43,3 +43,15 @@ class WritesIn(CamelModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
+
+
+class AuditEntryOut(CamelModel):
+    id: int
+    investigation_id: UUID | None
+    actor_id: UUID | None
+    action: str
+    repository: str
+    target: str
+    result: str
+    detail: str
+    created_at: datetime

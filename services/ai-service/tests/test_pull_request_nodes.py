@@ -89,7 +89,7 @@ async def test_a_valid_diff_parks_the_run_at_the_gate_and_shows_where_and_what(r
     assert request["gate"] == "pr_approval" and request["repository"] == "acme/shop" and request["defaultBranch"] == "main"
     assert request["branch"].startswith("log0/fix-") and request["baseSha"] == state["repo"].sha
     assert request["files"] == [{"path": PAYMENT, "operation": "modify", "additions": 1, "deletions": 1}]
-    assert publisher.names() == ["target_for"]  # nothing was written while waiting
+    assert publisher.names() == ["target_for", "activity"]  # nothing was written while waiting
 
 
 @pytest.mark.parametrize("why", ["no_publisher", "writes_off", "no_diff"])
@@ -147,7 +147,7 @@ async def test_a_decline_writes_nothing(repo: Repo) -> None:
     final = await graph.ainvoke(Command(resume={"action": "decline"}), config, context=ctx)
 
     assert final["pr_decision"].action == "decline" and final["branch"] is None and final["pull_request"] is None
-    assert publisher.names() == ["target_for"]  # the offer was decided once, before waiting
+    assert publisher.names() == ["target_for", "activity"]  # the offer was decided once, before waiting
 
 
 @pytest.mark.parametrize("answer", [{"action": "approve"}, {"action": "approve", "decided_by": "not-a-uuid"}, {"action": "maybe"}, "yes"])

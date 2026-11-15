@@ -74,6 +74,7 @@ async def _lifespan(app: FastAPI):
         session_factory,
         GitHubWriter(settings, github_app_auth),
         enabled=settings.pr_writes_enabled and github_app_auth.configured,
+        disabled_tenants=frozenset(settings.pr_writes_disabled_tenants),
     )
     app.state.connection_checker = check_connection
     app.state.embedder = build_embedder(settings)  # runbook search and memory (M5)

@@ -21,6 +21,7 @@ from app.graph.code_access import CodeAccess
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.parsing.stacktrace import StackFrame
 from app.publishing.ci import CiWait
+from app.publishing.policy import PrLimits
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory
 from app.retrieval.runbooks import RunbookSource
@@ -203,6 +204,7 @@ class InvestigationContext:
     memory: Memory | None = None  # what past investigations concluded; None: no long-term memory on this server
     require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
     ci_wait: CiWait = field(default_factory=CiWait)  # how long to wait for the repository's checks
+    pr_limits: PrLimits = field(default_factory=PrLimits)  # what a pull request may be (size, files, rate)
     pr_only_on_green: bool = False  # do not open a pull request for a commit whose checks failed
     publisher: Publisher | None = None  # opens draft pull requests; None: this server never writes to a repository
     budget: Budget = field(default_factory=Budget)

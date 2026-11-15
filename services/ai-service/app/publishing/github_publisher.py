@@ -9,6 +9,7 @@ honoured by the next one.
 
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from app.integrations.github_writer import (
     WriteTarget,
 )
 from app.publishing.naming import branch_name
+from app.publishing.policy import PrActivity
 from app.publishing.port import PublishError, PublishFile, PublishTarget
 from app.schemas.domain import BranchRef, CheckResult, CiRun, PullRequestRef
 from app.store import github_installations as installations
@@ -46,13 +48,21 @@ def _split(repo: str) -> tuple[str, str]:
 
 
 class GitHubPublisher:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], writer: GitHubWriter, *, enabled: bool) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        writer: GitHubWriter,
+        *,
+        enabled: bool,
+        disabled_tenants: frozenset[UUID] = frozenset(),
+    ) -> None:
         self._sessions = session_factory
         self._writer = writer
         self._enabled = enabled
+        self._disabled_tenants = disabled_tenants
 
     async def target_for(self, *, tenant_id: UUID, repo: str) -> PublishTarget | None:
-        if not self._enabled:
+        if not self._enabled or tenant_id in self._disabled_tenants:
             return None
         owner, name = _split(repo)
         async with self._sessions() as session:
@@ -137,6 +147,14 @@ class GitHubPublisher:
 
         return await self._audited(make, tenant_id, investigation_id, None, "pull_request.open", target.repo, branch.name)
 
+    async def activity(self, *, tenant_id: UUID, target: PublishTarget) -> PrActivity:
+        since = datetime.now(UTC) - timedelta(hours=1)
+        async with self._sessions() as session:
+            return PrActivity(
+                repository_last_hour=await pull_requests.count_since(session, tenant_id=tenant_id, since=since, repository_id=target.repository_id),
+                tenant_last_hour=await pull_requests.count_since(session, tenant_id=tenant_id, since=since),
+            )
+
     async def check_results(self, *, tenant_id: UUID, target: PublishTarget, commit_sha: str) -> list[CheckResult]:
         write_target = await self._resolve(tenant_id, target)
         try:
@@ -163,8 +181,8 @@ class GitHubPublisher:
 
     async def _resolve(self, tenant_id: UUID, target: PublishTarget) -> WriteTarget:
         """The write target for ``target``, re-checked now; ``PublishError`` if writing is no longer allowed."""
-        if not self._enabled:
-            raise PublishError("writing to repositories is switched off on this server")
+        if not self._enabled or tenant_id in self._disabled_tenants:
+            raise PublishError("writing to repositories is switched off")
         async with self._sessions() as session:
             row = await repository_store.get(session, tenant_id=tenant_id, repository_id=target.repository_id)
             resolved = await self._write_target(session, tenant_id, row) if row else None

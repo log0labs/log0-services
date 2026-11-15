@@ -94,3 +94,11 @@ async def _advance(session: AsyncSession, tenant_id: UUID, investigation_id: UUI
         .values(updated_at=func.now(), **values)
     )
     await session.commit()
+
+
+async def count_since(session: AsyncSession, *, tenant_id: UUID, since: datetime, repository_id: UUID | None = None) -> int:
+    """How many pull requests (any state) this tenant, or one of its repositories, started since ``since``."""
+    query = select(func.count()).select_from(pull_request).where(pull_request.c.tenant_id == tenant_id, pull_request.c.created_at >= since)
+    if repository_id is not None:
+        query = query.where(pull_request.c.repository_id == repository_id)
+    return int((await session.execute(query)).scalar_one())

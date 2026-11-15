@@ -28,6 +28,7 @@ from app.llm.purpose import Purpose
 from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.observability import tracing_allowed, tracing_scope
 from app.publishing.ci import CiWait
+from app.publishing.policy import PrLimits
 from app.publishing.port import Publisher
 from app.retrieval.memory import Memory, NewMemory
 from app.retrieval.runbooks import RunbookSource
@@ -111,7 +112,13 @@ class GraphExecutor:
         if self._settings is None:
             return {}
         wait = CiWait(self._settings.ci_wait_seconds, self._settings.ci_poll_seconds, self._settings.ci_start_grace_seconds)
-        return {"ci_wait": wait, "pr_only_on_green": self._settings.pr_only_on_green}
+        limits = PrLimits(
+            self._settings.pr_max_files,
+            self._settings.pr_max_changed_lines,
+            self._settings.pr_max_per_repository_per_hour,
+            self._settings.pr_max_per_tenant_per_hour,
+        )
+        return {"ci_wait": wait, "pr_only_on_green": self._settings.pr_only_on_green, "pr_limits": limits}
 
     async def run(self, session_factory: SessionFactory, investigation_id: UUID, tenant_id: UUID) -> None:
         allowed = True  # without settings (tests) nothing is restricted

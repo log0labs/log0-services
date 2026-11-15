@@ -11,7 +11,7 @@ from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_github_app
@@ -22,6 +22,7 @@ from app.integrations.github_app import GitHubAppNotConfiguredError
 from app.integrations.github_app_client import GitHubAppClient, InstalledRepository
 from app.schemas.ai_config import RepositoryOut
 from app.schemas.github_app import (
+    AuditEntryOut,
     GitHubAppOut,
     InstallationIn,
     InstallationOut,
@@ -36,6 +37,7 @@ from app.security.install_state import (
 from app.security.jwt import CurrentUser, require_admin
 from app.store import github_installations as installations
 from app.store import repositories as repository_store
+from app.store import write_audit
 
 logger = logging.getLogger(__name__)
 
@@ -225,3 +227,27 @@ async def _find_writable_installation(
             if _same_repository(candidate, repository.owner, repository.name):
                 return installation.installation_id, candidate.github_id
     return None
+
+
+@router.get("/audit", response_model=list[AuditEntryOut])
+async def audit_log(
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[AuditEntryOut]:
+    """Every write log0 made to this workspace's repositories, newest first."""
+    rows = await write_audit.list_for_tenant(session, tenant_id=admin.tenant_id, limit=limit)
+    return [
+        AuditEntryOut(
+            id=row.id,
+            investigation_id=row.investigation_id,
+            actor_id=row.actor_id,
+            action=row.action,
+            repository=row.repository,
+            target=row.target,
+            result=row.result,
+            detail=row.detail,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
