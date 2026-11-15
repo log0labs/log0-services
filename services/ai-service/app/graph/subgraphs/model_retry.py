@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -31,6 +32,34 @@ def is_tool_call_rejection(exc: BaseException) -> bool:
 
 
 TOOL_REJECTION_ATTEMPTS = 3
+RATE_LIMIT_WAITS = 3
+MAX_RATE_LIMIT_WAIT_SECONDS = 90.0  # a per-minute limit clears within a minute; a daily one (hours) is not waited for
+
+_sleep = asyncio.sleep  # a name tests can replace
+
+_RETRY_SECONDS = (
+    re.compile(r"retryDelay['\"]?\s*:\s*['\"]?(\d+(?:\.\d+)?)s"),  # Gemini: 'retryDelay': '34s'
+    re.compile(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s"),  # Groq: "try again in 7.5s" or "in 2m5s"
+)
+
+
+def rate_limit_delay(exc: BaseException) -> float | None:
+    """How long the provider asked us to wait after a rate-limit (429) answer, in seconds; None when the
+    error is not a rate limit or the wait is too long to be a per-minute limit (a daily cap is not waited for)."""
+    text = str(exc)
+    if "429" not in text and "RESOURCE_EXHAUSTED" not in text and "rate limit" not in text.lower():
+        return None
+    delay: float | None = None
+    match = _RETRY_SECONDS[0].search(text)
+    if match:
+        delay = float(match.group(1))
+    else:
+        match = _RETRY_SECONDS[1].search(text)
+        if match:
+            delay = float(match.group(1) or 0) * 60 + float(match.group(2))
+    if delay is None or delay > MAX_RATE_LIMIT_WAIT_SECONDS:
+        return None
+    return delay + 1.0  # a second of margin
 
 
 def unwrap_schema_envelope(raw: str | None) -> dict[str, Any] | None:
@@ -52,9 +81,12 @@ def unwrap_schema_envelope(raw: str | None) -> dict[str, Any] | None:
 
 
 async def invoke_with_tool_retry(call: Callable[[], Awaitable[Any]], *, timeout: float, what: str) -> Any:
-    """Run ``call`` under ``timeout``. A rejected tool call or an answer that cannot be parsed is tried again (up to
-    3 attempts); an answer wrapped in a schema envelope is unwrapped instead. Anything else is raised at once."""
-    for attempt in range(1, TOOL_REJECTION_ATTEMPTS + 1):
+    """Run ``call`` under ``timeout``. A rejected tool call or an unparseable answer is tried again (up to 3 attempts);
+    an answer wrapped in a schema envelope is unwrapped; a short per-minute rate limit is waited out as long as the
+    provider says (up to 3 times). Anything else is raised at once."""
+    attempt = 1
+    waits = 0
+    while True:
         try:
             async with asyncio.timeout(timeout):
                 return await call()
@@ -63,13 +95,20 @@ async def invoke_with_tool_retry(call: Callable[[], Awaitable[Any]], *, timeout:
             if recovered is not None:
                 logger.warning("%s: the answer came wrapped in a schema envelope, unwrapped it", what)
                 return recovered
-            if attempt == TOOL_REJECTION_ATTEMPTS:
+            if attempt >= TOOL_REJECTION_ATTEMPTS:
                 raise
             logger.warning("%s: the answer could not be parsed, trying again (%d of %d)", what, attempt, TOOL_REJECTION_ATTEMPTS)
+            attempt += 1
         except Exception as exc:
-            if attempt == TOOL_REJECTION_ATTEMPTS or not is_tool_call_rejection(exc):
+            delay = rate_limit_delay(exc)
+            if delay is not None and waits < RATE_LIMIT_WAITS:
+                waits += 1
+                logger.warning("%s: rate limited, waiting %.0fs before trying again (%d of %d)", what, delay, waits, RATE_LIMIT_WAITS)
+                await _sleep(delay)
+                continue
+            if attempt >= TOOL_REJECTION_ATTEMPTS or not is_tool_call_rejection(exc):
                 raise
             logger.warning(
                 "%s: the provider rejected a tool call, trying again (%d of %d): %s", what, attempt, TOOL_REJECTION_ATTEMPTS, exc
             )
-    raise AssertionError("unreachable")
+            attempt += 1

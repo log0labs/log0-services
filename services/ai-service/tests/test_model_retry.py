@@ -4,6 +4,7 @@ from langchain_core.exceptions import OutputParserException
 from app.graph.subgraphs.model_retry import (
     invoke_with_tool_retry,
     is_tool_call_rejection,
+    rate_limit_delay,
     unwrap_schema_envelope,
 )
 
@@ -108,3 +109,59 @@ async def test_an_unparseable_answer_is_tried_again_then_raised():
     with pytest.raises(OutputParserException):
         await invoke_with_tool_retry(call, timeout=5, what="t")
     assert len(calls) == 3
+
+
+GEMINI_429 = "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'details': [{'retryDelay': '34s'}]}}"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (GEMINI_429, 35.0),
+        ("Error code: 429 - Rate limit reached ... Please try again in 7.5s. Need more tokens?", 8.5),
+        ("Error code: 429 - Rate limit reached ... Please try again in 1m5s.", 66.0),
+        ("Error code: 429 - tokens per day (TPD) ... Please try again in 28m41.5s.", None),  # a daily cap: do not wait
+        ("Error code: 400 - tool_use_failed", None),
+        ("connection reset", None),
+    ],
+)
+def test_reads_how_long_the_provider_wants_us_to_wait(message, expected):
+    assert rate_limit_delay(RuntimeError(message)) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_per_minute_rate_limit_is_waited_out_then_succeeds(monkeypatch):
+    from app.graph.subgraphs import model_retry
+
+    slept = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(model_retry, "_sleep", fake_sleep)
+    calls = []
+
+    async def call():
+        calls.append(1)
+        if len(calls) < 3:
+            raise RuntimeError(GEMINI_429)
+        return "ok"
+
+    assert await invoke_with_tool_retry(call, timeout=5, what="t") == "ok"
+    assert slept == [35.0, 35.0] and len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_daily_cap_is_not_waited_for(monkeypatch):
+    from app.graph.subgraphs import model_retry
+
+    async def fail_sleep(_):  # pragma: no cover
+        raise AssertionError("must not sleep")
+
+    monkeypatch.setattr(model_retry, "_sleep", fail_sleep)
+
+    async def call():
+        raise RuntimeError("429 tokens per day (TPD) ... Please try again in 28m41s.")
+
+    with pytest.raises(RuntimeError):
+        await invoke_with_tool_retry(call, timeout=5, what="t")

@@ -151,6 +151,35 @@ def sample_lines_evidence(incident: IncidentContext, start: datetime, end: datet
     )
 
 
+def message_query(top_messages: list[str]) -> str | None:
+    """The stable start of the incident's most common message, for finding its own log lines: it is cut before
+    the first word that contains a digit (an id, a counter, a port), so 'payment gateway unavailable, retry 2/5'
+    becomes 'payment gateway unavailable, retry'. None when too little is left to search for."""
+    if not top_messages:
+        return None
+    words: list[str] = []
+    for word in top_messages[0].split():
+        if any(c.isdigit() for c in word):
+            break
+        words.append(word)
+    query = " ".join(words)[:60].strip()
+    return query if len(query) >= 8 else None
+
+
+def own_lines_evidence(incident: IncidentContext, start: datetime, end: datetime, query: str, result: LogSearchResult) -> Evidence:
+    """The incident's own log lines at any level. The ERROR sample is service-wide, and for an incident that logs at
+    WARN (a retry storm) it holds only other incidents' errors, which pointed an investigation at the wrong cause."""
+    ref = f"samples {incident.service_name} matching {query[:30]} {start:%Y%m%dT%H%MZ}..{end:%Y%m%dT%H%MZ}"
+    lines = [f"{_stamp(line.timestamp)} {line.level} {' '.join(line.message.split())}" for line in result.lines]
+    return Evidence(
+        id=make_evidence_id("log", ref),
+        kind="log",
+        source_ref=ref,
+        summary=f"{len(lines)} most recent log lines from {incident.service_name} matching this incident's message ({query!r}), any level",
+        content=chr(10).join(lines)[:MAX_CONTENT],
+    )
+
+
 async def gather_logs(state: InvestigationState, runtime: Runtime[InvestigationContext]) -> dict[str, Any]:
     """Add timeline, co-occurring-error and sample-line evidence. Never fails on a log-store outage."""
     incident = state["incident"]
@@ -201,7 +230,19 @@ async def gather_logs(state: InvestigationState, runtime: Runtime[InvestigationC
         evidence.append(timeline_evidence(timeline))
     if isinstance(neighbours, list):
         evidence.append(cooccurring_evidence(incident, start, end, neighbours))
+    tool_calls = _TOOL_CALLS
     if isinstance(samples, LogSearchResult):
         evidence.append(sample_lines_evidence(incident, start, end, samples))
+        query = message_query(incident.top_messages)
+        if query and not any(line.fingerprint == incident.fingerprint for line in samples.lines):
+            tool_calls += 1
+            try:
+                own = await search_logs(ctx.logs, tenant_id=ctx.tenant_id, start=start, end=end, service=incident.service_name, query=query, limit=SAMPLE_LINES)
+            except ClickHouseError as exc:
+                logger.warning("the incident's own log lines are unavailable: %s", exc)
+                gaps.append("The incident's own log lines could not be read (the log store could not be queried)")
+            else:
+                if own.lines:
+                    evidence.append(own_lines_evidence(incident, start, end, query, own))
 
-    return {"evidence": evidence, "gaps": gaps, "tool_calls": _TOOL_CALLS}
+    return {"evidence": evidence, "gaps": gaps, "tool_calls": tool_calls}
