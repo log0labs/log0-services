@@ -1,8 +1,10 @@
 import pytest
+from langchain_core.exceptions import OutputParserException
 
 from app.graph.subgraphs.model_retry import (
     invoke_with_tool_retry,
     is_tool_call_rejection,
+    unwrap_schema_envelope,
 )
 
 
@@ -25,7 +27,7 @@ def test_other_errors_are_not_retried_candidates(message):
 
 
 @pytest.mark.asyncio
-async def test_retries_once_after_a_tool_rejection():
+async def test_retries_after_a_tool_rejection():
     calls = []
 
     async def call():
@@ -39,7 +41,7 @@ async def test_retries_once_after_a_tool_rejection():
 
 
 @pytest.mark.asyncio
-async def test_gives_up_after_one_retry():
+async def test_gives_up_after_three_attempts():
     calls = []
 
     async def call():
@@ -48,7 +50,7 @@ async def test_gives_up_after_one_retry():
 
     with pytest.raises(_Rejected):
         await invoke_with_tool_retry(call, timeout=5, what="t")
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 @pytest.mark.asyncio
@@ -62,3 +64,47 @@ async def test_rate_limit_is_not_retried():
     with pytest.raises(RuntimeError):
         await invoke_with_tool_retry(call, timeout=5, what="t")
     assert len(calls) == 1
+
+
+def test_unwraps_an_answer_the_model_put_under_properties():
+    raw = '{"description": "Fix it.", "properties": {"changes": [{"file_path": "a.go"}], "notes": []}, "type": "object"}'
+    assert unwrap_schema_envelope(raw) == {"changes": [{"file_path": "a.go"}], "notes": []}
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        None,
+        "not json",
+        '{"changes": []}',  # already the answer
+        '{"properties": {"changes": {"type": "array"}, "notes": {"type": "array"}}}',  # a schema, not data
+        "[1, 2]",
+    ],
+)
+def test_leaves_everything_else_alone(raw):
+    assert unwrap_schema_envelope(raw) is None
+
+
+@pytest.mark.asyncio
+async def test_a_wrapped_answer_is_recovered_without_asking_again():
+    calls = []
+
+    async def call():
+        calls.append(1)
+        raise OutputParserException("bad", llm_output='{"properties": {"changes": []}}')
+
+    assert await invoke_with_tool_retry(call, timeout=5, what="t") == {"changes": []}
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_unparseable_answer_is_tried_again_then_raised():
+    calls = []
+
+    async def call():
+        calls.append(1)
+        raise OutputParserException("bad", llm_output="nonsense")
+
+    with pytest.raises(OutputParserException):
+        await invoke_with_tool_retry(call, timeout=5, what="t")
+    assert len(calls) == 3

@@ -31,9 +31,11 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.tools import StructuredTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.runtime import Runtime
+from pydantic import BaseModel, Field
 
 from app.graph.state import append_unique
 from app.graph.subgraphs.code_investigator import (
@@ -63,6 +65,32 @@ NOTES_TOTAL_CHARS = 60_000
 _LINE_NUMBER = re.compile(r"^\s{0,6}\d+ \| ?")
 
 READ_ONLY_TOOLS = ("list_files", "search_code", "read_file")
+
+# Some models (gpt-oss) are trained to finish a coding task by calling a tool named ``apply_patch``. We do not
+# offer one (the change is written in the final structured step and applied by a person), and a provider
+# rejects the whole reply when a tool outside the request is called. So the model is shown a harmless stand-in:
+# calling it earns a polite "no" and the run carries on to the final step instead of failing.
+DECOY_TOOL = "apply_patch"
+DECOY_REPLY = (
+    "No file can be edited here, so there is nothing to apply. Do not call this tool. When you have read what you "
+    "need, stop using tools and reply with a short note; the change itself is written in the next step."
+)
+
+
+class _DecoyArgs(BaseModel):
+    patch: str = Field(default="", description="Ignored.")
+
+
+def _decoy_tool() -> StructuredTool:
+    async def _unused(**_: object) -> str:  # pragma: no cover - the proposer answers this call itself
+        raise RuntimeError("the proposer answers the decoy itself")
+
+    return StructuredTool.from_function(
+        coroutine=_unused,
+        name=DECOY_TOOL,
+        description="Not available. Editing happens in a later step; do not call.",
+        args_schema=_DecoyArgs,
+    )
 
 SYSTEM_PROMPT = """You are fixing a production incident in a service's source code. The root cause has been
 established and an engineer approved it. Your job is to propose the smallest code change that fixes it.
@@ -234,7 +262,9 @@ async def seed(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorCont
 async def agent(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorContext]) -> dict[str, Any]:
     ctx = runtime.context
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools([spec.as_langchain_tool() for spec in ctx.tools.values()])
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools(
+            [*(spec.as_langchain_tool() for spec in ctx.tools.values()), _decoy_tool()]
+        )
         response = await invoke_with_tool_retry(
             lambda: model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]),
             timeout=ctx.limits.model_timeout_seconds,
@@ -263,6 +293,9 @@ async def tools(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorCon
     replies: list[ToolMessage] = []
     paths: list[str] = []
     for call in last.tool_calls:
+        if call["name"] == DECOY_TOOL:
+            replies.append(ToolMessage(content=DECOY_REPLY, tool_call_id=call["id"], name=call["name"]))
+            continue
         if used >= ctx.limits.max_tool_calls:
             outcome = ToolOutcome("Tool-call limit reached: no more tools are available. Reply with your summary now.", None)
         else:

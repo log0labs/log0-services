@@ -10,7 +10,9 @@ from app.llm.providers import get_provider
 from app.llm.purpose import Purpose
 from app.llm.resolver import LlmResolver
 
-MAX_RETRIES = 2
+# Providers answer 429 when a per-minute token limit is hit and say how long to wait; the SDK waits and retries.
+# Free tiers hit this on the large investigation steps, so be patient (the per-call timeout still bounds it).
+MAX_RETRIES = 4
 
 
 @dataclass(frozen=True)

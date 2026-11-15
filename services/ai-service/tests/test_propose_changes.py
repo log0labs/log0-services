@@ -111,7 +111,7 @@ async def test_an_approved_root_cause_gets_a_grounded_change_against_the_pinned_
     assert code.snapshot_calls == [(ctx.tenant_id, "payment-service", repo.c2)]  # the pinned commit, for the context's tenant
     assert code.calls == [] and code.snapshots_open == 0  # the shared checkout was not touched; the snapshot was released
     assert final["change_attempts"] == 1 and final["gaps"] == ["Fix proposal note: Add a regression test."]
-    assert model.bound == ["list_files", "search_code", "read_file"]  # read-only tools only
+    assert model.bound == ["list_files", "search_code", "read_file", "apply_patch"]  # read-only tools, plus the apply_patch decoy
     assert final["tool_calls"] == 10 + 1 + 1  # before + snapshot + the seeding read
 
 

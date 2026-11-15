@@ -72,7 +72,8 @@ async def test_it_starts_from_the_code_the_root_cause_cites_and_proposes_a_groun
 
     first = str(chat.calls[0][1].content)
     assert "<repository_data>" in first and OLD in first and f"{PAYMENT} lines 93-140 of 140" in first  # the cited window was read
-    assert chat.bound == list(READ_ONLY_TOOLS)  # no git tools: a fix is written against the files as they are
+    assert chat.bound == [*READ_ONLY_TOOLS, "apply_patch"]  # no git tools; apply_patch is only a decoy
+
     assert result.finished and result.gaps == [] and result.notes == ["Add a regression test too."]
     assert result.changes == [CodeChange(file_path=PAYMENT, operation="modify", explanation="Pass the timeout again.", old_code=OLD, new_code=NEW)]
     assert (result.tool_calls, result.steps) == (1, 1)  # the seeding read; one model turn
@@ -123,6 +124,16 @@ async def test_a_git_tool_is_not_even_known_to_the_proposer(repo: Repo) -> None:
     ctx, chat = setup(repo, [ai(call("recent_commits", "g1")), AIMessage(content="ok")], good_answer())
     await run_proposer(ctx)
     assert "no tool named 'recent_commits'" in tool_texts(chat.calls[1])[-1]
+
+
+async def test_a_call_to_the_apply_patch_decoy_gets_a_no_and_the_run_still_finishes(repo: Repo) -> None:
+    ctx, chat = setup(repo, [ai(call("apply_patch", "p1", patch="*** Begin Patch")), AIMessage(content="ok")], good_answer())
+
+    result = await run_proposer(ctx)
+
+    assert "No file can be edited here" in tool_texts(chat.calls[1])[-1]
+    assert result.tool_calls == 1  # only the seeding read: the decoy is free and counts against nothing
+    assert result.changes and result.gaps == []
 
 
 # ----------------------------------------------------------------------------- limits
