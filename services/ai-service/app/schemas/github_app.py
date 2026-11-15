@@ -39,6 +39,11 @@ class InstalledRepositoryOut(CamelModel):
     writes_enabled: bool = False
 
 
+class DeployAccessOut(CamelModel):
+    can_deploy: bool
+    missing: dict[str, str]  # permission -> level the installation still has to accept, empty when can_deploy
+
+
 class WritesIn(CamelModel):
     model_config = ConfigDict(extra="forbid")
 

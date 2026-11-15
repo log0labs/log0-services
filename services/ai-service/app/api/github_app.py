@@ -18,12 +18,13 @@ from app.api.dependencies import get_github_app
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.integrations.github import GitHubAccessError, GitHubUnavailableError
-from app.integrations.github_app import GitHubAppNotConfiguredError
+from app.integrations.github_app import GitHubAppNotConfiguredError, missing_permissions
 from app.integrations.github_app_client import GitHubAppClient, InstalledRepository
 from app.publishing.policy import PrLimits, TenantRules, server_limits
 from app.schemas.ai_config import RepositoryOut
 from app.schemas.github_app import (
     AuditEntryOut,
+    DeployAccessOut,
     GitHubAppOut,
     InstallationIn,
     InstallationOut,
@@ -172,6 +173,24 @@ async def installation_repositories(
             )
         )
     return result
+
+
+@router.get("/installations/{installation_id}/deploy-access", response_model=DeployAccessOut)
+async def deploy_access(
+    installation_id: int,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    client: Annotated[GitHubAppClient, Depends(get_github_app)],
+) -> DeployAccessOut:
+    """Has this installation accepted the permissions deploying needs? If not, the admin has to approve them in GitHub."""
+    if await installations.get(session, tenant_id=admin.tenant_id, installation_id=installation_id) is None:
+        raise _NOT_FOUND
+    try:
+        info = await client.get_installation(installation_id)
+    except (GitHubAppNotConfiguredError, GitHubAccessError, GitHubUnavailableError) as exc:
+        raise _github_error(exc) from None
+    missing = missing_permissions(info.permissions)
+    return DeployAccessOut(can_deploy=not missing and not info.suspended, missing=missing)
 
 
 @router.put("/repositories/{repository_id}/writes", response_model=RepositoryOut)

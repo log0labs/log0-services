@@ -30,6 +30,20 @@ TOKEN_REFRESH_MARGIN_SECONDS = 120  # a cached token is reused only while it has
 WRITE_PERMISSIONS: Mapping[str, str] = {"contents": "write", "pull_requests": "write", "checks": "read", "metadata": "read"}
 """The least the repair flow needs. Workflows, administration and secrets are never requested."""
 
+DEPLOY_PERMISSIONS: Mapping[str, str] = {"actions": "write", "deployments": "write", "checks": "read", "metadata": "read"}
+"""The least the deploy flow needs: dispatch one workflow, record deployments, read the checks of a commit.
+
+Requested apart from ``WRITE_PERMISSIONS`` so an installation that has not accepted the new permissions can still open pull
+requests. It cannot write a commit, and the pull request token cannot dispatch a workflow.
+"""
+
+_LEVELS = {"read": 1, "write": 2, "admin": 3}
+
+
+def missing_permissions(granted: Mapping[str, str], required: Mapping[str, str] = DEPLOY_PERMISSIONS) -> dict[str, str]:
+    """What ``required`` asks for that ``granted`` does not give: ``{permission: level wanted}``. Empty when nothing is missing."""
+    return {name: level for name, level in required.items() if _LEVELS.get(granted.get(name, ""), 0) < _LEVELS.get(level, 0)}
+
 
 class GitHubAppNotConfiguredError(Exception):
     """GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY is missing, or the key is not a usable RSA key."""

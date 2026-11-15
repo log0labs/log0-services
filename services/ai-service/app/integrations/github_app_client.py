@@ -5,7 +5,7 @@ are signed as the app, repository listings use a read-only installation token.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -31,6 +31,7 @@ class InstallationInfo:
     account_login: str
     account_type: str
     suspended: bool
+    permissions: dict[str, str] = field(default_factory=dict)  # what the installation was granted, e.g. {"actions": "write"}
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class GitHubAppClient:
                 account_login=str(body["account"]["login"]),
                 account_type=str(body["account"].get("type", "User")),
                 suspended=body.get("suspended_at") is not None,
+                permissions={str(k): str(v) for k, v in (body.get("permissions") or {}).items()},
             )
         except (KeyError, TypeError, ValueError, AttributeError):
             raise GitHubUnavailableError from None

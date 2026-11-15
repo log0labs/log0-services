@@ -47,7 +47,7 @@ class FakeAppClient:
     async def get_installation(self, installation_id: int) -> InstallationInfo:
         if self.error:
             raise self.error
-        return InstallationInfo(installation_id, self.info.account_login, self.info.account_type, self.info.suspended)
+        return InstallationInfo(installation_id, self.info.account_login, self.info.account_type, self.info.suspended, self.info.permissions)
 
     async def list_repositories(self, installation_id: int) -> list[InstalledRepository]:
         self.listed.append(installation_id)
