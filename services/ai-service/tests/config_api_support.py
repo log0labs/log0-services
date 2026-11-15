@@ -68,7 +68,7 @@ def wipe_tenants() -> None:
     engine = create_engine(get_settings().database_url)
     with engine.begin() as conn:
         for tenant in (TENANT_A, TENANT_B):
-            for table in ("service_repository", "repository_connection", "provider_config"):
+            for table in ("service_repository", "repository_connection", "provider_config", "github_installation"):
                 conn.execute(text(f"DELETE FROM ai.{table} WHERE tenant_id = :t"), {"t": tenant})
     engine.dispose()
 

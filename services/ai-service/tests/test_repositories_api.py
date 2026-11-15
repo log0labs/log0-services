@@ -72,7 +72,7 @@ def test_connecting_checks_the_token_stores_it_encrypted_and_returns_no_secret(e
     body = response.json()
     # GitHub's spelling and default branch win over what was typed.
     assert (body["owner"], body["name"], body["defaultBranch"], body["provider"]) == ("Acme", "Shop", "trunk", "github")
-    assert set(body) == {"id", "provider", "owner", "name", "defaultBranch", "createdAt"}
+    assert set(body) == {"id", "provider", "owner", "name", "defaultBranch", "createdAt", "prWritesEnabled", "installationId"}
     assert TOKEN not in response.text and "ciphertext" not in response.text.lower()
     assert env.github.calls == [("acme", "shop", TOKEN)]  # what the client typed is what GitHub was asked with
 

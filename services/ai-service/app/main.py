@@ -8,6 +8,8 @@ from starlette.routing import Route
 
 from app.api import (
     ai_settings,
+    github_app,
+    github_webhook,
     health,
     investigations,
     repositories,
@@ -22,6 +24,8 @@ from app.graph.executor import GraphExecutor
 from app.integrations.clickhouse import LogStore
 from app.integrations.code_access import DbCodeAccess
 from app.integrations.github import GitHubClient
+from app.integrations.github_app import GitHubAppAuth
+from app.integrations.github_app_client import GitHubAppClient
 from app.integrations.incident_db import IncidentReader
 from app.integrations.incident_service import IncidentApiClient
 from app.integrations.repo_cache import RepoCache
@@ -61,6 +65,7 @@ async def _lifespan(app: FastAPI):
     # invalid is a configuration error and stops the start-up instead.
     app.state.secret_box = secret_box_from_settings(settings) if settings.secrets_keys else None
     app.state.github = GitHubClient(settings)
+    app.state.github_app = GitHubAppClient(settings, GitHubAppAuth(settings))
     app.state.connection_checker = check_connection
     app.state.embedder = build_embedder(settings)  # runbook search and memory (M5)
     app.state.memory = PgMemory(session_factory, app.state.embedder)
@@ -137,6 +142,8 @@ def create_app() -> FastAPI:
     app.include_router(investigations.router)
     app.include_router(repositories.router)
     app.include_router(repositories.services_router)
+    app.include_router(github_app.router)
+    app.include_router(github_webhook.router)
     app.include_router(ai_settings.router)
     app.include_router(runbooks.router)
     app.state.mcp_mount = LazyMount()  # the endpoint is plugged in at start-up when MCP_HTTP_ENABLED is on

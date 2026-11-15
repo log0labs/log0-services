@@ -16,9 +16,9 @@ from pydantic import SecretStr
 
 from app.config import Settings
 from app.integrations.github import (
-    GitHubAccessError,
     GitHubUnavailableError,
     api_headers,
+    raise_for_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,15 +115,7 @@ class GitHubAppAuth:
         except httpx.HTTPError as exc:
             logger.warning("GitHub App request failed: %s", type(exc).__name__)
             raise GitHubUnavailableError from None
-        if response.status_code == 401:
-            raise GitHubAccessError("bad_token")
-        if response.status_code in (403, 422):  # suspended, or asked for access the app does not have
-            raise GitHubAccessError("forbidden")
-        if response.status_code == 404:
-            raise GitHubAccessError("not_found")
-        if response.status_code != 201:
-            logger.warning("GitHub answered %s to an installation token request", response.status_code)
-            raise GitHubUnavailableError
+        raise_for_status(response, 201)
         return response
 
     @staticmethod

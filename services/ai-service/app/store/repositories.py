@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +38,9 @@ class RepositoryConnection:
     key_id: str
     created_by: UUID
     created_at: datetime
+    github_repository_id: int | None = None
+    installation_id: int | None = None
+    pr_writes_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,9 @@ def _to_connection(row) -> RepositoryConnection:
         key_id=m["key_id"],
         created_by=m["created_by"],
         created_at=m["created_at"],
+        github_repository_id=m["github_repository_id"],
+        installation_id=m["installation_id"],
+        pr_writes_enabled=m["pr_writes_enabled"],
     )
 
 
@@ -127,6 +133,48 @@ async def get(session: AsyncSession, *, tenant_id: UUID, repository_id: UUID) ->
     )
     row = result.first()
     return _to_connection(row) if row else None
+
+
+async def set_writes(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    repository_id: UUID,
+    enabled: bool,
+    installation_id: int | None = None,
+    github_repository_id: int | None = None,
+) -> RepositoryConnection:
+    """Turn pull-request writes on (linking the installation and GitHub's repository id) or off."""
+    values: dict[str, object] = {"pr_writes_enabled": enabled}
+    if enabled:
+        values |= {"installation_id": installation_id, "github_repository_id": github_repository_id}
+    result = await session.execute(
+        update(repository_connection)
+        .where(repository_connection.c.tenant_id == tenant_id, repository_connection.c.id == repository_id)
+        .values(**values)
+        .returning(repository_connection)
+    )
+    row = result.first()
+    await session.commit()
+    if row is None:
+        raise RepositoryNotFoundError
+    return _to_connection(row)
+
+
+async def disable_writes_for_github_repositories(
+    session: AsyncSession, *, installation_id: int, github_repository_ids: list[int]
+) -> int:
+    """GitHub removed these repositories from an installation: switch their pull-request writes off."""
+    result = await session.execute(
+        update(repository_connection)
+        .where(
+            repository_connection.c.installation_id == installation_id,
+            repository_connection.c.github_repository_id.in_(github_repository_ids),
+        )
+        .values(pr_writes_enabled=False)
+    )
+    await session.commit()
+    return result.rowcount
 
 
 async def delete_one(session: AsyncSession, *, tenant_id: UUID, repository_id: UUID) -> bool:

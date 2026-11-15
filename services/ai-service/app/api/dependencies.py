@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 
 from app.integrations.github import GitHubClient
+from app.integrations.github_app_client import GitHubAppClient
 from app.llm.connection_check import ConnectionChecker
 from app.security.crypto import SecretBox
 
@@ -34,3 +35,7 @@ def get_github(request: Request) -> GitHubClient:
 
 def get_connection_checker(request: Request) -> ConnectionChecker:
     return request.app.state.connection_checker
+
+
+def get_github_app(request: Request) -> GitHubAppClient:
+    return request.app.state.github_app

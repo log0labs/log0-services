@@ -48,6 +48,8 @@ def _out(row: store.RepositoryConnection) -> RepositoryOut:
         name=row.name,
         default_branch=row.default_branch,
         created_at=row.created_at,
+        pr_writes_enabled=row.pr_writes_enabled,
+        installation_id=row.installation_id,
     )
 
 

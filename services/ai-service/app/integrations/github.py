@@ -29,6 +29,20 @@ def api_headers(token: str) -> dict[str, str]:
     }
 
 
+def raise_for_status(response: httpx.Response, expected: int) -> None:
+    """Map a GitHub answer that is not ``expected`` to the errors this package speaks."""
+    if response.status_code == expected:
+        return
+    if response.status_code == 401:
+        raise GitHubAccessError("bad_token")
+    if response.status_code in (403, 422, 429):  # no permission, asked for too much, or rate limited
+        raise GitHubAccessError("forbidden")
+    if response.status_code == 404:  # GitHub also answers 404 for a private resource the caller cannot see
+        raise GitHubAccessError("not_found")
+    logger.warning("GitHub answered %s", response.status_code)
+    raise GitHubUnavailableError
+
+
 class GitHubAccessError(Exception):
     """GitHub answered, and the answer is "no": the caller can fix it (token, name, permissions)."""
 

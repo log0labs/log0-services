@@ -113,6 +113,8 @@ class RepositoryOut(CamelModel):
     name: str
     default_branch: str
     created_at: datetime
+    pr_writes_enabled: bool = False
+    installation_id: int | None = None
 
 
 class ServiceRepositoryIn(CamelModel):
