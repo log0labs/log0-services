@@ -266,7 +266,7 @@ def test_feedback_for_another_tenants_or_unknown_investigation_is_404(client):
     inv, _ = make_investigation()
     assert post(client, inv, tenant=TENANT_B).status_code == 404
     assert post(client, uuid4()).status_code == 404
-    assert query_one("SELECT count(*) AS n FROM ai.investigation_memory").n == 0
+    assert query_one("SELECT count(*) AS n FROM ai.investigation_memory WHERE tenant_id IN (:a, :b)", a=TENANT_A, b=TENANT_B).n == 0
 
 
 @requires_postgres

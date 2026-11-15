@@ -17,7 +17,6 @@ evidence and hypotheses already gathered stay, and a gap says what is missing. A
 is still a COMPLETED investigation.
 """
 
-import asyncio
 import logging
 from typing import Any, Literal
 
@@ -25,6 +24,7 @@ from langgraph.runtime import Runtime
 
 from app.graph.nodes.synthesize import build_synthesis_input, valid_ids
 from app.graph.state import InvestigationContext, InvestigationState
+from app.graph.subgraphs.model_retry import invoke_with_tool_retry
 from app.llm.purpose import Purpose
 from app.schemas.domain import (
     Evidence,
@@ -153,8 +153,9 @@ async def root_cause(state: InvestigationState, runtime: Runtime[InvestigationCo
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
             RootCauseAnalysis, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
-        async with asyncio.timeout(ROOT_CAUSE_TIMEOUT_SECONDS):
-            answer = await model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)])
+        answer = await invoke_with_tool_retry(
+            lambda: model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)]), timeout=ROOT_CAUSE_TIMEOUT_SECONDS, what="root cause"
+        )
         result = RootCauseAnalysis.model_validate(answer)
     except Exception:  # provider errors vary too much to list; CancelledError is not an Exception
         logger.warning("root_cause failed, continuing without one", exc_info=True)

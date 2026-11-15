@@ -15,7 +15,6 @@ searches loop back through ``gather_followup`` and then verify again, within the
 that is down or answers nonsense: the hypotheses simply stay open.
 """
 
-import asyncio
 import logging
 import time
 from typing import Any
@@ -24,6 +23,7 @@ from langgraph.runtime import Runtime
 
 from app.graph.nodes.synthesize import MAX_CITED_IDS, build_synthesis_input, valid_ids
 from app.graph.state import InvestigationContext, InvestigationState
+from app.graph.subgraphs.model_retry import invoke_with_tool_retry
 from app.llm.purpose import Purpose
 from app.schemas.domain import Hypothesis, Verification
 
@@ -138,8 +138,9 @@ async def verify(state: InvestigationState, runtime: Runtime[InvestigationContex
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
             Verification, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
-        async with asyncio.timeout(VERIFY_TIMEOUT_SECONDS):
-            answer = await model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)])
+        answer = await invoke_with_tool_retry(
+            lambda: model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)]), timeout=VERIFY_TIMEOUT_SECONDS, what="verify"
+        )
         result = Verification.model_validate(answer)
     except Exception:  # provider errors vary too much to list; CancelledError is not an Exception
         logger.warning("verify failed, leaving the hypotheses open", exc_info=True)

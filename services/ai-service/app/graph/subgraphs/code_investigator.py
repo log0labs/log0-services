@@ -400,8 +400,9 @@ async def finalize(state: CodeInvestigationState, runtime: Runtime[CodeInvestiga
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
             CodeFindingsAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
-        async with asyncio.timeout(ctx.limits.model_timeout_seconds):
-            raw = await model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)])
+        raw = await invoke_with_tool_retry(
+            lambda: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=ctx.limits.model_timeout_seconds, what="code finalize"
+        )
         answer = CodeFindingsAnswer.model_validate(raw)
     except Exception:
         logger.warning("code investigator: the findings could not be generated", exc_info=True)

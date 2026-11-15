@@ -11,7 +11,6 @@ If the model is down, slow, or answers nonsense, the run does not fail: the evid
 already gathered and shown, and a gap says the hypotheses are missing.
 """
 
-import asyncio
 import hashlib
 import logging
 import re
@@ -20,6 +19,7 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from app.graph.state import InvestigationContext, InvestigationState
+from app.graph.subgraphs.model_retry import invoke_with_tool_retry
 from app.llm.purpose import Purpose
 from app.schemas.domain import Evidence, Hypothesis, Synthesis
 
@@ -201,8 +201,9 @@ async def synthesize(state: InvestigationState, runtime: Runtime[InvestigationCo
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
             Synthesis, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
-        async with asyncio.timeout(SYNTHESIS_TIMEOUT_SECONDS):
-            answer = await model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)])
+        answer = await invoke_with_tool_retry(
+            lambda: model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)]), timeout=SYNTHESIS_TIMEOUT_SECONDS, what="synthesize"
+        )
         result = Synthesis.model_validate(answer)
     except Exception:  # provider errors vary too much to list; CancelledError is not an Exception
         logger.warning("synthesize failed, continuing without hypotheses", exc_info=True)

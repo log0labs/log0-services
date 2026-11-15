@@ -18,7 +18,6 @@ job (steps 4.3 to 4.5); this step only refuses what is malformed or ungrounded.
 Like the investigator it never raises and has its own limits (tool calls, model turns, seconds).
 """
 
-import asyncio
 import logging
 import re
 import time
@@ -301,8 +300,9 @@ async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigator
         model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
             ChangeProposalAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
-        async with asyncio.timeout(ctx.limits.model_timeout_seconds):
-            raw = await model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)])
+        raw = await invoke_with_tool_retry(
+            lambda: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=ctx.limits.model_timeout_seconds, what="change finalize"
+        )
         answer = ChangeProposalAnswer.model_validate(raw)
     except Exception:
         logger.warning("change proposer: the changes could not be generated", exc_info=True)
