@@ -222,6 +222,30 @@ class ReviewDecision(BaseModel):
     note: str | None = None  # the engineer's guidance when action == "refine"
 
 
+class PrDecision(BaseModel):
+    """What the engineer chose at the "open a draft pull request" gate."""
+
+    action: Literal["approve", "decline"]
+    decided_by: str | None = None  # user id; recorded with the pull request and in the audit
+
+
+class BranchRef(BaseModel):
+    """The branch log0 made for a fix, and the commit it was cut from (the investigation's pinned sha)."""
+
+    name: str
+    base_sha: str
+
+
+class PullRequestRef(BaseModel):
+    """The draft pull request that was opened."""
+
+    number: int
+    url: str
+    branch: str
+    commit_sha: str
+    draft: bool = True
+
+
 class RepoContext(BaseModel):
     """Which repository and exact commit the code tools read (filled in M3)."""
 

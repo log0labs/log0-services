@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.retrieval.embeddings import EmbeddingError
 from app.retrieval.memory import Memory, NewMemory
 from app.schemas.investigation import (
+    ACTIVE_STATUSES,
     CreateInvestigationRequest,
     CreateInvestigationResponse,
     FeedbackRequest,
@@ -31,13 +32,6 @@ from app.store.exceptions import ActiveInvestigationError
 
 router = APIRouter(prefix="/api/v1/investigations", tags=["investigations"])
 
-_ACTIVE = frozenset(
-    {
-        InvestigationStatus.QUEUED,
-        InvestigationStatus.RUNNING,
-        InvestigationStatus.AWAITING_REVIEW,
-    }
-)
 _TERMINAL_STATUSES = frozenset(
     {
         InvestigationStatus.COMPLETED,
@@ -152,7 +146,7 @@ async def cancel_investigation(
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    if row.status not in _ACTIVE:
+    if row.status not in ACTIVE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Investigation is not active",

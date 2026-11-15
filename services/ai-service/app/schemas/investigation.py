@@ -17,9 +17,26 @@ class InvestigationStatus(StrEnum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     AWAITING_REVIEW = "AWAITING_REVIEW"
+    AWAITING_PR_APPROVAL = "AWAITING_PR_APPROVAL"
+    PUBLISHING = "PUBLISHING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+
+
+ACTIVE_STATUSES = frozenset(
+    {
+        InvestigationStatus.QUEUED,
+        InvestigationStatus.RUNNING,
+        InvestigationStatus.AWAITING_REVIEW,
+        InvestigationStatus.AWAITING_PR_APPROVAL,
+        InvestigationStatus.PUBLISHING,
+    }
+)
+"""Statuses that block a new investigation of the same incident (mirrors the partial unique index)."""
+
+PAUSED_STATUSES = frozenset({InvestigationStatus.AWAITING_REVIEW, InvestigationStatus.AWAITING_PR_APPROVAL})
+"""The run is parked at a human gate: nothing is executing and no concurrency slot is held."""
 
 
 class InvestigationScope(CamelModel):

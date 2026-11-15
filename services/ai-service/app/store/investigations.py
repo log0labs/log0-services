@@ -17,6 +17,9 @@ from app.schemas.investigation import (
 )
 from app.store.exceptions import ActiveInvestigationError
 
+_EXECUTING = (InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value, InvestigationStatus.PUBLISHING.value)
+"""Statuses whose work was interrupted if the service stops: they are picked up again on start."""
+
 
 def _row_to_investigation(row) -> Investigation:
     m = row._mapping
@@ -118,8 +121,8 @@ async def list_by_incident(
 
 
 async def list_pending_for_runner(session: AsyncSession) -> list[tuple[UUID, UUID]]:
-    """Investigation ids to schedule on startup (QUEUED or RUNNING)."""
-    active = (InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value)
+    """Investigation ids to schedule on startup (QUEUED, RUNNING or PUBLISHING)."""
+    active = _EXECUTING
     stmt = select(investigation.c.id, investigation.c.tenant_id).where(investigation.c.status.in_(active))
     result = await session.execute(stmt)
     return [(row.id, row.tenant_id) for row in result.all()]
@@ -133,7 +136,7 @@ async def mark_running(session: AsyncSession, *, investigation_id: UUID, tenant_
         .where(
             investigation.c.id == investigation_id,
             investigation.c.tenant_id == tenant_id,
-            investigation.c.status.in_((InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value)),
+            investigation.c.status.in_(_EXECUTING),
         )
         .values(status=InvestigationStatus.RUNNING.value, started_at=func.coalesce(investigation.c.started_at, now), updated_at=now)
     )

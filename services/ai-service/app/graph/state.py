@@ -23,10 +23,13 @@ from app.parsing.stacktrace import StackFrame
 from app.retrieval.memory import Memory
 from app.retrieval.runbooks import RunbookSource
 from app.schemas.domain import (
+    BranchRef,
     CodeChange,
     CodeLocation,
     Evidence,
     Hypothesis,
+    PrDecision,
+    PullRequestRef,
     Recommendation,
     RepoContext,
     ReviewDecision,
@@ -110,6 +113,12 @@ class InvestigationState(TypedDict):
     diff: str | None
     diff_files: list[FileDiff]  # per-file summary of the diff (path, operation, added, removed lines)
     read_paths: list[str]  # files the change proposer was shown: what validation checks the changes against
+
+    # V2: from an approved diff to a draft pull request
+    pr_decision: PrDecision | None
+    branch: BranchRef | None
+    commit_sha: str | None
+    pull_request: PullRequestRef | None
     
     # budget and bookkeeping
     tool_calls: Annotated[int, operator.add]  # every tool call adds 1: the budget
@@ -150,6 +159,10 @@ def new_state(
         diff=None,
         diff_files=[],
         read_paths=[],
+        pr_decision=None,
+        branch=None,
+        commit_sha=None,
+        pull_request=None,
         tool_calls=0,
         gaps=[],
         status=InvestigationStatus.RUNNING,
@@ -208,6 +221,9 @@ CHECKPOINT_TYPES: tuple[type, ...] = (
     ReviewDecision,
     CodeChange,
     FileDiff,
+    PrDecision,
+    BranchRef,
+    PullRequestRef,
 )
 
 

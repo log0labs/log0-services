@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.schemas.investigation import InvestigationStatus
+from app.schemas.investigation import PAUSED_STATUSES, InvestigationStatus
 from app.store import events as event_store
 from app.store import investigations as investigation_store
 
@@ -193,7 +193,7 @@ class InvestigationRunner:
                         tenant_id=tenant_id,
                         investigation_id=investigation_id,
                     )
-                    if row is not None and row.status not in _TERMINAL and row.status != InvestigationStatus.AWAITING_REVIEW:
+                    if row is not None and row.status not in _TERMINAL and row.status not in PAUSED_STATUSES:
                         await investigation_store.transition_status(
                             session,
                             investigation_id=investigation_id,
