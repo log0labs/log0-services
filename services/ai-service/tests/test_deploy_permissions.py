@@ -16,6 +16,7 @@ from app.integrations.github_app import (
     missing_permissions,
 )
 from app.integrations.github_app_client import InstallationInfo
+from tests.conftest import requires_postgres
 from tests.test_github_app import NOW, PEM, Clock
 from tests.test_github_app_api import (
     BASE,
@@ -125,6 +126,7 @@ async def test_a_deploy_token_asks_for_the_deploy_permissions_only() -> None:
     ]  # two scopes, two tokens, never mixed
 
 
+@requires_postgres
 def test_an_installation_that_accepted_the_permissions_can_deploy(
     env: tuple[Env, FakeAppClient],
 ) -> None:
@@ -141,6 +143,7 @@ def test_an_installation_that_accepted_the_permissions_can_deploy(
     assert body == {"canDeploy": True, "missing": {}}
 
 
+@requires_postgres
 def test_an_installation_that_has_not_re_approved_is_told_what_is_missing(
     env: tuple[Env, FakeAppClient],
 ) -> None:
@@ -160,6 +163,7 @@ def test_an_installation_that_has_not_re_approved_is_told_what_is_missing(
     }
 
 
+@requires_postgres
 def test_a_suspended_installation_cannot_deploy_even_with_the_permissions(
     env: tuple[Env, FakeAppClient],
 ) -> None:
@@ -177,6 +181,7 @@ def test_a_suspended_installation_cannot_deploy_even_with_the_permissions(
     )
 
 
+@requires_postgres
 def test_deploy_access_is_admin_only_and_another_tenant_gets_404(
     env: tuple[Env, FakeAppClient],
 ) -> None:
