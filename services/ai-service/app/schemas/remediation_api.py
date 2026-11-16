@@ -32,6 +32,18 @@ class DecisionIn(CamelModel):
     action: Literal["keep", "extend", "rollback"]
 
 
+class DeployAuditOut(CamelModel):
+    id: int
+    remediation_id: UUID | None
+    actor_id: UUID | None
+    action: str
+    environment: str
+    sha: str
+    result: str
+    detail: str
+    created_at: datetime
+
+
 class RemediationOut(CamelModel):
     id: UUID
     pull_request_id: UUID

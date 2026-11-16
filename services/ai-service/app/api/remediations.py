@@ -19,11 +19,17 @@ from app.deploy.policy import can_approve
 from app.deploy.target import EnvironmentRule
 from app.schemas.remediation_api import (
     DecisionIn,
+    DeployAuditOut,
     DeploymentOut,
     RemediationOut,
     VerificationOut,
 )
-from app.security.jwt import CurrentUser, get_current_user, require_investigation_writer
+from app.security.jwt import (
+    CurrentUser,
+    get_current_user,
+    require_admin,
+    require_investigation_writer,
+)
 from app.store import (
     approvals,
     deploy_audit,
@@ -85,6 +91,31 @@ async def list_remediations(
 ) -> list[RemediationOut]:
     rows = await remediation_store.list_for_investigation(session, tenant_id=user.tenant_id, investigation_id=investigation_id)
     return [await _out(session, row) for row in rows]
+
+
+def _audit_out(rows: list[deploy_audit.AuditRow]) -> list[DeployAuditOut]:
+    return [DeployAuditOut.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.get("/audit", response_model=list[DeployAuditOut])
+async def audit_log(
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[DeployAuditOut]:
+    """Every approval, dispatch, verdict and outcome of this workspace's deploys, newest first. Append-only: the table rejects updates and deletes."""
+    return _audit_out(await deploy_audit.list_for_tenant(session, tenant_id=admin.tenant_id, limit=limit))
+
+
+@router.get("/{remediation_id}/audit", response_model=list[DeployAuditOut])
+async def remediation_audit(
+    remediation_id: UUID,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[DeployAuditOut]:
+    """The history of one deploy, oldest first."""
+    await _owned(session, admin, remediation_id)
+    return _audit_out(await deploy_audit.list_for_remediation(session, tenant_id=admin.tenant_id, remediation_id=remediation_id))
 
 
 @router.get("/{remediation_id}", response_model=RemediationOut)

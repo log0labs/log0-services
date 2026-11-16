@@ -64,3 +64,9 @@ async def list_for_remediation(session: AsyncSession, *, tenant_id: UUID, remedi
         select(deploy_audit).where(deploy_audit.c.tenant_id == tenant_id, deploy_audit.c.remediation_id == remediation_id).order_by(deploy_audit.c.id)
     )
     return [AuditRow(**{name: row._mapping[name] for name in AuditRow.__dataclass_fields__}) for row in result]
+
+
+async def list_for_tenant(session: AsyncSession, *, tenant_id: UUID, limit: int = 100) -> list[AuditRow]:
+    """The workspace's deploy history, newest first."""
+    result = await session.execute(select(deploy_audit).where(deploy_audit.c.tenant_id == tenant_id).order_by(deploy_audit.c.id.desc()).limit(limit))
+    return [AuditRow(**{name: row._mapping[name] for name in AuditRow.__dataclass_fields__}) for row in result]
