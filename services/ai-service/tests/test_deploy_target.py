@@ -176,3 +176,33 @@ def test_another_tenants_repository_cannot_be_given_a_target(env: tuple[Env, Fak
     assert e.client.delete(url, headers=e.headers(tenant=TENANT_B)).status_code == 404
     assert e.client.get(url, headers=e.headers()).status_code == 200  # untouched
     assert e.client.put(f"{BASE}/{uuid4()}", json=_config(), headers=e.headers()).status_code == 404
+
+
+# ------------------------------------------------------------------ the published rules
+
+
+def test_the_published_rules_are_read_from_the_models() -> None:
+    from app.deploy.target import (
+        ENVIRONMENT_NAME,
+        MAX_ENVIRONMENTS,
+        WORKFLOW_FILE,
+        rules,
+    )
+
+    published = rules()
+
+    assert published["workflowPattern"] == WORKFLOW_FILE.pattern and published["namePattern"] == ENVIRONMENT_NAME.pattern
+    assert published["maxEnvironments"] == MAX_ENVIRONMENTS
+    assert published["soakSeconds"] == {"ge": 60, "le": 7200}
+    assert published["graceSeconds"] == {"ge": 0, "le": 1800}
+    assert published["improvementMargin"] == {"gt": 0, "lt": 1}
+    assert published["minTraffic"]["ge"] == 1
+
+
+def test_the_rules_are_for_admins_and_do_not_shadow_a_repository_id(env: tuple[Env, FakeAppClient]) -> None:
+    e, _ = env
+
+    assert e.client.get(f"{BASE}/rules").status_code == 401
+    assert e.client.get(f"{BASE}/rules", headers=e.headers(role="ENGINEER")).status_code == 403
+    body = e.client.get(f"{BASE}/rules", headers=e.headers())
+    assert body.status_code == 200 and body.json()["maxEnvironments"] == 5

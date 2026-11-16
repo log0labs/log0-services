@@ -140,4 +140,5 @@ class LatestInvestigation(CamelModel):
     confidence_band: Literal["high", "medium", "low"] | None = None
     has_diff: bool = False
     has_pull_request: bool = False
+    deploy_status: str | None = None  # the remediation status of the latest deploy that began, for a "deployed" or "rolled back" mark
     created_at: datetime

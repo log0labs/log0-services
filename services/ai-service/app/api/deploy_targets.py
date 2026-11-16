@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.deploy.target import DeployTargetConfig
+from app.deploy.target import DeployTargetConfig, rules
 from app.schemas.deploy_target import DeployTargetOut
 from app.security.jwt import CurrentUser, require_admin
 from app.store import deploy_targets as targets
@@ -29,6 +29,12 @@ def _out(row: targets.DeployTarget) -> DeployTargetOut:
 async def _own_repository(session: AsyncSession, admin: CurrentUser, repository_id: UUID) -> None:
     if await repository_store.get(session, tenant_id=admin.tenant_id, repository_id=repository_id) is None:
         raise _NOT_FOUND
+
+
+@router.get("/rules")
+async def deploy_rules(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict[str, object]:
+    """The limits a configuration must respect, so an editor can check before it sends (the server still validates every save)."""
+    return rules()
 
 
 @router.get("/{repository_id}", response_model=DeployTargetOut)

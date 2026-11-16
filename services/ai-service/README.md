@@ -99,6 +99,12 @@ All under JWT auth (the tenant comes from the token). ADMIN and ENGINEER can sta
 | `POST .../{id}/pr/approve`, `POST .../{id}/pr/decline`, `GET .../{id}/pull-request` | Answer the draft pull request gate (ADMIN or ENGINEER); read the pull request |
 | `GET /api/v1/github/app`, `POST/GET/DELETE /api/v1/github/installations`, `GET .../{id}/repositories`, `PUT /api/v1/github/repositories/{id}/writes` | Install and link the GitHub App, choose writable repositories (ADMIN) |
 | `GET /api/v1/github/audit` | Every write log0 made (ADMIN) |
+| `GET /api/v1/remediations?investigationId=`, `GET .../{id}` | The deploys a merge offered, with their deployment, rollback and latest verdict |
+| `POST .../{id}/start`, `.../deploy/approve`, `.../deploy/decline` | Start an offer (preflight only), answer the deploy approval (ADMIN, or ENGINEER where the environment allows) |
+| `POST .../{id}/decision` | After a degraded or unclear verdict: `keep`, `extend` (twice at most) or `rollback` (once, needs a recorded previous commit) |
+| `GET /api/v1/remediations/audit`, `GET .../{id}/audit` | The append-only deploy history of the workspace, or of one deploy (ADMIN) |
+| `GET/PUT/DELETE /api/v1/deploy-targets/{repositoryId}`, `GET .../rules` | How a repository is deployed (workflow, environments, rules), and the limits a configuration must respect (ADMIN) |
+| `GET /api/v1/github/installations/{id}/deploy-access` | Has the installation accepted the deploy permissions? (ADMIN) |
 | `GET/PUT/DELETE /api/v1/github/policy` | The workspace's pull request rules, stricter than the server's limits (ADMIN) |
 | `POST /api/v1/github/webhook` | GitHub's signed events: uninstall, suspend, repositories removed |
 | `GET/PUT/DELETE /api/v1/ai-settings/{purpose}`, `POST .../test` | Per-tenant model settings (ADMIN) |
@@ -139,6 +145,30 @@ Ten read-only tools over the same functions the graph uses: `get_incident`, `get
 uv run python scripts/mcp_token.py <tenant-id>          # a short-lived token for local use
 LOG0_MCP_TOKEN=<token> uv run python -m app.mcp.stdio   # stdio, for Claude Desktop or Cursor
 ```
+
+## Controlled deploys (V3)
+
+A merged log0 pull request makes one **offer** per enabled environment of the repository's deploy target (merge is not consent). A separate graph (thread `remediation:<id>`, its own table and statuses) runs the rest, with no model anywhere in it:
+`preflight -> capture_baseline -> approve_deploy -> trigger_deploy -> wait_deploy -> soak -> verify -> decide_verdict`, and, when a person chooses it,
+`trigger_rollback -> wait_rollback -> soak_rollback -> verify_rollback`. `park` is the one wait: it stores `wake_at` and a sweeper resumes the run, so nothing sleeps
+and a restart loses nothing. log0 asks the customer's own pipeline to deploy (`workflow_dispatch`, inputs `sha`, `environment`, `correlation_id`, each pattern-checked),
+finds its run again by the correlation id in the run name, and holds no cloud credentials. The verdict (`app/deploy/verify.py`) is pure arithmetic: a traffic floor first,
+then new or growing errors, then the investigated error against the baseline with a margin; healthy only at the end of the soak, degraded may end it early after five minutes.
+A rollback deploys the commit recorded before the deploy and is judged by `judge_recovery`; it never loops and ends `ROLLED_BACK` or `FAILED`.
+Design: `log0-refs/ai-service/V3-PLAN.md`, `v3-graph-diagram.md`, ADR-019 to 022; the website page is `/docs/deploys`; demo and live-evaluation checklist: `V3-DEMO.md`.
+
+| Variable | Meaning |
+|---|---|
+| `DEPLOYS_ENABLED` | Global kill switch, off by default (a rollback also needs it on) |
+| `DEPLOYS_DISABLED_TENANTS` | JSON list of workspace ids switched off by the operator |
+| `DEPLOY_MAX_PER_ENVIRONMENT_PER_HOUR` | Rate limit per repository and environment (3) |
+| `DEPLOY_POLL_SECONDS`, `DEPLOY_SWEEP_SECONDS` | How often a waiting deploy looks at its run (30), and how often the sweeper looks for due wake-ups (10) |
+| (GitHub App) | Add *Actions: write* and *Deployments: write*; each installation approves them once (`deploy-access` says what is missing) |
+| (workflow contract) | The customer's workflow accepts `sha`, `environment`, `correlation_id`, puts the correlation id in `run-name`, and checks out `inputs.sha` |
+
+Only an admin or engineer starts an offer; the environment's approver role (ADMIN for names containing `prod`) approves and decides. One active deploy per repository and environment (partial unique index).
+The `deploy_audit` table rejects `UPDATE`, `DELETE` and `TRUNCATE` with a trigger. Migration-touching changes are not eligible. Not built: automatic rollback (the `autoRollback` field is stored and ignored),
+and a live measurement on the demo shop.
 
 ## Security
 
@@ -228,5 +258,5 @@ tests/            75 test modules; tests that need Postgres or ClickHouse skip w
 
 ## Known limits
 
-GitHub only. No merging, no deploy, no running of customer tests (the repository's CI is read, and a repository without CI is reported as unverified). The first real run against GitHub needs the App registered by the owner. The default runbook embedder is lexical. The evaluation set is
+GitHub only. No merging, no automatic deploy or rollback (a person approves each), no running of customer tests (the repository's CI is read, and a repository without CI is reported as unverified). The first real run against GitHub needs the App registered by the owner. The default runbook embedder is lexical. The evaluation set is
 small (a regression gate, not a benchmark), and the one complete real-model run is a first look (see "Measured so far").

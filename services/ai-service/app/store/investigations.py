@@ -9,7 +9,7 @@ from sqlalchemy import case, exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.tables import investigation, pull_request
+from app.db.tables import investigation, pull_request, remediation
 from app.schemas.investigation import (
     Investigation,
     InvestigationScope,
@@ -251,9 +251,17 @@ async def record_run_result(
 
 
 async def latest_for_incidents(session: AsyncSession, *, tenant_id: UUID, incident_ids: list[UUID]) -> list[dict[str, Any]]:
-    """The newest investigation of each given incident (those that have one), for this tenant only."""
+    """The newest investigation of each given incident (those that have one), for this tenant only. ``deploy_status`` is the status of its
+    most recently touched deploy that went beyond an offer (``None`` when nothing was deployed)."""
     if not incident_ids:
         return []
+    deploy_status = (
+        select(remediation.c.status)
+        .where(remediation.c.investigation_id == investigation.c.id, remediation.c.status.not_in(["OFFERED", "DECLINED", "ABANDONED", "CANCELLED"]))
+        .order_by(remediation.c.updated_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     result = await session.execute(
         select(
             investigation.c.incident_id,
@@ -262,6 +270,7 @@ async def latest_for_incidents(session: AsyncSession, *, tenant_id: UUID, incide
             investigation.c.confidence_band,
             (investigation.c.diff.is_not(None)).label("has_diff"),
             exists().where(pull_request.c.investigation_id == investigation.c.id).label("has_pull_request"),
+            deploy_status.label("deploy_status"),
             investigation.c.created_at,
         )
         .where(investigation.c.tenant_id == tenant_id, investigation.c.incident_id.in_(incident_ids))

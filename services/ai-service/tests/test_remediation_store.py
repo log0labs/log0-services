@@ -13,9 +13,12 @@ from app.store import approvals, deploy_audit, deployments
 from app.store import remediations as store
 from tests.remediation_support import (  # noqa: F401  (fixture)
     MERGE_SHA,
+    PRODUCTION,
+    STAGING,
     Harness,
     build_harness,
     forget,
+    seed,
     session_factory,
 )
 
@@ -151,3 +154,24 @@ async def test_the_audit_redacts_secrets_and_is_read_back_in_order(h: Harness) -
     assert [r.action for r in rows] == ["deploy.failed", "second"]
     assert "ghp_" not in rows[0].detail and len(rows[1].detail) == deploy_audit.MAX_DETAIL
     assert elsewhere == []
+
+
+async def test_the_incident_list_learns_which_deploy_happened(session_factory) -> None:  # noqa: F811
+    from app.store import investigations as investigation_store
+    from tests.graph_fakes import INCIDENT_ID
+
+    s = await seed(session_factory, environments=[STAGING, PRODUCTION])
+    try:
+        async def deploy_status() -> str | None:
+            async with session_factory() as session:
+                rows = await investigation_store.latest_for_incidents(session, tenant_id=s.tenant, incident_ids=[INCIDENT_ID])
+            return rows[0]["deploy_status"]
+
+        assert await deploy_status() is None  # two offers nobody started
+        async with session_factory() as session:
+            await session.execute(text("UPDATE ai.remediation SET status = 'VERIFIED', updated_at = now() - interval '1 hour' WHERE id = :i"), {"i": s.offers["staging"]})
+            await session.execute(text("UPDATE ai.remediation SET status = 'ROLLED_BACK', updated_at = now() WHERE id = :i"), {"i": s.offers["production"]})
+            await session.commit()
+        assert await deploy_status() == "ROLLED_BACK"  # the most recently touched one that went beyond an offer
+    finally:
+        await forget(session_factory, s.tenant)

@@ -16,6 +16,7 @@ ENVIRONMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 WORKFLOW_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}\.ya?ml$")
 MAX_ENVIRONMENTS = 5
 PRODUCTION_HINT = "prod"
+SOAK_AFTER_GRACE_SECONDS = 60  # the soak must outlast the grace period by at least this much
 
 
 class Thresholds(CamelModel):
@@ -69,7 +70,7 @@ class EnvironmentRule(CamelModel):
 
     @model_validator(mode="after")
     def _the_soak_outlasts_the_grace_period(self) -> Self:
-        if self.soak_seconds < self.thresholds.grace_seconds + 60:
+        if self.soak_seconds < self.thresholds.grace_seconds + SOAK_AFTER_GRACE_SECONDS:
             raise ValueError("the soak must last at least a minute longer than the grace period, or nothing is left to judge")
         return self
 
@@ -109,3 +110,30 @@ class DeployTargetConfig(CamelModel):
         """The environment before ``name`` in the promotion order, or ``None`` for the first (or an unknown name)."""
         names = [e.name for e in self.environments]
         return self.environments[names.index(name) - 1] if name in names and names.index(name) > 0 else None
+
+
+def _bounds(model: type[CamelModel], name: str) -> dict[str, float]:
+    """The range a field was declared with (``ge``/``gt``/``le``/``lt``), read from the model so a copy cannot drift."""
+    found: dict[str, float] = {}
+    for item in model.model_fields[name].metadata:
+        for key in ("ge", "gt", "le", "lt"):
+            if hasattr(item, key):
+                found[key] = getattr(item, key)
+    return found
+
+
+def rules() -> dict[str, object]:
+    """What a configuration may contain, for a client that validates before it sends. Read from the models and constants above."""
+    return {
+        "workflowPattern": WORKFLOW_FILE.pattern,
+        "namePattern": ENVIRONMENT_NAME.pattern,
+        "maxEnvironments": MAX_ENVIRONMENTS,
+        "productionHint": PRODUCTION_HINT,
+        "soakAfterGraceSeconds": SOAK_AFTER_GRACE_SECONDS,
+        "soakSeconds": _bounds(EnvironmentRule, "soak_seconds"),
+        "deployTimeoutSeconds": _bounds(EnvironmentRule, "deploy_timeout_seconds"),
+        "graceSeconds": _bounds(Thresholds, "grace_seconds"),
+        "minTraffic": _bounds(Thresholds, "min_traffic"),
+        "improvementMargin": _bounds(Thresholds, "improvement_margin"),
+        "newErrorPerMinute": _bounds(Thresholds, "new_error_per_minute"),
+    }
