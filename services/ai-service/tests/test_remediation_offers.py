@@ -23,6 +23,8 @@ from tests.test_github_webhook import (
 )
 
 env = webhook_env  # a real app with a signed-webhook secret, an installation and a repository
+from tests.conftest import requires_postgres
+
 MERGED = "c" * 40
 
 
@@ -63,6 +65,7 @@ STAGING = {"name": "staging", "enabled": True, "approver": "ENGINEER"}
 PRODUCTION = {"name": "production", "enabled": True, "requiresPreviousVerified": True}
 
 
+@requires_postgres
 def test_a_merge_makes_one_offer_per_enabled_environment_and_remembers_the_merge_commit(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -76,6 +79,7 @@ def test_a_merge_makes_one_offer_per_enabled_environment_and_remembers_the_merge
     assert _events(investigation_id) == ["pr.merged", "remediation.offered"]
 
 
+@requires_postgres
 def test_the_same_webhook_twice_makes_each_offer_once(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -88,6 +92,7 @@ def test_the_same_webhook_twice_makes_each_offer_once(env: tuple[Env, FakeAppCli
     assert _events(investigation_id).count("remediation.offered") == 1  # the second delivery created nothing, so it said nothing
 
 
+@requires_postgres
 def test_an_offer_deploys_nothing(env: tuple[Env, FakeAppClient]) -> None:
     e, fake = env
     _add_pull_request()
@@ -101,6 +106,7 @@ def test_an_offer_deploys_nothing(env: tuple[Env, FakeAppClient]) -> None:
     assert fake.listed == []  # not a single call to GitHub
 
 
+@requires_postgres
 def test_a_repository_without_a_deploy_target_gets_no_offers(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -111,6 +117,7 @@ def test_a_repository_without_a_deploy_target_gets_no_offers(env: tuple[Env, Fak
     assert _events(investigation_id) == ["pr.merged"]
 
 
+@requires_postgres
 def test_a_target_with_every_environment_off_gets_no_offers(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     _add_pull_request()
@@ -122,6 +129,7 @@ def test_a_target_with_every_environment_off_gets_no_offers(env: tuple[Env, Fake
 
 
 @pytest.mark.parametrize("sha", [None, "", "abc123", "Z" * 40, "c" * 39, "c" * 41, "C" * 40])
+@requires_postgres
 def test_a_merge_without_a_usable_commit_is_recorded_but_not_offered(env: tuple[Env, FakeAppClient], sha: str | None) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -133,6 +141,7 @@ def test_a_merge_without_a_usable_commit_is_recorded_but_not_offered(env: tuple[
     assert _sql("SELECT state, merge_commit_sha FROM ai.pull_request WHERE investigation_id = :i", i=investigation_id) == [("merged", None)]
 
 
+@requires_postgres
 def test_a_pull_request_closed_without_merging_offers_nothing(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -144,6 +153,7 @@ def test_a_pull_request_closed_without_merging_offers_nothing(env: tuple[Env, Fa
     assert _sql("SELECT state, merge_commit_sha FROM ai.pull_request WHERE investigation_id = :i", i=investigation_id) == [("closed", None)]
 
 
+@requires_postgres
 def test_a_stored_target_that_no_longer_fits_its_shape_offers_nothing_and_does_not_fail_the_webhook(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     investigation_id = _add_pull_request()
@@ -157,6 +167,7 @@ def test_a_stored_target_that_no_longer_fits_its_shape_offers_nothing_and_does_n
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_the_offers_of_a_merge_are_listed_for_its_own_tenant_only(env: tuple[Env, FakeAppClient], db_session: AsyncSession) -> None:
     e, _ = env
     _add_pull_request()
@@ -172,6 +183,7 @@ async def test_the_offers_of_a_merge_are_listed_for_its_own_tenant_only(env: tup
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_offering_again_returns_only_what_is_new(env: tuple[Env, FakeAppClient], db_session: AsyncSession) -> None:
     e, _ = env
     _add_pull_request()

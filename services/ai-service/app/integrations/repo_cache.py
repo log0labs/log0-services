@@ -202,8 +202,8 @@ class RepoCache:
         try:
             await self._run(
                 [
-                    "-c", "core.symlinks=false",
-                    "clone", "--depth", self._depth, "--single-branch", "--branch", branch,
+                    "clone", "-c", "core.symlinks=false",  # after "clone": written into the new repository's config, so later resets and worktrees keep it
+                    "--depth", self._depth, "--single-branch", "--branch", branch,
                     "--no-tags", "--template=", "--", url, str(staging),
                 ],
                 secret,
@@ -247,7 +247,7 @@ class RepoCache:
 
     async def _run(self, args: list[str], secret: str, *, cwd: Path) -> str:
         command = [self._git, *args]
-        verb = next(arg for arg in args if not arg.startswith("-") and arg != "core.symlinks=false")
+        verb = next(arg for arg in args if not arg.startswith("-"))
         try:
             result = await asyncio.to_thread(
                 subprocess.run,

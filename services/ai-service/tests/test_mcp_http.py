@@ -50,12 +50,14 @@ def enabled(monkeypatch):
     wipe_investigations()
 
 
+@requires_postgres
 def test_the_endpoint_is_off_unless_switched_on():
     with TestClient(create_app()) as client:
         assert rpc(client, "tools/list", None, token()).status_code == 404
         assert client.get("/health").status_code == 200  # the rest of the app is unaffected
 
 
+@requires_postgres
 def test_a_request_without_a_valid_token_is_refused(enabled):
     for tok in (None, "garbage", token(exp_delta=timedelta(seconds=-60)), token(role="HACKER")):
         response = rpc(enabled, "tools/list", None, tok)
@@ -65,6 +67,7 @@ def test_a_request_without_a_valid_token_is_refused(enabled):
     assert rpc(enabled, "tools/list", None, wrong_secret).status_code == 401
 
 
+@requires_postgres
 def test_a_basic_auth_header_is_not_a_bearer_token(enabled):
     response = enabled.post(
         "/mcp", headers={**headers(None), "Authorization": f"Basic {token()}"}, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
@@ -72,6 +75,7 @@ def test_a_basic_auth_header_is_not_a_bearer_token(enabled):
     assert response.status_code == 401
 
 
+@requires_postgres
 def test_a_viewer_can_initialize_and_list_the_ten_read_only_tools(enabled):
     tok = token(role="VIEWER")
     init = rpc(
@@ -85,6 +89,7 @@ def test_a_viewer_can_initialize_and_list_the_ten_read_only_tools(enabled):
     assert len(tools) == 10 and all(t["annotations"]["readOnlyHint"] for t in tools)
 
 
+@requires_postgres
 def test_the_rest_of_the_api_still_works_with_mcp_on(enabled):
     response = enabled.get("/api/v1/runbooks", headers={"Authorization": f"Bearer {token()}"})
     assert response.status_code == 200
@@ -124,6 +129,7 @@ def test_runbook_search_over_http_is_tenant_scoped(enabled):
         wipe_runbooks()
 
 
+@requires_postgres
 def test_an_unknown_tool_and_bad_arguments_are_clean_errors(enabled):
     tok = token()
     bad_tool = rpc(enabled, "tools/call", {"name": "delete_everything", "arguments": {}}, tok)

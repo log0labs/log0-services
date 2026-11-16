@@ -18,6 +18,8 @@ from tests.test_github_app_api import (
 )
 
 env = app_env  # the fixture of the GitHub API tests, reused here
+from tests.conftest import requires_postgres
+
 BASE = "/api/v1/deploy-targets"
 
 
@@ -119,6 +121,7 @@ def test_the_promotion_order_is_the_order_of_the_list() -> None:
 # ------------------------------------------------------------------ the API
 
 
+@requires_postgres
 def test_everything_needs_an_admin(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     url = f"{BASE}/{uuid4()}"
@@ -130,6 +133,7 @@ def test_everything_needs_an_admin(env: tuple[Env, FakeAppClient]) -> None:
         assert e.client.delete(url, headers=headers).status_code == 403
 
 
+@requires_postgres
 def test_a_target_is_saved_read_replaced_and_deleted(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     repository = _connect_repository(e)
@@ -154,6 +158,7 @@ def test_a_target_is_saved_read_replaced_and_deleted(env: tuple[Env, FakeAppClie
     assert e.client.delete(url, headers=e.headers()).status_code == 404
 
 
+@requires_postgres
 def test_an_invalid_configuration_is_refused_and_nothing_is_stored(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     repository = _connect_repository(e)
@@ -165,6 +170,7 @@ def test_an_invalid_configuration_is_refused_and_nothing_is_stored(env: tuple[En
     assert e.client.get(url, headers=e.headers()).status_code == 404
 
 
+@requires_postgres
 def test_another_tenants_repository_cannot_be_given_a_target(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
     repository = _connect_repository(e)
@@ -199,6 +205,7 @@ def test_the_published_rules_are_read_from_the_models() -> None:
     assert published["minTraffic"]["ge"] == 1
 
 
+@requires_postgres
 def test_the_rules_are_for_admins_and_do_not_shadow_a_repository_id(env: tuple[Env, FakeAppClient]) -> None:
     e, _ = env
 

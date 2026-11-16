@@ -36,6 +36,7 @@ from tests.test_github_publisher import (  # noqa: F401  (fixture)
 from tests.test_github_writer import FakeAuth
 
 needs_tools = [pytest.mark.skipif(shutil.which("git") is None, reason="git"), pytest.mark.skipif(shutil.which("rg") is None, reason="rg")]
+from tests.conftest import requires_postgres
 
 
 def file(path: str, additions: int = 1, deletions: int = 1) -> FileDiff:
@@ -190,6 +191,7 @@ async def test_nothing_is_written_unless_an_engineer_approved_with_an_id(repo: R
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_an_operator_can_switch_one_workspace_off_without_touching_the_others(factory) -> None:  # noqa: F811
     _, investigation_id = await _setup(factory)
     on = GitHubPublisher(factory, object(), enabled=True)  # type: ignore[arg-type]
@@ -204,6 +206,7 @@ async def test_an_operator_can_switch_one_workspace_off_without_touching_the_oth
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_activity_counts_recent_pull_requests_of_the_repository_and_the_workspace(factory) -> None:  # noqa: F811
     repository_id, investigation_id = await _setup(factory)
     publisher = GitHubPublisher(factory, object(), enabled=True)  # type: ignore[arg-type]
@@ -229,6 +232,7 @@ async def test_activity_counts_recent_pull_requests_of_the_repository_and_the_wo
 
 @pytest.mark.asyncio
 @respx.mock
+@requires_postgres
 async def test_the_installation_token_appears_only_in_authorization_headers(factory, caplog: pytest.LogCaptureFixture) -> None:  # noqa: F811
     from app.schemas.domain import BranchRef
 
@@ -286,6 +290,7 @@ def test_requiring_green_checks_can_be_turned_on_by_either_side_and_off_by_neith
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_the_executor_builds_each_runs_rules_from_the_server_and_the_workspace(factory) -> None:  # noqa: F811
     from app.config import Settings
     from app.graph.executor import GraphExecutor

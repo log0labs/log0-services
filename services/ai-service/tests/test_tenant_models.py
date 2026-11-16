@@ -20,6 +20,7 @@ from app.llm.resolver import PlatformLlmResolver, TenantLlmResolver
 from app.runner import SessionFactory
 from app.security.crypto import SecretBox, secret_context
 from app.store import provider_config as store
+from tests.conftest import requires_postgres
 from tests.jwt_helpers import TENANT_A
 
 KEY = Fernet.generate_key().decode()
@@ -105,12 +106,14 @@ def _executor(box: SecretBox | None, cfg: Settings) -> GraphExecutor:
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_a_workspace_without_settings_gets_the_shared_platform_models(factory):
     ex = _executor(None, settings())
     assert await ex._models_for(factory, uuid4()) is ex._models
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_a_workspace_with_settings_gets_its_own_models_with_its_decrypted_key(factory):
     box = SecretBox({"k1": KEY}, "k1")
     cfg = settings()
@@ -133,6 +136,7 @@ async def test_a_workspace_with_settings_gets_its_own_models_with_its_decrypted_
 
 
 @pytest.mark.asyncio
+@requires_postgres
 async def test_a_key_that_cannot_be_read_falls_back_to_the_platform_key(factory):
     box = SecretBox({"k1": KEY}, "k1")
     wrong_context = box.encrypt("tenant-key", context=secret_context(uuid4(), "provider_config", "investigation"))  # another tenant's
