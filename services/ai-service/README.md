@@ -191,7 +191,7 @@ uv run python -m evals.run --mode real --yes --compare groq:openai/gpt-oss-120b,
 ```
 
 The golden set is eight planted bugs in a Node, Go and Rust demo shop
-([ashmitjsg/log0-demo-shop](https://github.com/ashmitjsg/log0-demo-shop), private) plus a prompt-injection case.
+([log0labs/log0-demo-shop](https://github.com/log0labs/log0-demo-shop), private) plus a prompt-injection case.
 Incidents and the rows the tools read are recorded from a real run and replayed offline through the production nodes.
 Metrics: triage routing, trace localization (no model), file localization hit@1/3, grounding, root cause (keywords or a
 model judge), fix pattern, diff validity, the service's tests passing with the fix applied, no false fix for a

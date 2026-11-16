@@ -204,7 +204,7 @@ class RepoCode:
     ``recent_commits``, ``blame`` and ``show_commit`` are real). Service names map to folders: ``services`` is
     ``{"payments": "services/payments", ...}``."""
 
-    def __init__(self, repo: Path, ref: str, services: dict[str, str], *, repo_name: str = "ashmitjsg/log0-demo-shop") -> None:
+    def __init__(self, repo: Path, ref: str, services: dict[str, str], *, repo_name: str = "log0labs/log0-demo-shop") -> None:
         self.repo = repo
         self.ref = ref
         self.services = services

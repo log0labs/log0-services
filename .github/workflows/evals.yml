@@ -9,7 +9,7 @@ name: AI evaluation
 #            with the committed baseline, and fails on a regression. It sends the (synthetic) fixture logs and
 #            the demo repository's code to the model provider, so it never runs for pull requests.
 #
-# Secrets (repository settings): DEMO_SHOP_DEPLOY_KEY (a read-only deploy key for ashmitjsg/log0-demo-shop, which is private),
+# Secrets (repository settings): DEMO_SHOP_DEPLOY_KEY (a read-only deploy key for log0labs/log0-demo-shop, which is private),
 # and the provider keys for `real` (GROQ_API_KEY, optionally OPENAI_API_KEY, ANTHROPIC_API_KEY, HF_TOKEN).
 # Without DEMO_SHOP_DEPLOY_KEY the harness job still runs everything that does not need the demo repository.
 
@@ -62,7 +62,7 @@ jobs:
         if: env.HAS_DEMO_TOKEN == 'true'
         uses: actions/checkout@v4
         with:
-          repository: ashmitjsg/log0-demo-shop
+          repository: log0labs/log0-demo-shop
           ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
           path: demo-shop
           fetch-depth: 0
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@v4
         if: env.HAS_KEYS == 'true'
         with:
-          repository: ashmitjsg/log0-demo-shop
+          repository: log0labs/log0-demo-shop
           ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
           path: demo-shop
           fetch-depth: 0

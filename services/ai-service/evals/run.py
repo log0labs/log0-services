@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--mode real sends the fixtures' logs and the demo repository's code to your model provider. Add --yes to go ahead.", file=sys.stderr)
         return 2
     if not args.repo.exists():
-        print(f"the demo shop repository is not at {args.repo} (clone ashmitjsg/log0-demo-shop there, or pass --repo)", file=sys.stderr)
+        print(f"the demo shop repository is not at {args.repo} (clone log0labs/log0-demo-shop there, or pass --repo)", file=sys.stderr)
         return 2
 
     cases = load_cases()
