@@ -19,6 +19,7 @@ class DeploymentOut(CamelModel):
 
 
 class VerificationOut(CamelModel):
+    kind: str  # "deploy", or "rollback" once the rollback was judged
     verdict: str
     numbers: dict[str, Any]
     window_end: datetime
@@ -28,7 +29,7 @@ class VerificationOut(CamelModel):
 class DecisionIn(CamelModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["keep", "extend"]
+    action: Literal["keep", "extend", "rollback"]
 
 
 class RemediationOut(CamelModel):
@@ -48,4 +49,5 @@ class RemediationOut(CamelModel):
     updated_at: datetime
     finished_at: datetime | None = None
     deployment: DeploymentOut | None = None
+    rollback: DeploymentOut | None = None  # the pipeline run that put the previous commit back, once there is one
     verification: VerificationOut | None = None  # the latest verdict, with the numbers it compared

@@ -309,7 +309,7 @@ class Harness:
         row = await self.row(environment)
         async with self.factory() as session:
             won = await remediation_store.transition(
-                session, tenant_id=self.seed.tenant, remediation_id=row.id, from_status="AWAITING_DECISION", to="VERIFIED" if action == "keep" else "VERIFYING"
+                session, tenant_id=self.seed.tenant, remediation_id=row.id, from_status="AWAITING_DECISION", to={"keep": "VERIFIED", "extend": "VERIFYING", "rollback": "ROLLING_BACK"}[action]
             )
             assert won
             await approvals.record(session, tenant_id=self.seed.tenant, remediation_id=row.id, gate="decision", decision=action, user_id=self.seed.user, role=role, environment=environment, sha=row.merge_sha)  # type: ignore[arg-type]

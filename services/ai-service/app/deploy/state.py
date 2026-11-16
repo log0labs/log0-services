@@ -42,6 +42,10 @@ class RemediationState(TypedDict, total=False):
     soak_extensions: int
     judgement: dict[str, Any] | None  # the verdict once decided: verdict, reasons, numbers, window
     decision: str | None
+    phase: str  # "rollback" once a person chose to roll back: routing of timers depends on it
+    rolled_back_at: str  # when the pipeline finished the rollback: its soak counts from here
+    rollback_ends_at: str | None
+    recovery: dict[str, Any] | None  # the verdict on the rollback: verdict, reasons, numbers, window
     approval: dict[str, Any]
     wake_at: str | None  # set while the run waits for a timer; the executor stores it for the sweeper
     outcome: Outcome | None

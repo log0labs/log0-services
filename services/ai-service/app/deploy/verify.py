@@ -54,18 +54,52 @@ def _growing(baseline: Baseline, observation: Observation, thresholds: Threshold
     return sorted(found, key=lambda item: -item[1])
 
 
-def judge(baseline: Baseline, observation: Observation, thresholds: Thresholds, *, final: bool) -> Judgement:
-    """Decide, or say ``verdict=None`` while it is too early. ``final`` is true once the soak window is over."""
-    rate = _rate(observation.errors, observation.minutes)
-    before = baseline.errors_per_minute
-    numbers: dict[str, Any] = {
-        "baselineErrorsPerMinute": round(before, 3),
-        "errorsPerMinute": round(rate, 3),
+def _numbers(baseline: Baseline, observation: Observation, thresholds: Thresholds) -> dict[str, Any]:
+    return {
+        "baselineErrorsPerMinute": round(baseline.errors_per_minute, 3),
+        "errorsPerMinute": round(_rate(observation.errors, observation.minutes), 3),
         "minutes": round(observation.minutes, 1),
         "traffic": observation.traffic,
         "minTraffic": thresholds.min_traffic,
         "margin": thresholds.improvement_margin,
     }
+
+
+def judge_recovery(baseline: Baseline, observation: Observation, thresholds: Thresholds, *, final: bool) -> Judgement:
+    """Is the service back to where it was before the deploy? Used after a rollback, where the old error returning is expected.
+
+    ``healthy`` means recovered: the investigated error is no worse than the baseline plus the margin and nothing else grew.
+    ``degraded`` means it is not: worse than before the deploy, or another error is growing. Too little traffic is ``inconclusive``.
+    """
+    rate = _rate(observation.errors, observation.minutes)
+    before = baseline.errors_per_minute
+    numbers = _numbers(baseline, observation, thresholds)
+    early_ok = observation.minutes >= MIN_EARLY_MINUTES
+
+    if observation.traffic < thresholds.min_traffic:
+        if not final:
+            return Judgement(None, (), numbers)
+        return Judgement("inconclusive", (f"only {observation.traffic} log lines since the rollback (at least {thresholds.min_traffic} are needed to judge)",), numbers)
+
+    growing = _growing(baseline, observation, thresholds)
+    if growing and (final or early_ok):
+        fingerprint, now = growing[0]
+        numbers["newError"] = {"fingerprint": fingerprint, "perMinute": round(now, 3)}
+        return Judgement("degraded", (f"another error ({fingerprint[:12]}) is {now:.1f} per minute after the rollback, above {thresholds.new_error_per_minute:g}",), numbers)
+
+    limit = before * (1 + thresholds.improvement_margin) if before > 0 else thresholds.new_error_per_minute
+    if rate > limit and (final or early_ok):
+        return Judgement("degraded", (f"the error is {rate:.1f} per minute after the rollback, worse than the {before:.1f} before the deploy",), numbers)
+    if not final:
+        return Judgement(None, (), numbers)
+    return Judgement("healthy", (f"the error is back to {rate:.1f} per minute (it was {before:.1f} before the deploy)",), numbers)
+
+
+def judge(baseline: Baseline, observation: Observation, thresholds: Thresholds, *, final: bool) -> Judgement:
+    """Decide, or say ``verdict=None`` while it is too early. ``final`` is true once the soak window is over."""
+    rate = _rate(observation.errors, observation.minutes)
+    before = baseline.errors_per_minute
+    numbers = _numbers(baseline, observation, thresholds)
     early_ok = observation.minutes >= MIN_EARLY_MINUTES
 
     if observation.traffic < thresholds.min_traffic:

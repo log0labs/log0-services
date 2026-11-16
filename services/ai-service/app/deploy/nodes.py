@@ -11,6 +11,7 @@ sweeper honours), so nothing sleeps inside a request and a restart loses nothing
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
@@ -26,7 +27,7 @@ from app.deploy.provider import DispatchRequest
 from app.deploy.releases import deployed_sha
 from app.deploy.state import RemediationContext, RemediationState
 from app.deploy.target import EnvironmentRule
-from app.deploy.verify import Judgement, Observation, judge
+from app.deploy.verify import Judgement, Observation, judge, judge_recovery
 from app.integrations.clickhouse import ClickHouseError
 from app.integrations.github import GitHubAccessError, GitHubUnavailableError
 from app.integrations.github_app import DEPLOY_PERMISSIONS, missing_permissions
@@ -34,7 +35,7 @@ from app.integrations.github_writer import WriteRejectedError, WriteTarget
 from app.integrations.incident_service import IncidentNotFoundError
 from app.publishing.ci import all_completed, outcome_of
 from app.schemas.domain import CheckResult
-from app.schemas.remediation import Baseline, PolicyDecision
+from app.schemas.remediation import Baseline, DeployKind, PolicyDecision
 from app.store import deploy_audit, deploy_targets, deployments, releases, verifications
 from app.store import events as event_store
 from app.store import github_installations as installations
@@ -59,6 +60,7 @@ DISPATCH_GRACE = timedelta(seconds=120)  # how long GitHub may take to show the 
 OTHER_FINGERPRINTS_KEPT = 20
 
 Ctx = Runtime[RemediationContext]
+Judge = Callable[..., Judgement]
 
 
 # --------------------------------------------------------------------------- helpers
@@ -82,7 +84,7 @@ async def _emit(ctx: RemediationContext, state: RemediationState, type: str, **p
     )
 
 
-async def _audit(ctx: RemediationContext, state: RemediationState, action: str, result: str, *, detail: str = "", actor: UUID | None = None) -> None:
+async def _audit(ctx: RemediationContext, state: RemediationState, action: str, result: str, *, detail: str = "", actor: UUID | None = None, sha: str | None = None) -> None:
     remediation_id, _ = _ids(state)
     async with ctx.sessions() as session:
         await deploy_audit.append(
@@ -93,7 +95,7 @@ async def _audit(ctx: RemediationContext, state: RemediationState, action: str, 
             result=result,
             actor_id=actor,
             environment=state["environment"],
-            sha=state["merge_sha"],
+            sha=sha or state["merge_sha"],
             detail=detail,
         )
 
@@ -304,49 +306,64 @@ async def _target_and_config(ctx: RemediationContext, state: RemediationState) -
     return write_target, target.config.workflow_file
 
 
+_HOLDING: dict[str, str] = {"deploy": "DEPLOYING", "rollback": "ROLLING_BACK"}  # the status while a leg runs
+
+
+def _leg_sha(state: RemediationState, kind: DeployKind) -> str:
+    """The commit a leg puts on the environment: the merge commit, or the recorded one before it."""
+    sha = state["merge_sha"] if kind == "deploy" else state.get("rollback_target")
+    if not sha:
+        raise LookupError("a rollback needs a recorded target and there is none")
+    return sha
+
+
 async def _fail(ctx: RemediationContext, state: RemediationState, dep: deployments.Deployment, reason: str, *, status: str = "failed") -> dict[str, Any]:
     remediation_id, _ = _ids(state)
     async with ctx.sessions() as session:
         await deployments.update_run(session, tenant_id=ctx.tenant_id, deployment_id=dep.id, status=status)  # type: ignore[arg-type]
         await remediation_store.transition(
-            session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status="DEPLOYING", to="FAILED", outcome={"failed": reason}
+            session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status=_HOLDING[dep.kind], to="FAILED", outcome={"failed": reason} | ({"kind": "rollback"} if dep.kind == "rollback" else {})
         )
-    await _audit(ctx, state, "deploy.failed", "failed", detail=reason)
-    await _emit(ctx, state, "deploy.failed", reason=reason, runUrl=dep.run_url)
+    await _audit(ctx, state, f"{dep.kind}.failed", "failed", detail=reason, sha=dep.sha)
+    await _emit(ctx, state, f"{dep.kind}.failed", reason=reason, runUrl=dep.run_url)
     return {"outcome": "failed", "wake_at": None}
 
 
-async def trigger_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
-    """Ask the pipeline to deploy the merge commit, once. The deployment row carries the correlation id: a second attempt
-    looks for the run with that id before it would dispatch, and a row that exists means a dispatch may already have happened."""
+async def _trigger(state: RemediationState, runtime: Ctx, kind: DeployKind) -> dict[str, Any]:
+    """Ask the pipeline to deploy ``sha``, once. The deployment row carries the correlation id: a second attempt looks for the
+    run with that id before it would dispatch, and a row that exists means a dispatch may already have happened."""
     ctx = runtime.context
     remediation_id, _ = _ids(state)
+    sha = _leg_sha(state, kind)
     target, workflow = await _target_and_config(ctx, state)
     async with ctx.sessions() as session:
-        dep, created = await deployments.ensure(
-            session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, kind="deploy", environment=state["environment"], sha=state["merge_sha"], now=ctx.now()
-        )
+        dep, created = await deployments.ensure(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, kind=kind, environment=state["environment"], sha=sha, now=ctx.now())
     if dep.run_id is not None or dep.finished:
         return {"outcome": "failed" if dep.status in ("failed", "cancelled", "timeout") else None}
-    request = DispatchRequest(workflow, target.default_branch, state["merge_sha"], state["environment"], dep.correlation_id)
+    request = DispatchRequest(workflow, target.default_branch, sha, state["environment"], dep.correlation_id)
     try:
         run = await ctx.provider.find_run(target, request)
     except GitHubUnavailableError:
         run = None
     if run is None and created:
-        await _audit(ctx, state, "deploy.dispatching", "ok", detail=f"workflow {workflow}", actor=_decider(state))
+        await _audit(ctx, state, f"{kind}.dispatching", "ok", detail=f"workflow {workflow}", actor=_decider(state), sha=sha)
         try:
             await ctx.provider.dispatch(target, request)
         except (WriteRejectedError, GitHubAccessError):
             return await _fail(ctx, state, dep, "GitHub refused to start the workflow (does it accept workflow_dispatch, and has the App been granted actions: write?)")
         except GitHubUnavailableError:
             logger.warning("dispatch of deployment %s could not be confirmed; the run is looked for", dep.id)
-        await _audit(ctx, state, "deploy.dispatched", "ok", detail=f"workflow {workflow}", actor=_decider(state))
-        await _emit(ctx, state, "deploy.dispatched", sha=state["merge_sha"])
+        await _audit(ctx, state, f"{kind}.dispatched", "ok", detail=f"workflow {workflow}", actor=_decider(state), sha=sha)
+        await _emit(ctx, state, f"{kind}.dispatched", sha=sha)
     if run is not None:
         async with ctx.sessions() as session:
             await deployments.update_run(session, tenant_id=ctx.tenant_id, deployment_id=dep.id, status=run.status, run_id=run.run_id, run_url=run.url)
     return {"outcome": None}
+
+
+async def trigger_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Ask the pipeline to deploy the merge commit."""
+    return await _trigger(state, runtime, "deploy")
 
 
 def _decider(state: RemediationState) -> UUID | None:
@@ -357,7 +374,7 @@ def _decider(state: RemediationState) -> UUID | None:
         return None
 
 
-async def wait_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+async def _wait(state: RemediationState, runtime: Ctx, kind: DeployKind) -> dict[str, Any]:
     """Look at the pipeline run once. Finished: record it (a success also enters the release ledger). Not finished: say when to
     look again (``wake_at``), or fail when the deadline passed or the run never appeared."""
     ctx = runtime.context
@@ -365,16 +382,17 @@ async def wait_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
     rule = _rule(state)
     target, workflow = await _target_and_config(ctx, state)
     async with ctx.sessions() as session:
-        dep = await deployments.get(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, kind="deploy")
+        dep = await deployments.get(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, kind=kind)
     assert dep is not None
     now = ctx.now()
+    finish = _succeeded if kind == "deploy" else _rolled_back
 
     if dep.status == "succeeded":
-        return await _succeeded(ctx, state, dep)
+        return await finish(ctx, state, dep)
     if dep.finished:
         return await _fail(ctx, state, dep, f"the pipeline run ended as {dep.status}", status=dep.status)
 
-    request = DispatchRequest(workflow, target.default_branch, state["merge_sha"], state["environment"], dep.correlation_id)
+    request = DispatchRequest(workflow, target.default_branch, dep.sha, state["environment"], dep.correlation_id)
     try:
         run = await (ctx.provider.run_status(target, dep.run_id) if dep.run_id else ctx.provider.find_run(target, request))
     except GitHubUnavailableError:
@@ -386,7 +404,7 @@ async def wait_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
             await deployments.update_run(session, tenant_id=ctx.tenant_id, deployment_id=dep.id, status=run.status, run_id=run.run_id, run_url=run.url)
         dep = replace(dep, run_id=run.run_id, run_url=run.url, status=run.status)
         if run.status == "succeeded":
-            return await _succeeded(ctx, state, dep)
+            return await finish(ctx, state, dep)
         if run.status in ("failed", "cancelled"):
             return await _fail(ctx, state, dep, f"the pipeline run {run.status}", status=run.status)
     elif now - dep.dispatched_at > DISPATCH_GRACE:
@@ -399,6 +417,11 @@ async def wait_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
                 logger.warning("could not cancel run %s of deployment %s", dep.run_id, dep.id)
         return await _fail(ctx, state, dep, "the deploy did not finish in time", status="timeout")
     return {"wake_at": _later(now, ctx.settings.deploy_poll_seconds)}
+
+
+async def wait_deploy(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Look at the deploy's pipeline run once."""
+    return await _wait(state, runtime, "deploy")
 
 
 def _later(now: datetime, seconds: float) -> str:
@@ -418,6 +441,42 @@ async def _succeeded(ctx: RemediationContext, state: RemediationState, dep: depl
     await _audit(ctx, state, "deploy.succeeded", "ok", detail=dep.run_url or "")
     await _emit(ctx, state, "deploy.succeeded", runUrl=dep.run_url)
     return {"outcome": "deployed", "wake_at": None, "deployed_at": ctx.now().isoformat()}
+
+
+async def _rolled_back(ctx: RemediationContext, state: RemediationState, dep: deployments.Deployment) -> dict[str, Any]:
+    """The pipeline put the previous commit back. The ledger says so; the status stays ROLLING_BACK until recovery is judged."""
+    remediation_id, _ = _ids(state)
+    async with ctx.sessions() as session:
+        row = await remediation_store.get(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id)
+        assert row is not None
+        await releases.record(session, tenant_id=ctx.tenant_id, repository_id=row.repository_id, environment=state["environment"], sha=dep.sha, source="log0", remediation_id=remediation_id)
+    await _audit(ctx, state, "rollback.succeeded", "ok", detail=dep.run_url or "", sha=dep.sha)
+    await _emit(ctx, state, "rollback.succeeded", sha=dep.sha, runUrl=dep.run_url)
+    return {"outcome": "rolled_back", "wake_at": None, "rolled_back_at": ctx.now().isoformat()}
+
+
+async def trigger_rollback(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Ask the pipeline to deploy the recorded previous commit. Refused when deploys are switched off: a switch means log0 touches nothing."""
+    ctx = runtime.context
+    server, tenant = switches(ctx.settings, ctx.tenant_id)
+    if not (server and tenant):
+        return await _stop_rollback(ctx, state, "deploys are switched off, so log0 did not roll back; roll back by hand")
+    return await _trigger(state, runtime, "rollback")
+
+
+async def _stop_rollback(ctx: RemediationContext, state: RemediationState, reason: str) -> dict[str, Any]:
+    """A rollback that cannot start ends the remediation as FAILED and says so; nothing was dispatched."""
+    remediation_id, _ = _ids(state)
+    async with ctx.sessions() as session:
+        await remediation_store.transition(session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status="ROLLING_BACK", to="FAILED", outcome={"failed": reason, "kind": "rollback"})
+    await _audit(ctx, state, "rollback.refused", "refused", detail=reason)
+    await _emit(ctx, state, "rollback.failed", reason=reason)
+    return {"outcome": "failed", "wake_at": None}
+
+
+async def wait_rollback(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Look at the rollback's pipeline run once."""
+    return await _wait(state, runtime, "rollback")
 
 
 async def park(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
@@ -441,26 +500,27 @@ async def _observe(ctx: RemediationContext, state: RemediationState, start: date
     return Observation(minutes=(end - start).total_seconds() / 60, errors=timeline.total, traffic=traffic, others={e.fingerprint: e.count for e in others})
 
 
-async def soak(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+async def _soak(state: RemediationState, runtime: Ctx, *, since: str, ends: str, result: str, judge_with: Judge, extended: bool) -> dict[str, Any]:
     """Look at the logs once. A clear degradation ends the soak early; otherwise the verdict waits for the end of the window.
 
     The window starts after the grace period (restarts and warm-up are not judged) and grows with every look, so the verdict
-    always rests on everything seen since the deploy. Undecided means "wake me later" (``wake_at``); the run parks in between.
+    always rests on everything seen since the change. Undecided means "wake me later" (``wake_at``); the run parks in between.
+    ``since``, ``ends`` and ``result`` name the state keys of this soak, so a deploy and a rollback can each have one.
     """
     ctx = runtime.context
     rule = _rule(state)
     now = ctx.now()
-    deployed_at = _parse(state["deployed_at"])
-    assert deployed_at is not None
-    window_start = deployed_at + timedelta(seconds=rule.thresholds.grace_seconds)
-    ends_at = _parse(state.get("soak_ends_at")) or ((now if state.get("soak_extensions") else deployed_at) + timedelta(seconds=rule.soak_seconds))
-    carry = {"soak_ends_at": ends_at.isoformat()}
-    again = {**carry, "judgement": None, "wake_at": _later(now, ctx.settings.deploy_poll_seconds)}
+    changed_at = _parse(state[since])
+    assert changed_at is not None
+    window_start = changed_at + timedelta(seconds=rule.thresholds.grace_seconds)
+    ends_at = _parse(state.get(ends)) or ((now if extended else changed_at) + timedelta(seconds=rule.soak_seconds))
+    carry = {ends: ends_at.isoformat()}
+    again = {**carry, result: None, "wake_at": _later(now, ctx.settings.deploy_poll_seconds)}
     if now <= window_start:
         return again
     final = now >= ends_at
     try:
-        judgement = judge(Baseline.model_validate(state["baseline"]), await _observe(ctx, state, window_start, now), rule.thresholds, final=final)
+        judgement = judge_with(Baseline.model_validate(state["baseline"]), await _observe(ctx, state, window_start, now), rule.thresholds, final=final)
     except ClickHouseError:
         if not final:
             return again  # a bad moment of the log store: look again, the end of the window still comes
@@ -468,7 +528,51 @@ async def soak(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
     if judgement.verdict is None:
         return again
     decided = {"verdict": judgement.verdict, "reasons": list(judgement.reasons), "numbers": judgement.numbers, "window_start": window_start.isoformat(), "window_end": now.isoformat()}
-    return {**carry, "judgement": decided, "wake_at": None}
+    return {**carry, result: decided, "wake_at": None}
+
+
+async def soak(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Watch the deploy: is the error better than before?"""
+    return await _soak(state, runtime, since="deployed_at", ends="soak_ends_at", result="judgement", judge_with=judge, extended=bool(state.get("soak_extensions")))
+
+
+async def soak_rollback(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Watch the rollback: is the service back to where it was before the deploy?"""
+    return await _soak(state, runtime, since="rolled_back_at", ends="rollback_ends_at", result="recovery", judge_with=judge_recovery, extended=False)
+
+
+async def verify_rollback(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
+    """Write down whether the rollback recovered the service. It never loops and never rolls back again.
+
+    Recovered: ROLLED_BACK. Not recovered (worse than before the deploy): FAILED, loudly, because log0 has nothing left to try.
+    Unclear (too little traffic to tell): ROLLED_BACK, marked unconfirmed, because the previous commit is back on the environment.
+    """
+    ctx = runtime.context
+    remediation_id, _ = _ids(state)
+    judgement = state["recovery"]
+    assert judgement is not None
+    verdict = judgement["verdict"]
+    recovered = verdict == "healthy"
+    summary = {"verdict": verdict, "reasons": judgement["reasons"], **judgement["numbers"], "recovered": recovered, "confirmed": verdict != "inconclusive"}
+    final = "FAILED" if verdict == "degraded" else "ROLLED_BACK"
+    async with ctx.sessions() as session:
+        await verifications.record(
+            session,
+            tenant_id=ctx.tenant_id,
+            remediation_id=remediation_id,
+            kind="rollback",
+            verdict=verdict,
+            numbers={**judgement["numbers"], "reasons": judgement["reasons"]},
+            window_start=_parse(judgement["window_start"]),  # type: ignore[arg-type]
+            window_end=_parse(judgement["window_end"]),  # type: ignore[arg-type]
+        )
+        await remediation_store.transition(
+            session, tenant_id=ctx.tenant_id, remediation_id=remediation_id, from_status="ROLLING_BACK", to=final, outcome={"rolledBack": True, **summary}  # type: ignore[arg-type]
+        )
+    event = {"healthy": "remediation.rollback_recovered", "degraded": "remediation.rollback_not_recovered", "inconclusive": "remediation.rollback_unconfirmed"}[verdict]
+    await _audit(ctx, state, event.replace("remediation.", ""), "ok" if recovered else verdict, detail="; ".join(judgement["reasons"]), sha=state.get("rollback_target"))
+    await _emit(ctx, state, event, **summary)
+    return {"outcome": "rolled_back_verified"}
 
 
 async def verify(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
@@ -500,25 +604,30 @@ async def verify(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
 
 
 async def decide_verdict(state: RemediationState, runtime: Ctx) -> dict[str, Any]:
-    """A degraded or inconclusive verdict needs a person: keep the deploy as it is, or watch for another soak window (twice at most)."""
+    """A degraded or inconclusive verdict needs a person: keep the deploy as it is, watch for another soak window (twice at most),
+    or roll back to the recorded previous commit (once, and only when one is recorded). Choosing to roll back is the approval."""
     judgement = state["judgement"]
     assert judgement is not None
     rounds = state.get("soak_extensions", 0)
+    target = state.get("rollback_target")
     raw = interrupt(
         {
             "gate": VERDICT_GATE,
             "round": rounds,
             "environment": state["environment"],
             "sha": state["merge_sha"],
-            "rollbackTarget": state.get("rollback_target"),
+            "rollbackTarget": target,
             "verdict": judgement["verdict"],
             "reasons": judgement["reasons"],
             "numbers": judgement["numbers"],
             "canExtend": rounds < MAX_EXTENSIONS,
+            "canRollback": bool(target),
             "approver": _rule(state).approver,
         }
     )
     action = raw.get("action") if isinstance(raw, dict) else None
     if action == "extend" and rounds < MAX_EXTENSIONS:
         return {"decision": "extend", "soak_extensions": rounds + 1, "soak_ends_at": None, "judgement": None}
+    if action == "rollback" and target:
+        return {"decision": "rollback", "phase": "rollback", "outcome": None, "approval": {"action": "rollback", "decided_by": raw.get("decided_by"), "role": raw.get("role")}}
     return {"decision": "keep", "outcome": "kept"}

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.deploy.target import Thresholds
-from app.deploy.verify import MIN_EARLY_MINUTES, Observation, judge
+from app.deploy.verify import MIN_EARLY_MINUTES, Observation, judge, judge_recovery
 from app.schemas.remediation import Baseline
 
 T0 = datetime(2026, 11, 16, 12, 0, tzinfo=UTC)
@@ -135,3 +135,53 @@ def test_zero_minutes_does_not_divide_by_zero() -> None:
     j: Any = judge(_baseline(4.0), _obs(errors=5, minutes=0), TH, final=False)
 
     assert j.verdict is None and j.numbers["errorsPerMinute"] == 0.0
+
+
+# ------------------------------------------------------------------ the verdict on a rollback (judge_recovery)
+
+
+def test_the_old_error_coming_back_to_its_old_rate_is_recovery() -> None:
+    j = judge_recovery(_baseline(4.0), _obs(errors=60), TH, final=True)  # 4 per minute, as before the deploy
+
+    assert j.verdict == "healthy" and "back to 4.0" in j.reasons[0]
+
+
+def test_an_error_that_is_gone_after_a_rollback_is_recovery_too() -> None:
+    assert judge_recovery(_baseline(4.0), _obs(errors=0), TH, final=True).verdict == "healthy"
+
+
+def test_an_error_worse_than_before_the_deploy_is_not_recovery() -> None:
+    j = judge_recovery(_baseline(4.0), _obs(errors=150), TH, final=True)  # 10 per minute against a limit of 6
+
+    assert j.verdict == "degraded" and "worse than the 4.0" in j.reasons[0]
+
+
+def test_the_margin_is_the_limit_of_recovery() -> None:
+    assert judge_recovery(_baseline(4.0), _obs(errors=90), TH, final=True).verdict == "healthy"  # exactly 6 per minute
+    assert judge_recovery(_baseline(4.0), _obs(errors=91), TH, final=True).verdict == "degraded"
+
+
+def test_recovery_is_never_declared_before_the_end_of_the_window() -> None:
+    assert judge_recovery(_baseline(4.0), _obs(errors=0, minutes=14), TH, final=False).verdict is None
+
+
+def test_a_clear_failure_to_recover_can_end_the_wait_early_but_only_after_some_observation() -> None:
+    assert judge_recovery(_baseline(4.0), _obs(errors=100, minutes=10), TH, final=False).verdict == "degraded"
+    assert judge_recovery(_baseline(4.0), _obs(errors=40, minutes=2), TH, final=False).verdict is None
+
+
+def test_another_error_that_grew_means_the_service_did_not_recover() -> None:
+    j = judge_recovery(_baseline(4.0), _obs(errors=0, others={"f" * 64: 300}), TH, final=True)
+
+    assert j.verdict == "degraded" and j.numbers["newError"]["fingerprint"] == "f" * 64
+
+
+def test_too_little_traffic_cannot_confirm_a_recovery() -> None:
+    j = judge_recovery(_baseline(4.0), _obs(errors=0, traffic=3), TH, final=True)
+
+    assert j.verdict == "inconclusive" and "since the rollback" in j.reasons[0]
+
+
+def test_a_baseline_of_zero_recovers_when_the_error_stays_under_the_noise_threshold() -> None:
+    assert judge_recovery(_baseline(0.0), _obs(errors=30), TH, final=True).verdict == "healthy"  # 2 per minute
+    assert judge_recovery(_baseline(0.0), _obs(errors=90), TH, final=True).verdict == "degraded"  # 6 per minute

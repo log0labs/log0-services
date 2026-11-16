@@ -40,6 +40,7 @@ _NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not fo
 
 async def _out(session: AsyncSession, row: remediation_store.Remediation) -> RemediationOut:
     dep = await deployments.get(session, tenant_id=row.tenant_id, remediation_id=row.id, kind="deploy")
+    back = await deployments.get(session, tenant_id=row.tenant_id, remediation_id=row.id, kind="rollback")
     verdict = await verifications.latest(session, tenant_id=row.tenant_id, remediation_id=row.id)
     return RemediationOut(
         id=row.id,
@@ -57,9 +58,16 @@ async def _out(session: AsyncSession, row: remediation_store.Remediation) -> Rem
         created_at=row.created_at,
         updated_at=row.updated_at,
         finished_at=row.finished_at,
-        verification=VerificationOut(verdict=verdict.verdict, numbers=verdict.numbers, window_end=verdict.window_end, created_at=verdict.created_at) if verdict else None,
-        deployment=DeploymentOut(kind=dep.kind, status=dep.status, sha=dep.sha, run_url=dep.run_url, dispatched_at=dep.dispatched_at, finished_at=dep.finished_at) if dep else None,
+        verification=VerificationOut(kind=verdict.kind, verdict=verdict.verdict, numbers=verdict.numbers, window_end=verdict.window_end, created_at=verdict.created_at) if verdict else None,
+        deployment=_deployment_out(dep),
+        rollback=_deployment_out(back),
     )
+
+
+def _deployment_out(dep: deployments.Deployment | None) -> DeploymentOut | None:
+    if dep is None:
+        return None
+    return DeploymentOut(kind=dep.kind, status=dep.status, sha=dep.sha, run_url=dep.run_url, dispatched_at=dep.dispatched_at, finished_at=dep.finished_at)
 
 
 async def _owned(session: AsyncSession, user: CurrentUser, remediation_id: UUID) -> remediation_store.Remediation:
@@ -173,12 +181,15 @@ async def decide_verdict(
     user: Annotated[CurrentUser, Depends(require_investigation_writer)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationOut:
-    """What to do about a verdict that is degraded or unclear: ``keep`` the deploy as it is, or ``extend`` the soak (twice at most)."""
+    """What to do about a verdict that is degraded or unclear: ``keep`` the deploy as it is, ``extend`` the soak (twice at most), or
+    ``rollback`` to the recorded previous commit (only when one is recorded). The caller needs the environment's approver role."""
     row = await _owned(session, user, remediation_id)
     await _approver_rule(session, user, row)
     if body.action == "extend" and await approvals.count(session, tenant_id=user.tenant_id, remediation_id=remediation_id, gate="decision", decision="extend") >= MAX_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The soak has already been extended as often as it may be")
-    moved_to = "VERIFIED" if body.action == "keep" else "VERIFYING"
+    if body.action == "rollback" and not row.rollback_target:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No earlier release of this environment is known, so there is nothing to roll back to")
+    moved_to = {"keep": "VERIFIED", "extend": "VERIFYING", "rollback": "ROLLING_BACK"}[body.action]
     won = await remediation_store.transition(session, tenant_id=user.tenant_id, remediation_id=remediation_id, from_status="AWAITING_DECISION", to=moved_to)
     if not won:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This deploy is not waiting for a decision")

@@ -348,8 +348,52 @@ def test_a_second_decision_is_a_conflict(env: tuple[Env, FakeRunner, Seed]) -> N
     assert _sql("SELECT count(*) FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"]) == [(1,)]
 
 
-@pytest.mark.parametrize("body", [{"action": "rollback"}, {"action": ""}, {}, {"action": "keep", "extra": 1}])
-def test_only_keep_and_extend_are_accepted(env: tuple[Env, FakeRunner, Seed], body: dict) -> None:
+def _with_target(remediation_id: UUID, sha: str | None = "b" * 40) -> None:
+    _sql("UPDATE ai.remediation SET status = 'AWAITING_DECISION', rollback_target = :t WHERE id = :i", t=sha, i=remediation_id)
+
+
+def test_a_rollback_is_chosen_at_the_decision_gate_and_recorded(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _with_target(s.offers["staging"])
+
+    response = _decision(e, s.offers["staging"], "rollback", role="ENGINEER")
+
+    assert response.status_code == 202 and response.json()["status"] == "ROLLING_BACK" and response.json()["finishedAt"] is None
+    assert [tuple(r) for r in _sql("SELECT gate, decision, role FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"])] == [("decision", "rollback", "ENGINEER")]
+    assert ("deploy.verdict_rollback",) in [tuple(r) for r in _sql("SELECT action FROM ai.deploy_audit WHERE remediation_id = :i", i=s.offers["staging"])]
+    assert len(runner.scheduled) == 1
+
+
+def test_a_rollback_of_production_needs_an_admin(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _with_target(s.offers["production"])
+
+    assert _decision(e, s.offers["production"], "rollback", role="ENGINEER").status_code == 403
+    assert _decision(e, s.offers["production"], "rollback", role="VIEWER").status_code == 403
+    assert _status(s.offers["production"]) == "AWAITING_DECISION" and runner.scheduled == []
+
+
+def test_there_is_nothing_to_roll_back_to_without_a_recorded_target(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, runner, s = env
+    _with_target(s.offers["staging"], None)
+
+    response = _decision(e, s.offers["staging"], "rollback")
+
+    assert response.status_code == 409 and "roll back to" in response.json()["detail"]
+    assert _status(s.offers["staging"]) == "AWAITING_DECISION" and runner.scheduled == []
+    assert _sql("SELECT count(*) FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"]) == [(0,)]
+
+
+def test_a_second_rollback_answer_is_a_conflict(env: tuple[Env, FakeRunner, Seed]) -> None:
+    e, _, s = env
+    _with_target(s.offers["staging"])
+
+    assert (_decision(e, s.offers["staging"], "rollback").status_code, _decision(e, s.offers["staging"], "rollback").status_code) == (202, 409)
+    assert _sql("SELECT count(*) FROM ai.approval WHERE remediation_id = :i", i=s.offers["staging"]) == [(1,)]
+
+
+@pytest.mark.parametrize("body", [{"action": "undo"}, {"action": ""}, {}, {"action": "keep", "extra": 1}])
+def test_only_known_actions_are_accepted(env: tuple[Env, FakeRunner, Seed], body: dict) -> None:
     e, _, s = env
     _undecided(s.offers["staging"])
 

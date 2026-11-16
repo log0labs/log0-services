@@ -194,7 +194,7 @@ async def due(session: AsyncSession, *, now: datetime, limit: int = 50) -> list[
 async def interrupted(session: AsyncSession) -> list[tuple[UUID, UUID]]:
     """Runs that were mid-flight when the service stopped (not waiting for a human, not waiting for a timer)."""
     result = await session.execute(
-        select(remediation.c.id, remediation.c.tenant_id).where(remediation.c.status.in_(["PREFLIGHT", "DEPLOYING"]), remediation.c.wake_at.is_(None))
+        select(remediation.c.id, remediation.c.tenant_id).where(remediation.c.status.in_(["PREFLIGHT", "DEPLOYING", "VERIFYING", "ROLLING_BACK"]), remediation.c.wake_at.is_(None))
     )
     return [(row[0], row[1]) for row in result]
 
