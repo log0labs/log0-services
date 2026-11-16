@@ -1,0 +1,196 @@
+{
+  "cooccurring": [
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "first_ts": {
+        "$dt": "2026-11-14T20:47:09.740000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:47:14.626000+00:00"
+      },
+      "message_template": "gateway rejected request POST http://<ip>:<number>/fake-gateway/charge with Authorization: Bearer sk_live_demo_<number>abcdef",
+      "n": 85,
+      "service_name": "payments"
+    },
+    {
+      "fingerprint": "5c856d32c2df2138c976740b515067aaa042d551f73794fbd93a88ac286cc921",
+      "first_ts": {
+        "$dt": "2026-11-14T20:47:09.746000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:47:14.627000+00:00"
+      },
+      "message_template": "payment failed for order <uuid>: payments answered <number>",
+      "n": 85,
+      "service_name": "storefront-api"
+    }
+  ],
+  "search": [
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 73a648e8-e143-449c-9467-a250fb40f4cb: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.626000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.626000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 89787912-45b7-42fa-a7ce-1f5eed42e999: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.571000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.571000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order b8a54f18-a07f-4fa5-84c0-aea0e9c26cba: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.516000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.516000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 3f94ccb0-29f7-4c40-a796-2faf463a9e42: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.462000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.462000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 1a1c0884-9cb1-46c3-aa2f-3599619d663c: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.407000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.407000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order b64ecd51-b854-4016-8ea1-efe5c6492da3: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.348000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.348000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 482b06b7-4ec9-4ba9-85ea-cafe9459c85c: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.294000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.294000+00:00"
+      }
+    },
+    {
+      "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+      "level": "ERROR",
+      "message": "charge failed for order 268871c9-e235-46ff-8eb3-93af198706b5: payment gateway rejected our credentials",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.235000+00:00"
+      }
+    },
+    {
+      "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+      "level": "ERROR",
+      "message": "gateway rejected request POST http://127.0.0.1:8092/fake-gateway/charge with Authorization: Bearer sk_live_demo_0123456789abcdef",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:14.235000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:47:09.741000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:47:14.626000+00:00"
+      },
+      "level": "ERROR",
+      "n": 85,
+      "service_name": "payments"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:47:00+00:00"
+      },
+      "n": 85
+    }
+  ],
+  "trace": []
+}

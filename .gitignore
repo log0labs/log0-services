@@ -21,3 +21,4 @@ docker/cloudflared/*.json
 refs/
 docs/asyncapi/generated/
 local/
+services/ai-service/evals/reports/

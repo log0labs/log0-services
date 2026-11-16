@@ -12,7 +12,10 @@ import com.log0.auth_service.dto.UserResponse;
 import com.log0.auth_service.entity.Tenant;
 import com.log0.auth_service.entity.User;
 import com.log0.auth_service.exception.DuplicateResourceException;
+import com.log0.auth_service.exception.OperationNotAllowedException;
 import com.log0.auth_service.exception.ResourceNotFoundException;
+import com.log0.auth_service.entity.User.Role;
+import com.log0.auth_service.repository.RefreshTokenRepository;
 import com.log0.auth_service.repository.TenantRepository;
 import com.log0.auth_service.repository.UserRepository;
 
@@ -35,6 +38,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
 
     /**
@@ -78,9 +82,65 @@ public class UserService {
      * @return list of users in the tenant, may be empty but never null
      */
     public List<UserResponse> listUsers(UUID tenantId) {
-        return userRepository.findAll().stream()
-                .filter(u -> u.getTenant().getTenantId().equals(tenantId))
+        return userRepository.findByTenantTenantId(tenantId).stream()
                 .map(UserResponse::from)
                 .toList();
+    }
+
+    /**
+     * Changes a user's role. Two rules keep a workspace from locking itself out: you cannot
+     * change your own role, and the last admin cannot be demoted.
+     *
+     * @param tenantId the caller's tenant, from the JWT
+     * @param actorId  the calling admin, from the JWT
+     * @param userId   the user to change
+     * @param role     the new role
+     * @return the updated user
+     * @throws ResourceNotFoundException    if the user is not in the caller's tenant
+     * @throws OperationNotAllowedException if the change breaks one of the rules above
+     */
+    @Transactional
+    public UserResponse updateRole(UUID tenantId, UUID actorId, UUID userId, Role role) {
+        User user = userRepository.findByUserIdAndTenantTenantId(userId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        if (user.getUserId().equals(actorId)) {
+            throw new OperationNotAllowedException("You cannot change your own role");
+        }
+        if (user.getRole() == Role.ADMIN && role != Role.ADMIN
+                && userRepository.countByTenantTenantIdAndRole(tenantId, Role.ADMIN) <= 1) {
+            throw new OperationNotAllowedException("The workspace needs at least one admin");
+        }
+        user.setRole(role);
+        userRepository.save(user);
+        // the role is read from the access token, so open sessions must sign in again to see it
+        refreshTokenRepository.revokeAllByUserId(user.getUserId());
+        log.info("User {} role set to {} in tenant {}", userId, role, tenantId);
+        return UserResponse.from(user);
+    }
+
+    /**
+     * Removes a user and their sessions. You cannot delete yourself, and the last admin
+     * cannot be deleted.
+     *
+     * @param tenantId the caller's tenant, from the JWT
+     * @param actorId  the calling admin, from the JWT
+     * @param userId   the user to remove
+     * @throws ResourceNotFoundException    if the user is not in the caller's tenant
+     * @throws OperationNotAllowedException if the removal breaks one of the rules above
+     */
+    @Transactional
+    public void deleteUser(UUID tenantId, UUID actorId, UUID userId) {
+        User user = userRepository.findByUserIdAndTenantTenantId(userId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        if (user.getUserId().equals(actorId)) {
+            throw new OperationNotAllowedException("You cannot delete yourself");
+        }
+        if (user.getRole() == Role.ADMIN
+                && userRepository.countByTenantTenantIdAndRole(tenantId, Role.ADMIN) <= 1) {
+            throw new OperationNotAllowedException("The workspace needs at least one admin");
+        }
+        refreshTokenRepository.deleteAllByUserId(user.getUserId());
+        userRepository.delete(user);
+        log.info("Deleted user {} from tenant {}", userId, tenantId);
     }
 }

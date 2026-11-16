@@ -1,0 +1,274 @@
+"""events_from_update: the pure mapping from graph updates to investigation events."""
+
+import json
+
+import pytest
+from langgraph.checkpoint.memory import InMemorySaver
+
+from app.graph.builder import build_graph
+from app.graph.events import MAX_TEXT, events_from_update
+from app.graph.nodes.synthesize import hypothesis_id
+from app.graph.state import new_state
+from app.parsing.stacktrace import StackFrame
+from app.schemas.domain import (
+    Evidence,
+    Hypothesis,
+    Recommendation,
+    RootCause,
+    Triage,
+    Verification,
+)
+from app.schemas.investigation import InvestigationScope
+from app.tools.incidents import IncidentContext
+from tests.graph_fakes import (
+    FINGERPRINT,
+    FIRST,
+    INCIDENT_EVIDENCE_ID,
+    INCIDENT_ID,
+    LAST,
+    FakeModel,
+    FakeModels,
+    make_context,
+    synthesis_answer,
+    triage_answer,
+    verdict,
+    verification_answer,
+)
+
+
+def _incident() -> IncidentContext:
+    return IncidentContext(
+        incident_id=INCIDENT_ID,
+        fingerprint=FINGERPRINT,
+        service_name="payment-service",
+        environment="production",
+        severity="HIGH",
+        status="NEW",
+        occurrence_count=1500,
+        first_seen_at=FIRST,
+        last_seen_at=LAST,
+        resolved_at=None,
+        top_messages=["Connection timeout after 30000ms"],
+        ai_summary=None,
+    )
+
+
+def _frame(function: str) -> StackFrame:
+    return StackFrame(
+        language="java", function=function, module="com.log0.App", file="App.java",
+        line=1, path_hint=None, in_app=True,
+    )
+
+
+def _evidence(n: int, summary: str = "one line") -> Evidence:
+    return Evidence(id=f"ev_{n:08d}", kind="log", source_ref=f"ref {n}", summary=summary, content="SECRET LOG LINE")
+
+
+def test_load_context_becomes_context_loaded_then_its_evidence_then_its_gaps() -> None:
+    update = {
+        "load_context": {
+            "incident": _incident(),
+            "stack_frames": [_frame("charge"), _frame("run")],
+            "evidence": [_evidence(1), _evidence(2)],
+            "gaps": ["No stack trace was recorded for this incident"],
+            "tool_calls": 3,
+        }
+    }
+    assert events_from_update(update) == [
+        (
+            "context.loaded",
+            {
+                "service": "payment-service",
+                "environment": "production",
+                "severity": "HIGH",
+                "occurrenceCount": 1500,
+                "stackFrames": 2,
+            },
+        ),
+        ("evidence.added", {"id": "ev_00000001", "kind": "log", "summary": "one line"}),
+        ("evidence.added", {"id": "ev_00000002", "kind": "log", "summary": "one line"}),
+        ("gap.recorded", {"message": "No stack trace was recorded for this incident"}),
+    ]
+
+
+def test_triage_becomes_triage_completed() -> None:
+    triage = Triage(
+        category="dependency",
+        summary="The payment gateway is timing out.",
+        gather=["logs", "history"],
+        initial_hypotheses=["Gateway is overloaded"],
+    )
+    assert events_from_update({"triage": {"triage": triage}}) == [
+        (
+            "triage.completed",
+            {
+                "category": "dependency",
+                "summary": "The payment gateway is timing out.",
+                "gather": ["logs", "history"],
+                "hypotheses": ["Gateway is overloaded"],
+            },
+        )
+    ]
+
+
+def test_a_gather_node_reports_evidence_and_gaps_but_no_node_event() -> None:
+    update = {"gather_logs": {"evidence": [_evidence(3)], "gaps": ["g"], "tool_calls": 3}}
+    assert [t for t, _ in events_from_update(update)] == ["evidence.added", "gap.recorded"]
+
+
+def test_synthesize_becomes_one_hypothesis_proposed_per_hypothesis_then_its_gaps() -> None:
+    hypothesis = Hypothesis(
+        id="hyp_12345678",
+        statement="The gateway is slow.",
+        supporting_evidence=["ev_00000001"],
+        contradicting_evidence=["ev_00000002"],
+    )
+    update = {"synthesize": {"hypotheses": [hypothesis], "gaps": ["2 evidence item(s) did not fit"]}}
+    assert events_from_update(update) == [
+        (
+            "hypothesis.proposed",
+            {
+                "id": "hyp_12345678",
+                "statement": "The gateway is slow.",
+                "status": "open",
+                "supportingEvidence": ["ev_00000001"],
+                "contradictingEvidence": ["ev_00000002"],
+            },
+        ),
+        ("gap.recorded", {"message": "2 evidence item(s) did not fit"}),
+    ]
+
+
+def test_verify_reports_each_changed_hypothesis_as_updated() -> None:
+    hypothesis = Hypothesis(
+        id="hyp_1", statement="s", supporting_evidence=["ev_1"], contradicting_evidence=["ev_2"], status="refuted"
+    )
+    assert events_from_update({"verify": {"hypotheses": [hypothesis]}}) == [
+        (
+            "hypothesis.updated",
+            {
+                "id": "hyp_1",
+                "statement": "s",
+                "status": "refuted",
+                "supportingEvidence": ["ev_1"],
+                "contradictingEvidence": ["ev_2"],
+            },
+        )
+    ]
+
+
+def test_hypotheses_from_any_other_node_are_not_reported() -> None:
+    hypothesis = Hypothesis(id="hyp_1", statement="s", supporting_evidence=["ev_1"])
+    assert events_from_update({"gather_logs": {"hypotheses": [hypothesis]}}) == []
+
+
+def test_the_root_cause_is_reported_without_the_models_own_confidence() -> None:
+    cause = RootCause(
+        statement="Gateway down.",
+        evidence_ids=["ev_1"],
+        hypothesis_id="hyp_1",
+        contributing_factors=["no breaker"],
+        unresolved_questions=["why?"],
+        model_confidence=0.93,
+    )
+    update = {
+        "root_cause": {
+            "root_cause": cause,
+            "recommendation": Recommendation(summary="Add a breaker."),
+            "confidence_band": "medium",
+            "gaps": ["The model gave no recommendation"],
+        }
+    }
+    assert events_from_update(update) == [
+        (
+            "root_cause.identified",
+            {
+                "statement": "Gateway down.",
+                "evidenceIds": ["ev_1"],
+                "hypothesisId": "hyp_1",
+                "confidenceBand": "medium",
+                "contributingFactors": ["no breaker"],
+                "unresolvedQuestions": ["why?"],
+                "recommendation": "Add a breaker.",
+            },
+        ),
+        ("gap.recorded", {"message": "The model gave no recommendation"}),
+    ]
+
+
+def test_a_root_cause_node_that_found_nothing_reports_only_its_gap() -> None:
+    update = {"root_cause": {"root_cause": None, "gaps": ["No root cause was stated"]}}
+    assert events_from_update(update) == [("gap.recorded", {"message": "No root cause was stated"})]
+
+
+def test_a_failed_load_context_reports_nothing() -> None:
+    # status/error/tool_calls only: the executor reports the failure once, at the end
+    update = {"load_context": {"status": "FAILED", "error": "Incident not found", "tool_calls": 1}}
+    assert events_from_update(update) == []
+
+
+def test_nodes_that_returned_nothing_or_markers_are_ignored() -> None:
+    assert events_from_update({"gather_code": {}, "triage": None, "__interrupt__": ("x",)}) == []
+    assert events_from_update({}) == []
+
+
+def test_free_text_is_capped() -> None:
+    long = "x" * 1000
+    update = {"gather_logs": {"evidence": [_evidence(4, summary=long)], "gaps": [long]}}
+    (_, evidence), (_, gap) = events_from_update(update)
+    assert len(evidence["summary"]) == MAX_TEXT and evidence["summary"].endswith("…")
+    assert len(gap["message"]) == MAX_TEXT
+
+
+def test_raw_evidence_content_never_reaches_an_event() -> None:
+    update = {"gather_logs": {"evidence": [_evidence(5)]}}
+    assert "SECRET LOG LINE" not in json.dumps(events_from_update(update))
+
+
+@pytest.mark.asyncio
+async def test_the_real_graph_streams_progress_as_each_node_finishes() -> None:
+    graph = build_graph(InMemorySaver())
+    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope(code=False))
+    config = {"configurable": {"thread_id": "inv"}}
+
+    types: list[str] = []
+    async for update in graph.astream(state, config, context=make_context(), stream_mode="updates"):
+        types += [t for t, _ in events_from_update(update)]
+
+    assert types[0] == "context.loaded"
+    # triage comes after everything load_context found, and before the gather branches' evidence
+    assert types.index("triage.completed") == 1 + 3  # context.loaded + incident, logstats, stacktrace
+    assert types.count("evidence.added") == 7 and "gap.recorded" not in types
+    # synthesize joins the branches, so its hypotheses come after every evidence item
+    last_evidence = max(i for i, t in enumerate(types) if t == "evidence.added")
+    assert types.index("hypothesis.proposed") > last_evidence
+    assert types.count("hypothesis.proposed") == 2
+    assert types.count("root_cause.identified") == 1 and types.index("root_cause.identified") > types.index("hypothesis.proposed")
+    assert set(types) == {
+        "context.loaded",
+        "triage.completed",
+        "evidence.added",
+        "hypothesis.proposed",
+        "root_cause.identified",
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_real_graph_reports_a_verified_hypothesis_after_proposing_it() -> None:
+    first = hypothesis_id("The payment gateway is slow, so calls exceed the 30 s timeout.")
+    investigation = FakeModel(
+        synthesis_answer(),
+        answers={Verification: verification_answer(verdict(first, "supported", supporting_evidence=[INCIDENT_EVIDENCE_ID]))},
+    )
+    ctx = make_context(models=FakeModels(FakeModel(triage_answer()), investigation=investigation))
+    state = new_state(investigation_id="inv", incident_id=str(INCIDENT_ID), scope=InvestigationScope(code=False))
+
+    events: list[tuple[str, dict]] = []
+    async for update in build_graph().astream(state, context=ctx, stream_mode="updates"):
+        events += events_from_update(update)
+
+    types = [t for t, _ in events]
+    assert types.count("hypothesis.proposed") == 2 and types.count("hypothesis.updated") == 1
+    assert types.index("hypothesis.updated") > max(i for i, t in enumerate(types) if t == "hypothesis.proposed")
+    updated = next(p for t, p in events if t == "hypothesis.updated")
+    assert updated["id"] == first and updated["status"] == "supported"

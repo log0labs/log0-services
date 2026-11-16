@@ -1,0 +1,176 @@
+{
+  "cooccurring": [],
+  "search": [
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.087000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.078000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.074000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.063000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.053000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.049000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.039000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.027000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.024000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.014000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:32.003000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:31.999000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:31.989000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:31.978000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:31.973000+00:00"
+      }
+    },
+    {
+      "fingerprint": "dd7aa7ec9d1b779e587da8097aa6cab1b663210f8affe599980f94a3fccdb168",
+      "level": "ERROR",
+      "message": "unhandled promise rejection: not enough stock for SKU-1038",
+      "service_name": "storefront-api",
+      "timestamp": {
+        "$dt": "2026-11-14T20:44:31.963000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:44:24.219000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:44:32.087000+00:00"
+      },
+      "level": "ERROR",
+      "n": 787,
+      "service_name": "storefront-api"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:44:00+00:00"
+      },
+      "n": 787
+    }
+  ],
+  "trace": [
+    {
+      "n": 787,
+      "stack_trace": "OutOfStockError: not enough stock for SKU-1038\n    at reserveStock (file:///app/src/clients.js:36:29)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    }
+  ]
+}

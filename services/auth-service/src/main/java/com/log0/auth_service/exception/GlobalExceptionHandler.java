@@ -57,6 +57,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Returns {@code 409} when a request would break a rule (last admin, own role).
+     */
+    @ExceptionHandler(OperationNotAllowedException.class)
+    public ResponseEntity<Map<String, String>> handleNotAllowed(
+            OperationNotAllowedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
      * Returns {@code 401} when login credentials are wrong.
      */
     @ExceptionHandler(InvalidCredentialsException.class)

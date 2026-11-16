@@ -10,5 +10,7 @@ ingress:
     service: http://auth-service:8086
   - hostname: ingest.log0.in
     service: http://ingestion-gateway:8080
+  - hostname: ai.log0.in
+    service: http://ai-service:8085
   # catch-all (required last rule)
   - service: http_status:404

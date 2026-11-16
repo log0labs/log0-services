@@ -1,0 +1,31 @@
+{
+  "aiSummary": "Summary: The payments service is repeatedly failing to reach the external payment gateway, triggering retry attempts that ultimately fail.\nPossible Cause: The recurring \"payment gateway unavailable\" errors suggest that the external payment gateway service may be experiencing intermittent outages or network connectivity issues, which could be causing the retries to fail.\nRecommended Actions:\n- Verify the health and uptime status of the external payment gateway service; check for any reported outages.\n- Inspect network connectivity between the payments service and the gateway, including DNS resolution, firewall rules, and latency metrics.\n- Review the retry logic implementation to ensure exponential backoff and proper error handling; consider increasing timeout thresholds if necessary.\n- Implement circuit breaker patterns to prevent cascading failures during gateway downtime.\n- Set up monitoring alerts for gateway availability and retry counts to detect future incidents early.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:46:16.195072Z",
+  "environment": "demo",
+  "fingerprint": "ac00e501670c006e61adc2efd72f1cbee0b4102b3bdcafef96d2d2a6ea6a92c6",
+  "firstSeenAt": "2026-11-14T20:46:16.077758Z",
+  "incidentId": "33390290-1864-4cfc-b191-8fb625f639a2",
+  "lastSeenAt": "2026-11-14T20:46:16.133228Z",
+  "occurrenceCount": 625,
+  "resolvedAt": null,
+  "serviceName": "payments",
+  "severity": "MEDIUM",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:46:16.196896Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "d91fbe63-5bf6-4692-a455-7d56175b72ee",
+  "topMessages": [
+    "payment gateway unavailable, retry 4/5",
+    "payment gateway unavailable, retry 1/5",
+    "payment gateway unavailable, retry 2/5",
+    "payment gateway unavailable, retry 5/5",
+    "payment gateway unavailable, retry 3/5"
+  ],
+  "updatedAt": "2026-11-14T20:46:17.178033Z"
+}

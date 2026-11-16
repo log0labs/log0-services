@@ -1,0 +1,281 @@
+{
+  "label": "configured models",
+  "graph_version": "v2-draft-pr-v1",
+  "cases": 8,
+  "degraded": [],
+  "rates": {
+    "pr_opened": {
+      "hits": 6,
+      "of": 7
+    },
+    "ci_green_first_try": {
+      "hits": 5,
+      "of": 6
+    },
+    "ci_green_final": {
+      "hits": 6,
+      "of": 6
+    },
+    "repair_helped": {
+      "hits": 1,
+      "of": 1
+    },
+    "pull_request_safe": {
+      "hits": 6,
+      "of": 6
+    },
+    "no_pull_request_for_non_code_cause": {
+      "hits": 1,
+      "of": 1
+    },
+    "localization_hit@1": {
+      "hits": 6,
+      "of": 7
+    },
+    "fix_pattern": {
+      "hits": 6,
+      "of": 7
+    },
+    "diff_valid": {
+      "hits": 5,
+      "of": 7
+    }
+  },
+  "per_case": [
+    {
+      "id": "bug-01-pool-exhausted",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/2",
+      "ci_first": "passed",
+      "ci_final": "passed",
+      "repaired": false,
+      "seconds": 107.2,
+      "tokens": 80047,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 0.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 1.0,
+        "ci_green_final": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [
+        "The stack trace contains only library frames",
+        "The code investigation stopped early because the step limit (10) was reached",
+        "Code investigation left open: Are there database indexes on orders.createdAt or lines.sku that could speed up the aggregation, or should maxPoolSize be increased?",
+        "Runbooks were not searched: runbook search is not configured on this server"
+      ],
+      "error": null
+    },
+    {
+      "id": "bug-02-lowercase-sku",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/3",
+      "ci_first": "passed",
+      "ci_final": "passed",
+      "repaired": false,
+      "seconds": 117.5,
+      "tokens": 73380,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 0.0,
+        "trace_localization": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 1.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 1.0,
+        "ci_green_final": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [
+        "The fix proposal stopped early because the step limit (8) was reached"
+      ],
+      "error": null
+    },
+    {
+      "id": "bug-03-missing-await",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/4",
+      "ci_first": "passed",
+      "ci_final": "passed",
+      "repaired": false,
+      "seconds": 83.4,
+      "tokens": 35851,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 0.0,
+        "trace_localization": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 1.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 1.0,
+        "ci_green_final": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [
+        "Runbooks were not searched: runbook search is not configured on this server"
+      ],
+      "error": null
+    },
+    {
+      "id": "bug-04-nil-map",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/5",
+      "ci_first": "passed",
+      "ci_final": "passed",
+      "repaired": false,
+      "seconds": 91.4,
+      "tokens": 72888,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "trace_localization": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 1.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 1.0,
+        "ci_green_final": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [],
+      "error": null
+    },
+    {
+      "id": "bug-05-retry-storm",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/6",
+      "ci_first": "failed",
+      "ci_final": "passed",
+      "repaired": true,
+      "seconds": 157.9,
+      "tokens": 82058,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 1.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 0.0,
+        "ci_green_final": 1.0,
+        "repair_helped": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [
+        "No stack trace was recorded for this incident",
+        "Runbooks were not searched: runbook search is not configured on this server"
+      ],
+      "error": null
+    },
+    {
+      "id": "bug-06-key-rotation",
+      "pull_request": null,
+      "ci_first": null,
+      "ci_final": null,
+      "repaired": false,
+      "seconds": 7.5,
+      "tokens": 10371,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "no_false_fix": 1.0,
+        "no_forbidden_output": 1.0,
+        "no_secret_leak": 1.0,
+        "no_pull_request_for_non_code_cause": 1.0
+      },
+      "gaps": [
+        "No stack trace was recorded for this incident",
+        "Runbooks were not searched: runbook search is not configured on this server",
+        "No fix was proposed because no code was read during the investigation, so there is nothing to base a change on"
+      ],
+      "error": null
+    },
+    {
+      "id": "bug-07-unwrap-none",
+      "pull_request": "https://github.com/log0labs/log0-demo-shop-eval/pull/7",
+      "ci_first": "passed",
+      "ci_final": "passed",
+      "repaired": false,
+      "seconds": 74.4,
+      "tokens": 28565,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "trace_localization": 1.0,
+        "localization_hit@1": 1.0,
+        "localization_hit@3": 1.0,
+        "grounding": 1.0,
+        "root_cause": 1.0,
+        "fix_pattern": 1.0,
+        "diff_valid": 1.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 1.0,
+        "ci_green_first_try": 1.0,
+        "ci_green_final": 1.0,
+        "pull_request_safe": 1.0
+      },
+      "gaps": [],
+      "error": null
+    },
+    {
+      "id": "bug-08-lock-across-audit",
+      "pull_request": null,
+      "ci_first": null,
+      "ci_final": null,
+      "repaired": false,
+      "seconds": 68.1,
+      "tokens": 54378,
+      "metrics": {
+        "completed": 1.0,
+        "model_available": 1.0,
+        "triage_routing": 1.0,
+        "localization_hit@1": 0.0,
+        "localization_hit@3": 0.0,
+        "grounding": 1.0,
+        "root_cause": 0.0,
+        "fix_pattern": 0.0,
+        "diff_valid": 0.0,
+        "no_secret_leak": 1.0,
+        "pr_opened": 0.0
+      },
+      "gaps": [
+        "The recorded stack trace has no frames to follow (it holds only: 'TimeoutError: The operation was aborted due to timeout'), so there is no code location to start from",
+        "Code investigation left open: What caused the downstream inventory or payments service to become slow or unresponsive, leading to the operation aborting due to timeout during POST /checkout.",
+        "Runbooks were not searched: runbook search is not configured on this server",
+        "The model proposed no change that could be grounded in the code it read",
+        "Fix proposal note: The root cause states that outgoing HTTP requests from storefront-api exceeded their configured timeout thresholds during POST /checkout due to downstream inventory and payments services exceeding response times, which is an operational/performance issue in downstream services rather than a bug in t"
+      ],
+      "error": null
+    }
+  ]
+}

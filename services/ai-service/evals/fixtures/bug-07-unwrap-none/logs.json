@@ -1,0 +1,189 @@
+{
+  "cooccurring": [
+    {
+      "fingerprint": "3e92f8c5548430766a16d9463f25ea6c70c181590d06101d897d8d0316717ff5",
+      "first_ts": {
+        "$dt": "2026-11-14T20:47:50.634000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:47:58.260000+00:00"
+      },
+      "message_template": "POST /checkout failed: fetch failed",
+      "n": 884,
+      "service_name": "storefront-api"
+    }
+  ],
+  "search": [
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.259000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.254000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.253000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.241000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.236000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.233000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.224000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.220000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.216000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.205000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.204000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.197000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.188000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.187000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.179000+00:00"
+      }
+    },
+    {
+      "fingerprint": "89deb8a0af14993a08ce2ede4af3698baf39a8f0d6013fe92c726bad6dca49af",
+      "level": "ERROR",
+      "message": "thread panicked: called `Option::unwrap()` on a `None` value",
+      "service_name": "inventory",
+      "timestamp": {
+        "$dt": "2026-11-14T20:47:58.170000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:47:50.626000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:47:58.259000+00:00"
+      },
+      "level": "ERROR",
+      "n": 884,
+      "service_name": "inventory"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:47:00+00:00"
+      },
+      "n": 884
+    }
+  ],
+  "trace": [
+    {
+      "n": 836,
+      "stack_trace": "thread 'tokio-rt-worker' panicked at src/main.rs:41:66:\ncalled `Option::unwrap()` on a `None` value\nstack backtrace:\n   0: inventory::log0::install_panic_hook::{{closure}}\n             at ./src/src/log0.rs:66:25\n   1: <alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/alloc/src/boxed.rs:2019:9\n   2: std::panicking::panic_with_hook\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:842:13\n   3: std::panicking::panic_handler::{{closure}}\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:700:13\n   4: std::sys::backtrace::__rust_end_short_backtrace\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/sys/backtrace.rs:174:18\n   5: __rustc::rust_begin_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:698:5\n   6: core::panicking::panic_fmt\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/panicking.rs:80:14\n   7: core::panicking::panic\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/panicking.rs:150:5\n   8: core::option::unwrap_failed\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/option.rs:2174:5\n   9: core::option::Option<T>::unwrap\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/option.rs:1015:21\n  10: inventory::reserve::{{closure}}\n             at ./src/src/main.rs:41:66\n  11: <F as axum::handler::Handler<(M,T1,T2),S>>::call::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/handler/mod.rs:255:43\n  12: <core::pin::Pin<P> as core::future::future::Future>::poll\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/future/future.rs:133:9\n  13: <futures_util::future::future::map::Map<Fut,F> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.34/src/future/future/map.rs:55:44\n  14: <futures_util::future::future::Map<Fut,F> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-util-0.3.34/src/lib.rs:85:35\n  15: <axum::handler::future::IntoServiceFuture<F> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/macros.rs:42:39\n  16: <axum::util::MapIntoResponseFuture<F> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/util.rs:94:47\n  17: <core::pin::Pin<P> as core::future::future::Future>::poll\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/future/future.rs:133:9\n  18: <tower::util::oneshot::Oneshot<S,Req> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tower-0.5.3/src/util/oneshot.rs:96:42\n  19: <axum::routing::route::RouteFuture<E> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/routing/route.rs:149:41\n  20: <hyper_util::service::oneshot::Oneshot<S,Req> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.21/src/service/oneshot.rs:53:42\n  21: <hyper_util::service::glue::TowerToHyperServiceFuture<S,R> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.21/src/service/glue.rs:69:31\n  22: <hyper::proto::h1::dispatch::Server<S,hyper::body::incoming::Incoming> as hyper::proto::h1::dispatch::Dispatch>::poll_msg\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:603:48\n  23: hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_write\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:364:72\n  24: hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_loop\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:174:36\n  25: hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_inner\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:150:21\n  26: hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_catch\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:128:33\n  27: <hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/proto/h1/dispatch.rs:504:14\n  28: <hyper::server::conn::http1::UpgradeableConnection<I,S> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-1.12.0/src/server/conn/http1.rs:574:51\n  29: <hyper_util::server::conn::auto::UpgradeableConnection<I,S,E> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.21/src/server/conn/auto/mod.rs:701:33\n  30: <core::pin::Pin<P> as core::future::future::Future>::poll\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/future/future.rs:133:9\n  31: axum::serve::handle_connection::{{closure}}::{{closure}}::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/macros/select.rs:710:49\n  32: <core::future::poll_fn::PollFn<F> as core::future::future::Future>::poll\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/future/poll_fn.rs:151:9\n  33: axum::serve::handle_connection::{{closure}}::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.9/src/serve/mod.rs:400:13\n  34: tokio::runtime::task::core::Core<T,S>::poll::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/core.rs:380:24\n  35: tokio::loom::std::unsafe_cell::UnsafeCell<T>::with_mut\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/loom/std/unsafe_cell.rs:16:9\n  36: tokio::runtime::task::core::Core<T,S>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/core.rs:369:30\n  37: tokio::runtime::task::harness::poll_future::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:537:30\n  38: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/panic/unwind_safe.rs:274:9\n  39: std::panicking::catch_unwind::do_call\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40\n  40: std::panicking::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19\n  41: std::panic::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14\n  42: tokio::runtime::task::harness::poll_future\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:525:18\n  43: tokio::runtime::task::harness::Harness<T,S>::poll_inner\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:210:27\n  44: tokio::runtime::task::harness::Harness<T,S>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:155:20\n  45: tokio::runtime::task::raw::RawTask::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/raw.rs:267:18\n  46: tokio::runtime::task::LocalNotified<S>::run\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/mod.rs:523:13\n  47: tokio::runtime::scheduler::multi_thread::worker::Context::run_task::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:705:18\n  48: tokio::task::coop::with_budget\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/task/coop/mod.rs:167:5\n  49: tokio::task::coop::budget\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/task/coop/mod.rs:133:5\n  50: tokio::runtime::scheduler::multi_thread::worker::Context::run_task\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:696:9\n  51: tokio::runtime::scheduler::multi_thread::worker::Context::run\n  52: tokio::runtime::scheduler::multi_thread::worker::run::{{closure}}::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:560:16\n  53: tokio::runtime::context::scoped::Scoped<T>::set\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/context/scoped.rs:40:9\n  54: tokio::runtime::context::set_scheduler::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/context.rs:186:38\n  55: std::thread::local::LocalKey<T>::try_with\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/thread/local.rs:508:12\n  56: std::thread::local::LocalKey<T>::with\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/thread/local.rs:472:20\n  57: tokio::runtime::context::set_scheduler\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/context.rs:186:17\n  58: tokio::runtime::scheduler::multi_thread::worker::run::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:557:9\n  59: tokio::runtime::context::runtime::enter_runtime\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/context/runtime.rs:65:16\n  60: tokio::runtime::scheduler::multi_thread::worker::run\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:549:5\n  61: tokio::runtime::scheduler::multi_thread::worker::Launch::launch::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/scheduler/multi_thread/worker.rs:515:45\n  62: <tokio::runtime::blocking::task::BlockingTask<T> as core::future::future::Future>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/task.rs:42:21\n  63: tokio::runtime::task::core::Core<T,S>::poll::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/core.rs:380:24\n  64: tokio::loom::std::unsafe_cell::UnsafeCell<T>::with_mut\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/loom/std/unsafe_cell.rs:16:9\n  65: tokio::runtime::task::core::Core<T,S>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/core.rs:369:30\n  66: tokio::runtime::task::harness::poll_future::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:537:30\n  67: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/panic/unwind_safe.rs:274:9\n  68: std::panicking::catch_unwind::do_call\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40\n  69: std::panicking::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19\n  70: std::panic::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14\n  71: tokio::runtime::task::harness::poll_future\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:525:18\n  72: tokio::runtime::task::harness::Harness<T,S>::poll_inner\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:210:27\n  73: tokio::runtime::task::harness::Harness<T,S>::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/harness.rs:155:20\n  74: tokio::runtime::task::raw::RawTask::poll\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/raw.rs:267:18\n  75: tokio::runtime::task::UnownedTask<S>::run\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/task/mod.rs:560:13\n  76: tokio::runtime::blocking::pool::Task::run\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/pool.rs:220:19\n  77: tokio::runtime::blocking::pool::LockedImpl::run_worker\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/pool.rs:660:22\n  78: tokio::runtime::blocking::pool::InnerImpl::run_worker\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/pool.rs:571:39\n  79: tokio::runtime::blocking::pool::Inner::run\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/pool.rs:764:18\n  80: tokio::runtime::blocking::pool::Spawner::spawn_thread::{{closure}}\n             at ./usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/runtime/blocking/pool.rs:525:47\n  81: std::sys::backtrace::__rust_begin_short_backtrace\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/sys/backtrace.rs:158:18\n  82: std::thread::Builder::spawn_unchecked_::{{closure}}::{{closure}}\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/thread/mod.rs:562:17\n  83: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/panic/unwind_safe.rs:274:9\n  84: std::panicking::catch_unwind::do_call\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40\n  85: std::panicking::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19\n  86: std::panic::catch_unwind\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14\n  87: std::thread::Builder::spawn_unchecked_::{{closure}}\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/thread/mod.rs:560:30\n  88: core::ops::function::FnOnce::call_once{{vtable.shim}}\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:250:5\n  89: <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/alloc/src/boxed.rs:2005:9\n  90: std::sys::thread::unix::Thread::new::thread_start\n             at ./rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/sys/thread/unix.rs:126:17\n  91: <unknown>\n  92: __clone\n"
+    }
+  ]
+}

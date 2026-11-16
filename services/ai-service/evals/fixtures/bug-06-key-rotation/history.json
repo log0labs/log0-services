@@ -1,0 +1,20 @@
+[
+  {
+    "ai_summary": "Summary: The payments service is failing to process charge requests because the gateway is rejecting POST requests to the fake-gateway endpoint.\nPossible Cause: The error indicates that the payment gateway rejected the POST request to the fake-gateway endpoint, which may be due to an invalid or expired API key, misconfigured endpoint URL, or gateway service downtime.\nRecommended Actions:\n- Verify that the API key 'sk_live_demo_0123456789abcdef' is correct and active in the gateway configuration.\n- Check the gateway service status and logs for any downtime or error messages around the incident timestamps.\n- Confirm that the endpoint URL http://127.0.0.1:8092/fake-gateway/charge is reachable and correctly configured in the payment service.\n- Implement retry logic with exponential backoff for transient gateway failures.\n- Add monitoring alerts for gateway rejection rates to detect future incidents early.",
+    "environment": "demo",
+    "fingerprint": "87e48177fe03f64359a21850afc95d88118ae1580e84d1dbc98c84d62ab2bb33",
+    "first_seen_at": {
+      "$dt": "2026-11-14T20:47:09.786804+00:00"
+    },
+    "incident_id": "0459208b-120e-4597-b330-f4d9ad29f470",
+    "last_seen_at": {
+      "$dt": "2026-11-14T20:47:10.310233+00:00"
+    },
+    "occurrence_count": 8,
+    "resolved_at": null,
+    "same_fingerprint": false,
+    "service_name": "payments",
+    "severity": "HIGH",
+    "status": "NEW"
+  }
+]

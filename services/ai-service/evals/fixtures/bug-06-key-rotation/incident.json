@@ -1,0 +1,36 @@
+{
+  "aiSummary": "Summary: The payments service is failing to process charges because the payment gateway is rejecting its credentials.\nPossible Cause: The repeated error messages indicate that the payment gateway is rejecting the credentials supplied by the service, so it is likely that the API key or secret used by the payments service is invalid, expired, or misconfigured.\nRecommended Actions:\n- Verify that the API key/secret configured for the payment gateway is correct and has not expired.\n- Check the environment variables or secret store to ensure the credentials are being loaded properly.\n- Test the credentials against the payment gateway\u2019s sandbox or test environment to confirm they work.\n- If the credentials are rotated recently, update the service configuration and redeploy if necessary.\n- Monitor the payment service logs after the fix to confirm the issue is resolved.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:47:10.367437Z",
+  "environment": "demo",
+  "fingerprint": "a36a14c78e8aa0b55a884d3c2556554bacf0f6be221e9109bd3d286a8d6caecb",
+  "firstSeenAt": "2026-11-14T20:47:09.786930Z",
+  "incidentId": "c96d875d-8ad1-49f4-9fdd-ffb71090e8a5",
+  "lastSeenAt": "2026-11-14T20:47:10.309490Z",
+  "occurrenceCount": 85,
+  "resolvedAt": null,
+  "serviceName": "payments",
+  "severity": "HIGH",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:47:10.368513Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "98b70542-cd44-4345-b09a-d8b2b51dcc3e",
+  "topMessages": [
+    "charge failed for order 378d4b87-fa8a-4ae0-bfb8-b8a7e8317131: payment gateway rejected our credentials",
+    "charge failed for order bb2ec4fc-0f19-4724-971f-e37fbf334a68: payment gateway rejected our credentials",
+    "charge failed for order 5264a0ba-1c3a-4a08-8991-4b2d29ccbb1e: payment gateway rejected our credentials",
+    "charge failed for order 8a07521f-c496-45c3-ba6d-2ac56f5925d4: payment gateway rejected our credentials",
+    "charge failed for order 3ea91d39-5f9d-445e-be17-7e71406146f4: payment gateway rejected our credentials",
+    "charge failed for order 82770553-3cfe-4839-9ef0-7281c08a07f3: payment gateway rejected our credentials",
+    "charge failed for order 6ea4d799-eb53-44b3-be4a-11ae9096464f: payment gateway rejected our credentials",
+    "charge failed for order 4a3848d0-6ece-49e1-a3c9-82959d3bb8c4: payment gateway rejected our credentials",
+    "charge failed for order e8b23336-fc9f-445d-975e-58fab6da6c90: payment gateway rejected our credentials",
+    "charge failed for order f1e68fc7-2ff6-45fe-9bf6-7776f334c0d5: payment gateway rejected our credentials"
+  ],
+  "updatedAt": "2026-11-14T20:47:11.452732Z"
+}

@@ -1,0 +1,189 @@
+{
+  "cooccurring": [
+    {
+      "fingerprint": "5c856d32c2df2138c976740b515067aaa042d551f73794fbd93a88ac286cc921",
+      "first_ts": {
+        "$dt": "2026-11-14T20:45:20.220000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:45:28.047000+00:00"
+      },
+      "message_template": "payment failed for order <uuid>: payments answered <number>",
+      "n": 319,
+      "service_name": "storefront-api"
+    }
+  ],
+  "search": [
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:28.045000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:28.034000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:28.034000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.977000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.963000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.963000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.908000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.892000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.892000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.839000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.821000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.821000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.770000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.753000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.752000+00:00"
+      }
+    },
+    {
+      "fingerprint": "ab398ae043916a4010615da8a441e463c290f25d8d0c6db78170094b1f85a857",
+      "level": "ERROR",
+      "message": "panic serving POST /charge: assignment to entry in nil map",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:45:27.701000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:45:20.215000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:45:28.045000+00:00"
+      },
+      "level": "ERROR",
+      "n": 319,
+      "service_name": "payments"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:45:00+00:00"
+      },
+      "n": 319
+    }
+  ],
+  "trace": [
+    {
+      "n": 1,
+      "stack_trace": "panic: assignment to entry in nil map\n\ngoroutine 21 [running]:\nruntime/debug.Stack()\n\t/usr/local/go/src/runtime/debug/stack.go:26 +0x5e\nmain.newMux.recoverPanics.func2.1()\n\t/src/main.go:87 +0x8b\npanic({0x722de0?, 0xa445d0?})\n\t/usr/local/go/src/runtime/panic.go:860 +0x13a\nmain.(*Store).Put(0x7a6ac0?, {0x45001396740?, 0x4500112dad0?}, {{0x4500129ecd0?, 0x7a1f20?}, 0x450012aec30?})\n\t/src/store.go:31 +0xba\nmain.(*server).handleCharge(0x45001138200, {0x7a9a98, 0x4500132f3b0}, 0x450015b7900)\n\t/src/main.go:51 +0x265\nnet/http.HandlerFunc.ServeHTTP(0x450011a0000?, {0x7a9a98?, 0x4500132f3b0?}, 0x4500132f3b0?)\n\t/usr/local/go/src/net/http/server.go:2266 +0x29\nnet/http.(*ServeMux).ServeHTTP(0x450012edaf8?, {0x7a9a98, 0x4500132f3b0}, 0x450015b7900)\n\t/usr/local/go/src/net/http/server.go:2808 +0x1c7\nmain.newMux.recoverPanics.func2({0x7a9a98?, 0x4500132f3b0?}, 0x66b4ca?)\n\t/src/main.go:91 +0x6c\nnet/http.HandlerFunc.ServeHTTP(0x66b500?, {0x7a9a98?, 0x4500132f3b0?}, 0x450012edb28?)\n\t/usr/local/go/src/net/http/server.go:2266 +0x29\nnet/http.serverHandler.ServeHTTP({0x76ca40?}, {0x7a9a98?, 0x4500132f3b0?}, 0x6?)\n\t/usr/local/go/src/net/http/server.go:3291 +0x8e\nnet/http.(*conn).serve(0x450011ea240, {0x7aa110, 0x450011ac300})\n\t/usr/local/go/src/net/http/server.go:2074 +0x6b0\ncreated by net/http.(*Server).Serve in goroutine 1\n\t/usr/local/go/src/net/http/server.go:3444 +0x485\n"
+    }
+  ]
+}

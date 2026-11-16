@@ -1,0 +1,27 @@
+{
+  "aiSummary": "Summary: POST /checkout requests are timing out, causing checkout failures.\nPossible Cause: The timeout error during POST /checkout may be caused by a recent change in the checkout service that increased processing time, or by a spike in traffic exceeding the service\u2019s capacity.\nRecommended Actions:\n- Verify recent deployments to the checkout service for changes that could increase latency.\n- Check the service\u2019s resource usage (CPU, memory) and scaling configuration during the incident window.\n- Review load balancer and timeout settings to ensure they match the expected checkout duration.\n- Implement or adjust circuit breaker logic to handle transient timeouts gracefully.\n- Monitor checkout latency and error rates in real-time to detect similar patterns early.",
+  "assignment": null,
+  "createdAt": "2026-11-14T20:48:34.543622Z",
+  "environment": "demo",
+  "fingerprint": "6d9b5e71f5e24e63e2f9315fa9f636239850d4eaa6546991f9e89cba5644d2ac",
+  "firstSeenAt": "2026-11-14T20:48:34.414163Z",
+  "incidentId": "ef17c98a-95cf-423f-aa6b-24232ce05947",
+  "lastSeenAt": "2026-11-14T20:48:34.475378Z",
+  "occurrenceCount": 147,
+  "resolvedAt": null,
+  "serviceName": "storefront-api",
+  "severity": "HIGH",
+  "status": "NEW",
+  "statusHistory": [
+    {
+      "changedAt": "2026-11-14T20:48:34.544324Z",
+      "changedBy": null,
+      "status": "NEW"
+    }
+  ],
+  "tenantId": "c38db54d-3685-4c3e-abb2-f4f392634727",
+  "topMessages": [
+    "POST /checkout failed: The operation was aborted due to timeout"
+  ],
+  "updatedAt": "2026-11-14T20:48:35.220781Z"
+}

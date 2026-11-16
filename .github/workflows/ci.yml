@@ -17,7 +17,6 @@ jobs:
           - clustering-service
           - incident-service
           - notification-service
-          - ai-service
           - auth-service
     defaults:
       run:
@@ -31,3 +30,23 @@ jobs:
           cache: maven
       - run: chmod +x mvnw
       - run: ./mvnw -B -ntp verify
+
+  ai-service:
+    # The AI service is Python (uv, ruff, pytest), not Maven. Tests that need Postgres or ClickHouse skip themselves
+    # here (SKIP_INTEGRATION_TESTS); the full suite, with the docker stack, runs locally and in the evaluation workflow.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-service
+    env:
+      SKIP_INTEGRATION_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep git
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/ai-service/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check app tests evals
+      - run: uv run pytest -q -p no:cacheprovider

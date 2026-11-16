@@ -1,0 +1,280 @@
+"""Persistence for ai.investigation."""
+
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import case, exists, func, insert, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.tables import investigation, pull_request, remediation
+from app.schemas.investigation import (
+    Investigation,
+    InvestigationScope,
+    InvestigationStatus,
+)
+from app.store.exceptions import ActiveInvestigationError
+
+_EXECUTING = (InvestigationStatus.QUEUED.value, InvestigationStatus.RUNNING.value, InvestigationStatus.PUBLISHING.value)
+"""Statuses whose work was interrupted if the service stops: they are picked up again on start."""
+
+
+def _row_to_investigation(row) -> Investigation:
+    m = row._mapping
+    scope_raw = m["scope"]
+    scope = (
+        InvestigationScope.model_validate(scope_raw)
+        if isinstance(scope_raw, dict)
+        else InvestigationScope()
+    )
+    return Investigation(
+        id=m["id"],
+        incident_id=m["incident_id"],
+        requested_by=m["requested_by"],
+        status=InvestigationStatus(m["status"]),
+        question=m["question"],
+        scope=scope,
+        provider=m["provider"],
+        model=m["model"],
+        prompt_version=m["prompt_version"],
+        graph_version=m["graph_version"],
+        repo_sha=m["repo_sha"],
+        root_cause=m["root_cause"],
+        recommendation=m["recommendation"],
+        diff=m["diff"],
+        confidence_band=m["confidence_band"],
+        error=m["error"],
+        input_tokens=m["input_tokens"],
+        output_tokens=m["output_tokens"],
+        cost_usd=m["cost_usd"],
+        tool_call_count=m["tool_call_count"],
+        started_at=m["started_at"],
+        completed_at=m["completed_at"],
+        created_at=m["created_at"],
+        updated_at=m["updated_at"],
+    )
+
+
+async def create(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    incident_id: UUID,
+    requested_by: UUID,
+    scope: InvestigationScope,
+    question: str | None = None,
+) -> Investigation:
+    stmt = (
+        insert(investigation)
+        .values(
+            tenant_id=tenant_id,
+            incident_id=incident_id,
+            requested_by=requested_by,
+            status=InvestigationStatus.QUEUED.value,
+            question=question,
+            scope=scope.model_dump(mode="json", by_alias=True),
+        )
+        .returning(investigation)
+    )
+    try:
+        result = await session.execute(stmt)
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise ActiveInvestigationError from exc
+    return _row_to_investigation(result.one())
+
+
+async def get_by_id(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    investigation_id: UUID,
+) -> Investigation | None:
+    stmt = select(investigation).where(
+        investigation.c.id == investigation_id,
+        investigation.c.tenant_id == tenant_id,
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+    return _row_to_investigation(row) if row else None
+
+
+async def list_by_incident(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    incident_id: UUID,
+) -> list[Investigation]:
+    stmt = (
+        select(investigation)
+        .where(
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.incident_id == incident_id,
+        )
+        .order_by(investigation.c.created_at.desc())
+    )
+    result = await session.execute(stmt)
+    return [_row_to_investigation(row) for row in result.all()]
+
+
+async def list_pending_for_runner(session: AsyncSession) -> list[tuple[UUID, UUID]]:
+    """Investigation ids to schedule on startup (QUEUED, RUNNING or PUBLISHING)."""
+    active = _EXECUTING
+    stmt = select(investigation.c.id, investigation.c.tenant_id).where(investigation.c.status.in_(active))
+    result = await session.execute(stmt)
+    return [(row.id, row.tenant_id) for row in result.all()]
+
+
+async def mark_running(session: AsyncSession, *, investigation_id: UUID, tenant_id: UUID) -> bool:
+    """QUEUED or RUNNING → RUNNING; set started_at if unset."""
+    now = datetime.now(tz=UTC)
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.status.in_(_EXECUTING),
+        )
+        .values(status=case((investigation.c.status == InvestigationStatus.PUBLISHING.value, InvestigationStatus.PUBLISHING.value), else_=InvestigationStatus.RUNNING.value), started_at=func.coalesce(investigation.c.started_at, now), updated_at=now)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def transition_status(session: AsyncSession, *, investigation_id: UUID, tenant_id: UUID, status: InvestigationStatus, error: str | None = None, set_completed: bool = False) -> None:
+    now = datetime.now(tz=UTC)
+    values: dict = {
+        "status": status.value,
+        "updated_at": now,
+    }
+    if error is not None:
+        values["error"] = error
+    if set_completed:
+        values["completed_at"] = now
+        
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+        )
+        .values(**values)
+    )
+    await session.execute(stmt)
+    await session.commit()
+
+
+async def transition_status_if(
+    session: AsyncSession,
+    *,
+    investigation_id: UUID,
+    tenant_id: UUID,
+    from_status: InvestigationStatus,
+    to_status: InvestigationStatus,
+) -> bool:
+    """Move the row from ``from_status`` to ``to_status`` only if it is in ``from_status`` right now.
+
+    One UPDATE with the old status in its WHERE: when two requests race (two resumes, a resume and
+    a cancel) exactly one sees ``True``. Returns whether this call made the change.
+    """
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.status == from_status.value,
+        )
+        .values(status=to_status.value, updated_at=datetime.now(tz=UTC))
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def record_run_result(
+    session: AsyncSession,
+    *,
+    investigation_id: UUID,
+    tenant_id: UUID,
+    graph_version: str,
+    tool_call_count: int,
+    root_cause: dict[str, Any] | None = None,
+    recommendation: dict[str, Any] | None = None,
+    confidence_band: str | None = None,
+    repo_sha: str | None = None,
+    diff: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cost_usd: Decimal | None = None,
+) -> None:
+    """Store which graph produced the run, how many tool calls it made and, when the run reached
+    one, its root cause, recommendation and confidence band (a thin run leaves them empty).
+
+    Tokens and cost are **added** to what the row already holds: a run resumed after a restart
+    only measured its own calls, so the row ends up with the total over both parts."""
+    results = {
+        key: value
+        for key, value in (
+            ("root_cause", root_cause),
+            ("recommendation", recommendation),
+            ("confidence_band", confidence_band),
+            ("repo_sha", repo_sha),
+            ("diff", diff),
+        )
+        if value is not None
+    }
+    if input_tokens is not None:
+        results["input_tokens"] = func.coalesce(investigation.c.input_tokens, 0) + input_tokens
+    if output_tokens is not None:
+        results["output_tokens"] = func.coalesce(investigation.c.output_tokens, 0) + output_tokens
+    if cost_usd is not None:
+        results["cost_usd"] = func.coalesce(investigation.c.cost_usd, 0) + cost_usd
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+        )
+        .values(
+            graph_version=graph_version,
+            tool_call_count=tool_call_count,
+            **results,
+            updated_at=datetime.now(tz=UTC),
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
+
+
+async def latest_for_incidents(session: AsyncSession, *, tenant_id: UUID, incident_ids: list[UUID]) -> list[dict[str, Any]]:
+    """The newest investigation of each given incident (those that have one), for this tenant only. ``deploy_status`` is the status of its
+    most recently touched deploy that went beyond an offer (``None`` when nothing was deployed)."""
+    if not incident_ids:
+        return []
+    deploy_status = (
+        select(remediation.c.status)
+        .where(remediation.c.investigation_id == investigation.c.id, remediation.c.status.not_in(["OFFERED", "DECLINED", "ABANDONED", "CANCELLED"]))
+        .order_by(remediation.c.updated_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    result = await session.execute(
+        select(
+            investigation.c.incident_id,
+            investigation.c.id.label("investigation_id"),
+            investigation.c.status,
+            investigation.c.confidence_band,
+            (investigation.c.diff.is_not(None)).label("has_diff"),
+            exists().where(pull_request.c.investigation_id == investigation.c.id).label("has_pull_request"),
+            deploy_status.label("deploy_status"),
+            investigation.c.created_at,
+        )
+        .where(investigation.c.tenant_id == tenant_id, investigation.c.incident_id.in_(incident_ids))
+        .distinct(investigation.c.incident_id)
+        .order_by(investigation.c.incident_id, investigation.c.created_at.desc())
+    )
+    return [dict(row._mapping) for row in result.all()]

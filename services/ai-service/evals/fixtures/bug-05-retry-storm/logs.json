@@ -1,0 +1,196 @@
+{
+  "cooccurring": [
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "first_ts": {
+        "$dt": "2026-11-14T20:46:16.031000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:46:23.843000+00:00"
+      },
+      "message_template": "charge failed for order <uuid>: payment gateway unavailable: status <number>",
+      "n": 125,
+      "service_name": "payments"
+    },
+    {
+      "fingerprint": "5c856d32c2df2138c976740b515067aaa042d551f73794fbd93a88ac286cc921",
+      "first_ts": {
+        "$dt": "2026-11-14T20:46:16.038000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:46:23.845000+00:00"
+      },
+      "message_template": "payment failed for order <uuid>: payments answered <number>",
+      "n": 125,
+      "service_name": "storefront-api"
+    }
+  ],
+  "search": [
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 204077ce-d26a-43cc-bfe9-8490611e4f37: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.843000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order fa3f6068-7cd3-4b9f-ad90-165d03feda92: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.782000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order c4011b25-4bb7-4186-b11d-0454857e7d98: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.723000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order c1f89707-fcff-4a10-8747-444d61428b52: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.658000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order f51e167f-2b3f-4cc9-b2a0-55c6b9eb6343: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.594000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 4cb5b850-b2bc-4953-9e6d-cf92c4a658b2: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.532000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order a4cc1b17-545a-4f1d-9d57-358398883a44: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.473000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 19561795-b479-4125-b551-b6d118f0eae0: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.415000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 731a31ec-6f93-4ca1-b6bd-5992407140fd: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.360000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order e52ee09a-2800-492d-9be8-b683025816df: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.304000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 6a0e76ca-726e-42c7-8cdb-48aa3756558d: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.244000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 697c9cd7-6e80-4b4a-908f-668c371ae19b: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.188000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 090254ad-65ac-496a-adb7-03b43e875be9: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.132000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order e26765ab-dab7-453e-8820-0cf2b92f1f54: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.074000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order b47d63a9-d384-4300-9440-360eb48f0c36: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:23.008000+00:00"
+      }
+    },
+    {
+      "fingerprint": "5f8cee53d26337ace53fa6f2b082a9795a3b65b5992c778f51881a3502cfa4df",
+      "level": "ERROR",
+      "message": "charge failed for order 2a7d3adf-548a-4762-93dd-c7e20716914f: payment gateway unavailable: status 503",
+      "service_name": "payments",
+      "timestamp": {
+        "$dt": "2026-11-14T20:46:22.949000+00:00"
+      }
+    }
+  ],
+  "stats": [
+    {
+      "first_ts": {
+        "$dt": "2026-11-14T20:46:16.027000+00:00"
+      },
+      "last_ts": {
+        "$dt": "2026-11-14T20:46:23.842000+00:00"
+      },
+      "level": "WARN",
+      "n": 625,
+      "service_name": "payments"
+    }
+  ],
+  "timeline": [
+    {
+      "bucket_start": {
+        "$dt": "2026-11-14T20:46:00+00:00"
+      },
+      "n": 625
+    }
+  ],
+  "trace": []
+}

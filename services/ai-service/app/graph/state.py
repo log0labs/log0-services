@@ -1,0 +1,267 @@
+"""LangGraph state for an investigation, the reducers that merge parallel writes, and the
+runtime context that carries the tenant and backends.
+
+State is what the graph *knows* and nodes update. Context is what the graph *runs with*
+and nodes can only read. ``tenant_id`` lives in context, not state, so no node can
+change it, and it never lands in a checkpoint a user could resume with another tenant.
+"""
+
+import operator
+import time
+from dataclasses import dataclass, field
+from typing import Annotated, Any, Protocol, TypedDict
+from uuid import UUID
+
+from langchain_core.language_models import BaseChatModel
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+from app.diff.builder import FileDiff
+from app.graph.budget import Budget
+from app.graph.code_access import CodeAccess
+from app.llm.purpose import Purpose, StructuredOutputMethod
+from app.parsing.stacktrace import StackFrame
+from app.publishing.ci import CiWait
+from app.publishing.policy import PrLimits
+from app.publishing.port import Publisher
+from app.retrieval.memory import Memory
+from app.retrieval.runbooks import RunbookSource
+from app.sandbox.port import Sandbox
+from app.schemas.domain import (
+    BranchRef,
+    CheckResult,
+    CiRun,
+    CodeChange,
+    CodeLocation,
+    Evidence,
+    Hypothesis,
+    PrDecision,
+    PullRequestRef,
+    Recommendation,
+    RepoContext,
+    ReviewDecision,
+    RootCause,
+    Triage,
+)
+from app.schemas.investigation import InvestigationScope, InvestigationStatus
+from app.security.redaction import redact_text
+from app.tools.incidents import IncidentApi, IncidentContext, RelatedIncidentSource
+from app.tools.logs import LogBackend
+
+# ------------------------------------------------------------------------ reducers
+# A reducer decides what happens when a node returns a value for a key that already has
+# one. Without a reducer LangGraph *replaces* the value, and if two parallel nodes write
+# the same key in one step it raises InvalidUpdateError. These make parallel gathering safe.
+
+
+class HasId(Protocol):
+    id: str
+
+
+def add_evidence(left: list[Evidence] | None, right: list[Evidence] | None) -> list[Evidence]:
+    """Append new evidence; an id already present is kept as it was (first one wins)."""
+    merged = list(left or [])
+    seen = {e.id for e in merged}
+    for item in right or []:
+        if item.id not in seen:
+            merged.append(item)
+            seen.add(item.id)
+    return merged
+
+
+def merge_by_id[T: HasId](left: list[T] | None, right: list[T] | None) -> list[T]:
+    """Update items that share an id (the new version wins, keeping its position); append new ones."""
+    merged = {item.id: item for item in left or []}
+    for item in right or []:
+        merged[item.id] = item
+    return list(merged.values())
+
+
+def append_unique(left: list[str] | None, right: list[str] | None) -> list[str]:
+    """Append strings not already present, so a retried node cannot duplicate a gap."""
+    merged = list(left or [])
+    for item in right or []:
+        if item not in merged:
+            merged.append(item)
+    return merged
+
+
+# --------------------------------------------------------------------------- state
+
+
+class InvestigationState(TypedDict):
+    # identity (tenant_id is deliberately NOT here: it is in InvestigationContext)
+    investigation_id: str
+    incident_id: str
+    question: str | None
+    scope: InvestigationScope
+    
+    # deterministic context, filled by load_context
+    incident: IncidentContext | None
+    stack_frames: list[StackFrame]  # parsed, not LLM-generated
+    repo: RepoContext | None
+
+    triage: Triage | None
+
+    # evidence and reasoning: written by parallel nodes, so these have reducers
+    evidence: Annotated[list[Evidence], add_evidence]
+    hypotheses: Annotated[list[Hypothesis], merge_by_id]
+    verify_round: int
+    follow_ups: list[str]  # log searches verify wants run next; empty: no loop
+
+    root_cause: RootCause | None
+    recommendation: Recommendation | None
+    confidence_band: str | None  # high | medium | low, from the deterministic rule
+    review: ReviewDecision | None
+    review_round: int  # how many times the engineer asked for a refinement
+    proposed_changes: list[CodeChange]
+    validation_errors: list[str]
+    change_attempts: int
+    diff: str | None
+    diff_files: list[FileDiff]  # per-file summary of the diff (path, operation, added, removed lines)
+    read_paths: list[str]  # files the change proposer was shown: what validation checks the changes against
+
+    # V2: from an approved diff to a draft pull request
+    pr_offer: dict[str, Any] | None  # what the engineer is asked to approve (set by offer_pr)
+    pr_decision: PrDecision | None
+    branch: BranchRef | None
+    commit_sha: str | None
+    ci_run: CiRun | None
+    # repair after the repository's checks failed (9.5): the failing output, the change that is committed meanwhile
+    repair_attempts: int
+    repairing: bool
+    ci_failure: str | None
+    previous_commit: str | None
+    committed_diff: str | None
+    committed_files: list[FileDiff]
+    committed_changes: list[CodeChange]
+    pull_request: PullRequestRef | None
+    
+    # budget and bookkeeping
+    tool_calls: Annotated[int, operator.add]  # every tool call adds 1: the budget
+    gaps: Annotated[list[str], append_unique]  # what we could not find out (shown to the user)
+    status: InvestigationStatus
+    error: str | None
+
+
+def new_state(
+    *,
+    investigation_id: str,
+    incident_id: str,
+    scope: InvestigationScope,
+    question: str | None = None,
+) -> InvestigationState:
+    """The initial state: every key present, so nodes and reducers never see a missing one."""
+    return InvestigationState(
+        investigation_id=investigation_id,
+        incident_id=incident_id,
+        question=redact_text(question) if question else None,  # copied into prompts and queries: never raw
+        scope=scope,
+        incident=None,
+        stack_frames=[],
+        repo=None,
+        triage=None,
+        evidence=[],
+        hypotheses=[],
+        verify_round=0,
+        follow_ups=[],
+        root_cause=None,
+        recommendation=None,
+        confidence_band=None,
+        review=None,
+        review_round=0,
+        proposed_changes=[],
+        validation_errors=[],
+        change_attempts=0,
+        diff=None,
+        diff_files=[],
+        read_paths=[],
+        pr_offer=None,
+        pr_decision=None,
+        branch=None,
+        commit_sha=None,
+        ci_run=None,
+        repair_attempts=0,
+        repairing=False,
+        ci_failure=None,
+        previous_commit=None,
+        committed_diff=None,
+        committed_files=[],
+        committed_changes=[],
+        pull_request=None,
+        tool_calls=0,
+        gaps=[],
+        status=InvestigationStatus.RUNNING,
+        error=None,
+    )
+
+
+# ------------------------------------------------------------------------- context
+
+
+class ChatModels(Protocol):
+    """Hands out the chat model for a purpose. ``PurposeChatModels`` in production, a fake in tests."""
+
+    def for_purpose(self, purpose: Purpose) -> BaseChatModel: ...
+    
+    def structured_method(self, purpose: Purpose) -> StructuredOutputMethod: ...
+
+
+@dataclass(frozen=True)
+class InvestigationContext:
+    """Read-only, per-run. Nodes get it as ``runtime.context``."""
+
+    tenant_id: UUID  # from the verified JWT, never from the request body or the model
+    logs: LogBackend  # LogStore in production, a fixture in evals
+    incidents: IncidentApi
+    history: RelatedIncidentSource
+    models: ChatModels | None = None  # needed by every LLM node; None only in tests of non-LLM nodes
+    code: CodeAccess | None = None  # the tenant's repositories; None: no code investigation on this server
+    runbooks: RunbookSource | None = None  # the tenant's runbooks; None: no runbook search on this server
+    memory: Memory | None = None  # what past investigations concluded; None: no long-term memory on this server
+    require_review: bool = False  # pause after the root cause for an engineer's decision (the review gate)
+    ci_wait: CiWait = field(default_factory=CiWait)  # how long to wait for the repository's checks
+    pr_limits: PrLimits = field(default_factory=PrLimits)  # what a pull request may be (size, files, rate)
+    sandbox: Sandbox | None = None  # runs a repository's tests in isolation; None: this server has no sandbox
+    sandbox_tests: bool = False  # this workspace opted in (and the server has a sandbox)
+    ci_repair_attempts: int = 1  # how many times log0 may fix its change after the checks fail (0: never)
+    pr_only_on_green: bool = False  # do not open a pull request for a commit whose checks failed
+    publisher: Publisher | None = None  # opens draft pull requests; None: this server never writes to a repository
+    budget: Budget = field(default_factory=Budget)
+    # When this run started (monotonic seconds). A run resumed after a restart gets a new context,
+    # so its clock starts again: the limit is per process run, not across restarts.
+    started_at: float = field(default_factory=time.monotonic)
+
+
+# ------------------------------------------------------------------------ checkpoints
+# A checkpoint stores the state as bytes; reading it back rebuilds our Pydantic models.
+# LangGraph warns that it will refuse to rebuild types that were not registered, which
+# would break resuming an investigation after a restart. Register every type that can
+# appear in the state; the PostgresSaver is built with this serializer.
+
+CHECKPOINT_TYPES: tuple[type, ...] = (
+    InvestigationScope,
+    InvestigationStatus,
+    IncidentContext,
+    StackFrame,
+    RepoContext,
+    Triage,
+    Evidence,
+    Hypothesis,
+    Recommendation,
+    RootCause,
+    CodeLocation,
+    ReviewDecision,
+    CodeChange,
+    FileDiff,
+    PrDecision,
+    BranchRef,
+    PullRequestRef,
+    CiRun,
+    CheckResult,
+)
+
+
+def checkpoint_serde() -> JsonPlusSerializer:
+    return JsonPlusSerializer(
+        allowed_msgpack_modules=[(t.__module__, t.__name__) for t in CHECKPOINT_TYPES]
+    )

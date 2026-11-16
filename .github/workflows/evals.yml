@@ -1,0 +1,175 @@
+name: AI evaluation
+
+# Two jobs, two purposes:
+#
+#   harness  every pull request that touches the AI service: runs the evaluation harness's own tests and a
+#            self-test with the scripted model. Free, offline, deterministic. It proves the harness and the
+#            fixtures work; it says nothing about the quality of the real models.
+#   real     manual (workflow_dispatch) and nightly: runs the golden set through real language models, compares
+#            with the committed baseline, and fails on a regression. It sends the (synthetic) fixture logs and
+#            the demo repository's code to the model provider, so it never runs for pull requests.
+#
+# Secrets (repository settings): DEMO_SHOP_DEPLOY_KEY (a read-only deploy key for ashmitjsg/log0-demo-shop, which is private),
+# and the provider keys for `real` (GROQ_API_KEY, optionally OPENAI_API_KEY, ANTHROPIC_API_KEY, HF_TOKEN).
+# Without DEMO_SHOP_DEPLOY_KEY the harness job still runs everything that does not need the demo repository.
+
+on:
+  pull_request:
+    paths:
+      - "services/ai-service/**"
+      - ".github/workflows/evals.yml"
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Compare these models (provider:model, comma-separated). Empty: the models configured in the workflow."
+        required: false
+        default: ""
+      judge:
+        description: "Grade root causes with a language model instead of keywords"
+        type: boolean
+        default: false
+      run_tests:
+        description: "Apply each diff and run the service's own tests (needs Node, Go and Rust; slower)"
+        type: boolean
+        default: false
+      update_baseline:
+        description: "Upload this run's summary as a candidate baseline artifact (commit it yourself after reviewing)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "30 21 * * *" # nightly, 03:00 India time
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: services/ai-service
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    env:
+      SKIP_INTEGRATION_TESTS: "1"
+      HAS_DEMO_TOKEN: ${{ secrets.DEMO_SHOP_DEPLOY_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the demo shop (all isolated branches and tags)
+        if: env.HAS_DEMO_TOKEN == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ashmitjsg/log0-demo-shop
+          ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
+          path: demo-shop
+          fetch-depth: 0
+      - name: Make the isolated branches and tags local
+        if: env.HAS_DEMO_TOKEN == 'true'
+        working-directory: demo-shop
+        run: git fetch origin '+refs/heads/isolated/*:refs/heads/isolated/*' '+refs/tags/*:refs/tags/*'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep git
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/ai-service/uv.lock
+      - run: uv sync --frozen
+      - name: Harness tests
+        env:
+          DEMO_SHOP_REPO: ${{ github.workspace }}/demo-shop
+        run: uv run pytest tests/test_evals_evaluators.py tests/test_evals_report.py tests/test_evals_harness.py tests/test_redaction.py tests/test_stacktrace_languages.py -q -p no:cacheprovider
+      - name: Self-test (a perfect scripted run must score 1.0, a wrong one must score 0)
+        if: env.HAS_DEMO_TOKEN == 'true'
+        run: |
+          uv run python - <<'PY'
+          import glob, json, os, subprocess, sys
+          repo = os.environ["GITHUB_WORKSPACE"] + "/demo-shop"
+          out = os.environ["RUNNER_TEMP"] + "/reports"
+
+          def run(mode):
+              subprocess.run([sys.executable, "-m", "evals.run", "--mode", mode, "--repo", repo, "--output", out, "--no-baseline"], check=True)
+              return json.load(open(sorted(glob.glob(f"{out}/*-{mode}.json"))[-1]))["metrics"]
+
+          oracle = run("oracle")
+          imperfect = {k: v for k, v in oracle.items() if v is not None and v < 1.0}
+          if imperfect:
+              sys.exit(f"a perfect scripted investigation did not score 1.0: {imperfect}")
+          wrong = run("wrong")
+          credited = [m for m in ("root_cause", "localization_hit@1", "fix_pattern") if (wrong.get(m) or 0) > 0.0]
+          if credited:
+              sys.exit(f"the evaluators gave a wrong investigation credit for: {credited}")
+          print("oracle scores 1.0 everywhere and a wrong investigation scores 0 on cause, location and fix: the evaluators discriminate")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always() && env.HAS_DEMO_TOKEN == 'true'
+        with:
+          name: eval-self-test
+          path: ${{ runner.temp }}/reports
+
+  real:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      JWT_SECRET: ci-only-secret-for-the-evaluation-run-0123456789
+      INTERNAL_SERVICE_TOKEN: ci-only-internal-token-0123456789
+      HAS_KEYS: ${{ secrets.GROQ_API_KEY != '' && secrets.DEMO_SHOP_DEPLOY_KEY != '' }}
+    steps:
+      - name: Nothing to do without the secrets
+        if: env.HAS_KEYS != 'true'
+        run: echo "::notice::GROQ_API_KEY and DEMO_SHOP_DEPLOY_KEY are not set, so the real evaluation did not run."
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYS == 'true'
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYS == 'true'
+        with:
+          repository: ashmitjsg/log0-demo-shop
+          ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
+          path: demo-shop
+          fetch-depth: 0
+      - if: env.HAS_KEYS == 'true'
+        working-directory: demo-shop
+        run: git fetch origin '+refs/heads/isolated/*:refs/heads/isolated/*' '+refs/tags/*:refs/tags/*'
+      - if: env.HAS_KEYS == 'true'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep git
+      - if: env.HAS_KEYS == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/ai-service/uv.lock
+      - if: env.HAS_KEYS == 'true' && inputs.run_tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - if: env.HAS_KEYS == 'true' && inputs.run_tests
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - if: env.HAS_KEYS == 'true' && inputs.run_tests
+        uses: dtolnay/rust-toolchain@stable
+      - if: env.HAS_KEYS == 'true'
+        run: uv sync --frozen
+      - name: Run the golden set on real models
+        if: env.HAS_KEYS == 'true'
+        run: |
+          ARGS="--mode real --yes --repo $GITHUB_WORKSPACE/demo-shop --output $RUNNER_TEMP/reports"
+          if [ "${{ inputs.judge }}" = "true" ]; then ARGS="$ARGS --judge"; fi
+          if [ "${{ inputs.run_tests }}" = "true" ]; then ARGS="$ARGS --run-tests"; fi
+          if [ -n "${{ inputs.models }}" ]; then ARGS="$ARGS --compare ${{ inputs.models }}"; fi
+          uv run python -m evals.run $ARGS
+      - name: Candidate baseline
+        if: env.HAS_KEYS == 'true' && inputs.update_baseline && inputs.models == ''
+        run: |
+          uv run python -m evals.run --mode real --yes --repo "$GITHUB_WORKSPACE/demo-shop" --output "$RUNNER_TEMP/reports" --no-baseline --update-baseline
+          cp evals/baseline.json "$RUNNER_TEMP/reports/candidate-baseline.json"
+      - uses: actions/upload-artifact@v4
+        if: always() && env.HAS_KEYS == 'true'
+        with:
+          name: eval-reports
+          path: ${{ runner.temp }}/reports
