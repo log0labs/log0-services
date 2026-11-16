@@ -219,3 +219,60 @@ def test_mappings_are_per_tenant_and_disconnecting_a_repository_removes_its_mapp
 
     env.client.delete(f"{REPOS}/{mine}", headers=env.headers())
     assert env.client.get(SERVICES, headers=env.headers()).json() == []
+
+
+# ----------------------------------------------------------------------- replacing a token
+
+NEW_TOKEN = "github_pat_replacement_0123456789"
+
+
+def _replace(env: Env, repository_id: str, *, tenant=TENANT_A, token: str = NEW_TOKEN, role: str = "ADMIN"):
+    return env.client.put(f"{REPOS}/{repository_id}/token", json={"token": token}, headers=env.headers(tenant=tenant, role=role))
+
+
+def test_a_token_can_be_replaced_and_everything_else_about_the_repository_stays(env: Env) -> None:
+    repository_id = _connect(env).json()["id"]
+    env.github.calls.clear()
+
+    response = _replace(env, repository_id)
+
+    assert response.status_code == 200 and response.json()["id"] == repository_id
+    assert NEW_TOKEN not in response.text and "ciphertext" not in response.text.lower()
+    assert env.github.calls == [("Acme", "Shop", NEW_TOKEN)]  # the new token was checked against the repository as stored
+    (row,) = _stored_rows()
+    assert env.box is not None
+    context = secret_context(TENANT_A, "repository_connection", "Acme/Shop")
+    assert env.box.decrypt(row["token_ciphertext"], key_id="k1", context=context).get_secret_value() == NEW_TOKEN
+
+
+def test_a_token_that_github_refuses_changes_nothing(env: Env) -> None:
+    repository_id = _connect(env).json()["id"]
+    (before,) = _stored_rows()
+    env.github.error = GitHubAccessError("bad_token")
+
+    response = _replace(env, repository_id)
+
+    assert response.status_code == 422 and "rejected the token" in response.json()["detail"]
+    (after,) = _stored_rows()
+    assert after["token_ciphertext"] == before["token_ciphertext"]
+
+
+def test_only_an_admin_can_replace_a_token_and_another_workspace_cannot(env: Env) -> None:
+    repository_id = _connect(env).json()["id"]
+    (before,) = _stored_rows()
+    env.github.calls.clear()
+
+    assert _replace(env, repository_id, role="ENGINEER").status_code == 403
+    assert _replace(env, repository_id, role="VIEWER").status_code == 403
+    assert _replace(env, repository_id, tenant=TENANT_B).status_code == 404
+    assert _replace(env, str(uuid4())).status_code == 404
+    assert env.github.calls == []
+    (after,) = _stored_rows()
+    assert after["token_ciphertext"] == before["token_ciphertext"]
+
+
+def test_a_replacement_needs_a_plausible_token_and_nothing_else(env: Env) -> None:
+    repository_id = _connect(env).json()["id"]
+
+    assert _replace(env, repository_id, token="short").status_code == 422
+    assert env.client.put(f"{REPOS}/{repository_id}/token", json={"token": NEW_TOKEN, "owner": "evil"}, headers=env.headers()).status_code == 422
