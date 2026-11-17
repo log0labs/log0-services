@@ -351,6 +351,7 @@ async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigator
         return {"gaps": [*gaps, "No fix was proposed (the model was unavailable or its answer was unusable)"]}
 
     changes, notes, more = ground_changes(answer, set(state["seen_paths"]))
+    logger.info("change proposer: %d proposed, %d kept after grounding; files read: %s; notes: %s", len(answer.changes), len(changes), sorted(state["seen_paths"])[:12], notes[:3])
     return {"changes": changes, "notes": notes, "gaps": [*gaps, *more], "finished": True}
 
 
