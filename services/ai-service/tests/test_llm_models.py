@@ -99,3 +99,15 @@ class _FixedResolver:
         from pydantic import SecretStr
 
         return SecretStr("k")
+
+
+def test_the_strong_model_gets_room_to_think(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.model_spec import ModelSpec
+
+    seen: list[int] = []
+    monkeypatch.setattr(models_module, "build_chat_model", lambda **kw: seen.append(kw["generation"].max_tokens) or object())
+    configured = get_settings().model_copy(update={"llm_root_cause": ModelSpec(provider="google_genai", model="strong-1")})
+
+    PurposeChatModels(configured, resolver=_FixedResolver(configured, "google_genai")).for_purpose(Purpose.INVESTIGATION, strong=True)
+
+    assert seen == [models_module.STRONG_MODEL_MAX_TOKENS] and models_module.STRONG_MODEL_MAX_TOKENS > configured.llm_default_max_tokens

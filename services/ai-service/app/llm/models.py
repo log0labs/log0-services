@@ -5,6 +5,8 @@ Graph nodes should not know about providers, API keys or settings. They ask
 Tests pass a fake with the same method, so no node test ever touches the network.
 """
 
+from dataclasses import replace
+
 from langchain_core.language_models import BaseChatModel
 
 from app.config import Settings
@@ -12,6 +14,10 @@ from app.llm.factory import GenerationConfig, build_chat_model, chat_model_for_p
 from app.llm.generation import generation_for_purpose
 from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.llm.resolver import LlmResolver, PlatformLlmResolver
+
+# A reasoning model spends part of its output budget on thinking; with too small a budget it answers with nothing at all
+# (a structured request then comes back empty). The stronger model gets room for both.
+STRONG_MODEL_MAX_TOKENS = 32768
 
 
 class PurposeChatModels:
@@ -59,11 +65,12 @@ class PurposeChatModels:
         if self._strong is None:
             spec = self._settings.llm_root_cause
             assert spec is not None
+            base = generation_for_purpose(self._settings, Purpose.INVESTIGATION)
             self._strong = build_chat_model(
                 provider=spec.provider,
                 model=spec.model,
                 api_key=self._resolver.api_key_for(spec.provider).get_secret_value(),
-                generation=generation_for_purpose(self._settings, Purpose.INVESTIGATION),
+                generation=replace(base, max_tokens=max(base.max_tokens, STRONG_MODEL_MAX_TOKENS)),
             )
         return self._strong
 
