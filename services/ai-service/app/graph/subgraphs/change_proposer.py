@@ -105,6 +105,9 @@ Work like this:
 - Read source files only: skip build files, lock files, Dockerfiles, CI and other configuration unless the fix is in one of them.
 - When the fix needs something another service does not have yet (an endpoint, a client call), read that service's handler, its
   storage and its tests, so the change you write matches how it works.
+- A change that adds a method to an interface, adds a call, or changes what a function returns must also update the tests, fakes
+  and stubs that implement or exercise it (search for them), and a new endpoint or behaviour gets a test of its own.
+- Make a repeated request safe when the change moves money or stock: key it on the order, not on a value a retry could change.
 - Stop as soon as you can write the change: you have a limited number of tool calls. When you are done
   looking, reply in plain text with a short summary and call no more tools.
 
