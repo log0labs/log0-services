@@ -297,3 +297,41 @@ async def test_render_notes_keeps_the_code_but_is_bounded() -> None:
     assert len(text) <= cp.NOTES_TOTAL_CHARS and "Call: read_file(path='a.py')" in text
     one = render_notes([messages[0], messages[2]])
     assert len(one) <= len("Result:\n") + NOTES_RESULT_CHARS  # a single result keeps up to 6,000 characters, not 1,500
+
+
+class _TwoAnswers(ScriptedChat):
+    """Answers the first structured request with one thing and every later one with another."""
+
+    later: Any = None
+
+    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
+        from langchain_core.runnables import RunnableLambda
+
+        def respond(prompt: Any) -> Any:
+            self.structured_calls.append(prompt)
+            return self.answer if len(self.structured_calls) == 1 else self.later
+
+        return RunnableLambda(respond)
+
+
+async def test_a_proposal_with_no_change_and_a_stated_blocker_sends_the_model_back_to_read_once(repo: Repo) -> None:
+    blocked = ChangeProposalAnswer(changes=[], notes=["I need to see the definition of Line."])
+    chat = _TwoAnswers(script=[], answer=blocked, later=good_answer(), calls=[], structured_calls=[], bound=[])
+    ctx, _ = setup(repo, [], None)
+    ctx = CodeInvestigatorContext(tools=ctx.tools, models=ScriptedModels(chat), limits=ctx.limits)
+
+    result = await run_proposer(ctx)
+
+    assert len(chat.structured_calls) == 2 and [c.file_path for c in result.changes] == [PAYMENT]
+    assert "You wrote no change" in str(chat.calls[-1][-1].content) and "definition of Line" in str(chat.calls[-1][-1].content)
+
+
+async def test_it_goes_back_to_read_only_once_even_when_the_second_answer_is_empty_too(repo: Repo) -> None:
+    blocked = ChangeProposalAnswer(changes=[], notes=["Still unsure."])
+    chat = _TwoAnswers(script=[], answer=blocked, later=blocked, calls=[], structured_calls=[], bound=[])
+    ctx, _ = setup(repo, [], None)
+    ctx = CodeInvestigatorContext(tools=ctx.tools, models=ScriptedModels(chat), limits=ctx.limits)
+
+    result = await run_proposer(ctx)
+
+    assert len(chat.structured_calls) == 2 and result.changes == [] and result.finished
