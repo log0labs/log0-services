@@ -36,7 +36,7 @@ from app.schemas.domain import (
 
 logger = logging.getLogger(__name__)
 
-ROOT_CAUSE_TIMEOUT_SECONDS = 60
+ROOT_CAUSE_TIMEOUT_SECONDS = 90
 MAX_STATEMENT_CHARS = 600
 MAX_ITEMS = 5  # per list: factors, questions, risks, tests, verification steps
 MAX_ITEM_CHARS = 300
@@ -99,6 +99,31 @@ def confidence_band(cause: RootCause, hypotheses: list[Hypothesis], evidence: li
     return "medium"
 
 
+INCOMPLETE_MARKERS = ("stopped early", "limit")  # a gap that says a budget or step limit cut the work short
+
+
+def cap_by_gaps(band: Band | None, gaps: list[str]) -> tuple[Band | None, str | None]:
+    """An investigation that was cut short must not claim high confidence, however well its answer reads.
+
+    Returns the band and, when it was lowered, the sentence that says why (it becomes a gap the engineer sees).
+    """
+    if band != "high":
+        return band, None
+    if any(marker in gap.lower() for gap in gaps for marker in INCOMPLETE_MARKERS):
+        return "medium", "Confidence was capped at medium because part of the investigation stopped at a limit before it finished"
+    return band, None
+
+
+def cap_without_code(band: Band | None, cause: RootCause | None, evidence: list[Evidence], code_read: bool) -> tuple[Band | None, str | None]:
+    """When the repository was read, a cause that names no code location, or cites no code, is a suspicion, not a high-confidence finding."""
+    if band != "high" or cause is None or not code_read:
+        return band, None
+    cited = set(cause.evidence_ids)
+    if cause.affected_locations and any(e.kind == "code" and e.id in cited for e in evidence):
+        return band, None
+    return "medium", "Confidence was capped at medium because the cause names no code location backed by the code, although the repository was read"
+
+
 def build_analysis(
     raw: RootCauseAnalysis, hypotheses: list[Hypothesis], evidence: list[Evidence]
 ) -> tuple[RootCause | None, Recommendation | None, Band | None, list[str]]:
@@ -149,19 +174,29 @@ async def root_cause(state: InvestigationState, runtime: Runtime[InvestigationCo
         raise RuntimeError("InvestigationContext.models is not set: root_cause needs a chat model")
 
     prompt, _ = build_synthesis_input(state, hypotheses=state["hypotheses"])
-    try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
-            RootCauseAnalysis, method=ctx.models.structured_method(Purpose.INVESTIGATION)
-        )
-        answer = await invoke_with_tool_retry(
-            lambda: model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)]), timeout=ROOT_CAUSE_TIMEOUT_SECONDS, what="root cause"
-        )
-        result = RootCauseAnalysis.model_validate(answer)
-    except Exception:  # provider errors vary too much to list; CancelledError is not an Exception
-        logger.warning("root_cause failed, continuing without one", exc_info=True)
+    result: RootCauseAnalysis | None = None
+    for strong in (True, False):  # the stronger model first; the ordinary one when it is overloaded or answers nonsense
+        try:
+            model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=strong).with_structured_output(
+                RootCauseAnalysis, method=ctx.models.structured_method(Purpose.INVESTIGATION)
+            )
+            answer = await invoke_with_tool_retry(
+                lambda model=model: model.ainvoke([("system", SYSTEM_PROMPT), ("human", prompt)]), timeout=ROOT_CAUSE_TIMEOUT_SECONDS, what="root cause"
+            )
+            result = RootCauseAnalysis.model_validate(answer)
+            break
+        except Exception:  # provider errors vary too much to list; CancelledError is not an Exception
+            logger.warning("root_cause failed (strong=%s)", strong, exc_info=True)
+    if result is None:
         return {"gaps": ["The root cause could not be generated (the model was unavailable or its answer was unusable)"]}
 
     cause, recommendation, band, gaps = build_analysis(result, state["hypotheses"], state["evidence"])
+    band, capped = cap_by_gaps(band, state["gaps"])
+    if capped:
+        gaps.append(capped)
+    band, uncoded = cap_without_code(band, cause, state["evidence"], state["repo"] is not None)
+    if uncoded:
+        gaps.append(uncoded)
     if cause is not None:
         # calibration data only: how sure the model said it was versus the band the rules gave
         logger.info("root cause: band=%s model_confidence=%.2f", band, cause.model_confidence)

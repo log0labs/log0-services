@@ -235,7 +235,7 @@ class FakeModels:
         self.investigation = investigation or FakeModel(synthesis_answer())
         self.purposes: list[Purpose] = []
 
-    def for_purpose(self, purpose: Purpose) -> FakeModel:
+    def for_purpose(self, purpose: Purpose, *, strong: bool = False) -> FakeModel:
         self.purposes.append(purpose)
         return self.investigation if purpose == Purpose.INVESTIGATION else self.model
 

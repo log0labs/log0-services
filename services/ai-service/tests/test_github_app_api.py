@@ -341,7 +341,7 @@ def test_the_rules_start_as_the_servers_and_show_the_ceilings(env: tuple[Env, Fa
     body = e.client.get(POLICY, headers=e.headers()).json()
 
     assert body["onlyOnGreen"] is False and body["maxFiles"] is None
-    assert body["server"] == {"maxFiles": 10, "maxChangedLines": 400, "maxPerRepositoryPerHour": 3, "maxPerTenantPerHour": 10}
+    assert body["server"] == {"maxFiles": 25, "maxChangedLines": 1000, "maxPerRepositoryPerHour": 3, "maxPerTenantPerHour": 10}
 
 
 def test_an_admin_can_make_the_rules_stricter_and_reset_them(env: tuple[Env, FakeAppClient]) -> None:
@@ -355,7 +355,7 @@ def test_an_admin_can_make_the_rules_stricter_and_reset_them(env: tuple[Env, Fak
     assert e.client.get(POLICY, headers=e.headers()).json()["maxFiles"] is None
 
 
-@pytest.mark.parametrize("body", [{"maxFiles": 11}, {"maxChangedLines": 401}, {"maxPerRepositoryPerHour": 4}, {"maxPerTenantPerHour": 11}])
+@pytest.mark.parametrize("body", [{"maxFiles": 26}, {"maxChangedLines": 1001}, {"maxPerRepositoryPerHour": 4}, {"maxPerTenantPerHour": 11}])
 def test_rules_looser_than_the_server_allows_are_refused(env: tuple[Env, FakeAppClient], body: dict) -> None:
     e, _ = env
 

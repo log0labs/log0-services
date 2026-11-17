@@ -15,31 +15,40 @@ was not examined, and the rest of the investigation continues without code evide
 """
 
 import logging
+import re
 import time
+from dataclasses import replace
+from datetime import timedelta
 from typing import Any
 
 from langgraph.runtime import Runtime
 
 from app.graph.code_access import CodeAccessError, CodeCheckout
+from app.graph.nodes.load_context import investigation_window
 from app.graph.state import InvestigationContext, InvestigationState
 from app.graph.subgraphs.code_investigator import (
+    CodeInvestigationResult,
     CodeInvestigatorContext,
     CodeLimits,
     investigate_code,
 )
 from app.graph.subgraphs.code_tools import build_toolset
+from app.integrations.clickhouse import ClickHouseError
 from app.schemas.code_findings import CodeFinding
 from app.schemas.domain import Evidence, make_evidence_id
 from app.tools.code import CodeToolError
 from app.tools.incidents import IncidentContext
+from app.tools.logs import get_cooccurring_errors
 
 logger = logging.getLogger(__name__)
 
 _OPEN_CALLS = 1  # looking up the repository and making sure the checkout is current
-MAX_CODE_CALLS = 16  # the most the code investigation may use (seeding included)
+MAX_CODE_CALLS = 32  # the most the code investigation may use (seeding included)
 RESERVED_CALLS = 8  # kept for the other branches and for verify's follow-up searches
+FOLLOWUP_CALLS = 16  # the most the second pass, which answers what the first left open, may use
+FOLLOWUP_SECONDS = 120.0
 MIN_CODE_CALLS = 4  # below this the investigation cannot do anything useful
-MAX_CODE_SECONDS = 90.0
+MAX_CODE_SECONDS = 180.0
 RESERVED_SECONDS = 120.0  # kept for synthesize, verify and root_cause
 MIN_CODE_SECONDS = 20.0
 EXCERPT_LINES = 40
@@ -48,6 +57,16 @@ MAX_SUMMARY = 300
 MAX_BRIEF_MESSAGES = 3
 MAX_BRIEF_MESSAGE_CHARS = 200
 MAX_UNRESOLVED_GAPS = 3
+MAX_LOG_SITES = 3  # other services' new log messages that are looked up in the code
+MIN_ANCHOR_CHARS = 12  # shorter fixed text matches too much code to point anywhere
+ONSET_SLACK = timedelta(minutes=5)
+MAX_COMMIT_FILES = 4  # files of the suspect commit that become code evidence
+MAX_COMMIT_RANGES = 8  # pieces of those files that are read
+PIECE_LINES = 60  # the most lines of one piece
+MERGE_GAP = 10  # hunks closer than this many lines are one piece
+_DIFF_FILE = re.compile(r"^diff --git a/\S+ b/(?P<path>\S+)$")
+_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
+_PLACEHOLDER = re.compile(r"<[a-z_]+>")  # the fingerprinter writes <uuid>, <number>, ... for the variable parts of a message
 
 
 def plan_limits(state: InvestigationState, ctx: InvestigationContext) -> tuple[CodeLimits | None, str | None]:
@@ -69,7 +88,162 @@ def _stamp(value: Any) -> str:
     return value.strftime("%Y-%m-%dT%H:%MZ")
 
 
-def build_brief(incident: IncidentContext, state: InvestigationState) -> str:
+def _is_test_path(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1].lower()
+    return "/test/" in f"/{path.lower()}" or "/tests/" in f"/{path.lower()}" or ".test." in name or "_test." in name or name.startswith("test_")
+
+
+def changed_ranges(patch: str, limit: int = MAX_COMMIT_FILES) -> list[tuple[str, int, int]]:
+    """The lines a commit's patch changed, as ``(path, first line, last line)`` of the new file, one range per changed place.
+
+    Hunks that are close together are merged; far apart ones stay separate, so a change at the top and one at the bottom of
+    a long file do not turn into one range whose middle is never read. A range longer than ``PIECE_LINES`` is cut into pieces,
+    and at most ``MAX_COMMIT_RANGES`` come back. Deleted files, test files and anything past ``limit`` files are left out:
+    the code a fix must change is the code the suspect commit changed, not the tests that cover it.
+    """
+    ranges: dict[str, list[tuple[int, int]]] = {}
+    path: str | None = None
+    for line in patch.splitlines():
+        header = _DIFF_FILE.match(line)
+        if header:
+            path = header["path"]
+            continue
+        hunk = _HUNK.match(line)
+        if hunk is None or path is None or _is_test_path(path):
+            continue
+        start = int(hunk["start"])
+        if start == 0:  # the file no longer exists
+            continue
+        end = start + max(int(hunk["count"] or 1), 1) - 1
+        places = ranges.setdefault(path, [])
+        if places and start - places[-1][1] <= MERGE_GAP:
+            places[-1] = (places[-1][0], max(places[-1][1], end))
+        else:
+            places.append((start, end))
+    pieces = [
+        (name, first, min(first + PIECE_LINES - 1, last))
+        for name, places in list(ranges.items())[:limit]
+        for begin, last in places
+        for first in range(begin, last + 1, PIECE_LINES)
+    ]
+    return pieces[:MAX_COMMIT_RANGES]
+
+
+async def commit_code_evidence(commit: str, checkout: CodeCheckout) -> tuple[list[Evidence], int]:
+    """The code the suspect commit changed, as citable evidence with the lines read from the repository: ``(evidence, tool calls)``.
+
+    A model that finds the right commit but cites no file leaves the fix proposal with nothing to work on. The commit names
+    the files, so they are added here, whatever the model wrote.
+    """
+    sha8 = checkout.repo.sha[:8]
+    try:
+        detail = await checkout.git.show_commit(commit)
+    except CodeToolError:
+        return [], 1
+    first_line = (detail.message.strip().splitlines() or [""])[0][:100]
+    found: list[Evidence] = []
+    calls = 1
+    for path, first, last in changed_ranges(detail.patch):
+        calls += 1
+        try:
+            piece = await checkout.code.read_file(path, first, last)
+        except CodeToolError:
+            continue
+        ref = f"{path}:{first}-{last}@{sha8}"
+        summary = f"{path}:{first}-{last}: changed by commit {detail.short_sha} ({first_line})"[:MAX_SUMMARY]
+        found.append(Evidence(id=make_evidence_id("code", ref), kind="code", source_ref=ref, summary=summary, content=piece.text[:MAX_CONTENT]))
+    return found, calls
+
+
+def literal_anchor(template: str) -> str | None:
+    """The longest run of fixed text in a log message template, or ``None`` when there is too little to search for.
+
+    ``hold expired for order <uuid>: stock returned`` gives ``stock returned`` (or the longer run), which the code that writes
+    that log line contains word for word.
+    """
+    runs = [part.strip(" :,.-\"'()[]") for part in _PLACEHOLDER.split(template)]
+    best = max(runs, key=len, default="")
+    return best if len(best) >= MIN_ANCHOR_CHARS else None
+
+
+async def other_service_log_sites(incident: IncidentContext, ctx: InvestigationContext, checkout: CodeCheckout) -> tuple[list[str], int]:
+    """Where in the code the other services' failures that began with the incident are logged: ``(lines for the brief, tool calls)``.
+
+    A failure often starts in one service and shows in another, and the log line of the first names no file. The text of the
+    message is in the code that wrote it, so searching for it points the investigator at that service's code without asking
+    a model to guess. Every step that cannot be done (no logs, nothing found) just yields fewer lines.
+    """
+    start, end = investigation_window(incident)
+    try:
+        neighbours = await get_cooccurring_errors(
+            ctx.logs,
+            tenant_id=ctx.tenant_id,
+            start=start,
+            end=end,
+            exclude_fingerprint=incident.fingerprint,
+            limit=10,
+            onset=max(start, incident.first_seen_at - ONSET_SLACK),
+        )
+    except (ClickHouseError, ValueError):
+        return [], 1
+    began = [e for e in neighbours if e.service_name != incident.service_name and e.first_seen >= incident.first_seen_at - ONSET_SLACK][:MAX_LOG_SITES]
+    wide = checkout.widened()
+    lines: list[str] = []
+    calls = 1
+    for error in began:
+        anchor = literal_anchor(error.message_template)
+        if anchor is None:
+            continue
+        calls += 1
+        try:
+            found = await wide.code.search_code(anchor, fixed_strings=True, limit=2, context=0)
+        except CodeToolError:
+            continue
+        if found.hits:
+            hit = found.hits[0]
+            lines.append(f'{error.service_name} logged "{error.message_template[:100]}" ({error.count}x) from {hit.path}:{hit.first_line}')
+    return lines, calls
+
+
+async def answer_open_questions(
+    first: CodeInvestigationResult,
+    limits: CodeLimits,
+    investigator: CodeInvestigatorContext,
+    incident: IncidentContext,
+    state: InvestigationState,
+    checkout: CodeCheckout,
+    ctx: InvestigationContext,
+    log_sites: tuple[str, ...],
+) -> CodeInvestigationResult | None:
+    """A second, shorter pass that answers what the first one wrote down as unresolved, or ``None`` when nothing was left open
+    or too little budget remains. The result merges both passes: the findings of both, the questions of the second only.
+
+    A question a model leaves open is usually one it could settle by reading the function it calls. The pass is told exactly
+    which questions to answer, so it reads that code instead of stopping at the call site.
+    """
+    if not first.findings.unresolved:
+        return None
+    calls = min(FOLLOWUP_CALLS, limits.max_tool_calls - first.findings.tool_calls)
+    seconds = min(FOLLOWUP_SECONDS, ctx.budget.max_wall_seconds - (time.monotonic() - ctx.started_at) - RESERVED_SECONDS)
+    if calls < MIN_CODE_CALLS or seconds < MIN_CODE_SECONDS:
+        return None
+    questions = "\n".join(f"- {q}" for q in first.findings.unresolved)
+    brief = (
+        f"{build_brief(incident, state, checkout.siblings, log_sites)}\n\n"
+        "A first pass left these questions open. Answer each by reading the code that decides it: open the body of every "
+        "function the question concerns (in any service), not only the line that calls it:\n"
+        f"{questions}"
+    )
+    second = await investigate_code(replace(investigator, limits=replace(limits, max_tool_calls=calls, max_seconds=seconds)), brief=brief, frames=[])
+    known = {f.summary for f in first.findings.findings}
+    merged = [*first.findings.findings, *[f for f in second.findings.findings if f.summary not in known]]
+    return CodeInvestigationResult(
+        findings=second.findings.model_copy(update={"findings": merged, "tool_calls": first.findings.tool_calls + second.findings.tool_calls}),
+        gaps=[*first.gaps, *second.gaps],
+    )
+
+
+def build_brief(incident: IncidentContext, state: InvestigationState, siblings: tuple[str, ...] = (), log_sites: tuple[str, ...] = ()) -> str:
     """The incident in plain text for the investigator. Deliberately without the earlier AI summary:
     a previous model's guess would anchor the new analysis."""
     lines = [
@@ -81,6 +255,11 @@ def build_brief(incident: IncidentContext, state: InvestigationState) -> str:
     if messages:
         lines.append("Top error messages:")
         lines += [f"- {m}" for m in messages]
+    if siblings:
+        lines.append(f"The repository also holds other services: {', '.join(siblings)}. A failure here can start in one of them.")
+    if log_sites:
+        lines.append("Other services failed in the same minutes; the code that logs it:")
+        lines += [f"- {site}" for site in log_sites]
     triage = state["triage"]
     if triage is not None:
         lines.append(f"First assessment: {triage.summary}")
@@ -161,19 +340,32 @@ async def gather_code(state: InvestigationState, runtime: Runtime[InvestigationC
     if limits is None:
         return {"repo": checkout.repo, "gaps": [f"The code was not examined because the {reason}"], "tool_calls": _OPEN_CALLS}
 
-    investigator = CodeInvestigatorContext(tools=build_toolset(checkout.code, checkout.git), models=ctx.models, limits=limits)
+    log_sites, site_calls = await other_service_log_sites(incident, ctx, checkout) if checkout.siblings else ([], 0)
+    wide = checkout.widened()
+    investigator = CodeInvestigatorContext(tools=build_toolset(wide.code, wide.git), models=ctx.models, limits=limits)
     # No run config is passed: LangChain carries the parent's callbacks into a graph invoked inside a node,
     # so the subgraph's model calls and node timings land in the same usage recorder as the rest of the run
     # (a test checks it), and nothing else of the parent's config (checkpointing included) is inherited.
-    result = await investigate_code(investigator, brief=build_brief(incident, state), frames=state["stack_frames"])
+    result = await investigate_code(investigator, brief=build_brief(incident, state, checkout.siblings, tuple(log_sites)), frames=state["stack_frames"])
+
+    followup = await answer_open_questions(result, limits, investigator, incident, state, checkout, ctx, tuple(log_sites))
+    if followup is not None:
+        result = followup
 
     evidence: list[Evidence] = []
     extra_calls = 0
+    expanded = False
     for finding in result.findings.findings:
         item, calls = await finding_evidence(finding, checkout)
         extra_calls += calls
         if item is not None:
             evidence.append(item)
+        if item is not None and item.kind == "commit" and not expanded and finding.commits:
+            expanded = True  # one suspect commit is opened up into the code it changed
+            changed, more = await commit_code_evidence(finding.commits[0], checkout)
+            extra_calls += more
+            known = {e.id for e in evidence}
+            evidence += [e for e in changed if e.id not in known]
 
     gaps = list(result.gaps)
     gaps += [f"Code investigation left open: {q}" for q in result.findings.unresolved[:MAX_UNRESOLVED_GAPS]]
@@ -183,5 +375,5 @@ async def gather_code(state: InvestigationState, runtime: Runtime[InvestigationC
         "repo": checkout.repo,
         "evidence": evidence,
         "gaps": gaps,
-        "tool_calls": _OPEN_CALLS + result.findings.tool_calls + extra_calls,
+        "tool_calls": _OPEN_CALLS + result.findings.tool_calls + extra_calls + site_calls,
     }

@@ -89,7 +89,7 @@ class FakeModels:
         self.method = method
         self.purposes: list[Purpose] = []
 
-    def for_purpose(self, purpose: Purpose) -> FakeModel:
+    def for_purpose(self, purpose: Purpose, *, strong: bool = False) -> FakeModel:
         self.purposes.append(purpose)
         return self.model
 
@@ -362,7 +362,7 @@ async def test_a_slow_model_times_out_into_the_fallback(monkeypatch: pytest.Monk
 @pytest.mark.asyncio
 async def test_a_model_that_cannot_be_built_also_falls_back() -> None:
     class BrokenModels:
-        def for_purpose(self, purpose: Purpose) -> Any:
+        def for_purpose(self, purpose: Purpose, *, strong: bool = False) -> Any:
             raise ValueError("GROQ_API_KEY is not set but 'groq' was requested")
 
     final = await _run(_loaded_state(), BrokenModels())  # type: ignore[arg-type]

@@ -87,6 +87,42 @@ async def create(
     return _row_to_investigation(result.one())
 
 
+async def reopen(session: AsyncSession, *, tenant_id: UUID, investigation_id: UUID) -> bool:
+    """Make a finished (COMPLETED or FAILED) investigation that opened no pull request and no deploy runnable again.
+
+    Its results are cleared, because the run that follows writes them again; ``False`` when it is in another state or already
+    has a pull request or remediation. Raises ``ActiveInvestigationError`` when another investigation of the incident is active.
+    """
+    done = (InvestigationStatus.COMPLETED.value, InvestigationStatus.FAILED.value)
+    stmt = (
+        update(investigation)
+        .where(
+            investigation.c.id == investigation_id,
+            investigation.c.tenant_id == tenant_id,
+            investigation.c.status.in_(done),
+            ~exists().where(pull_request.c.investigation_id == investigation_id),
+            ~exists().where(remediation.c.investigation_id == investigation_id),
+        )
+        .values(
+            status=InvestigationStatus.QUEUED.value,
+            completed_at=None,
+            error=None,
+            root_cause=None,
+            recommendation=None,
+            diff=None,
+            confidence_band=None,
+            updated_at=datetime.now(tz=UTC),
+        )
+    )
+    try:
+        result = await session.execute(stmt)
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise ActiveInvestigationError from exc
+    return result.rowcount > 0
+
+
 async def get_by_id(
     session: AsyncSession,
     *,

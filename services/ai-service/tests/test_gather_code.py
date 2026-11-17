@@ -124,7 +124,8 @@ async def test_findings_become_evidence_with_excerpts_read_from_the_repository(r
 
     by_kind = {e.kind: e for e in final["evidence"]}
     assert set(by_kind) == {"code", "commit"}
-    code_ev, commit_ev = by_kind["code"], by_kind["commit"]
+    code_ev = next(e for e in final["evidence"] if e.kind == "code" and "changed by commit" not in e.summary)  # what the investigator cited
+    commit_ev = by_kind["commit"]
 
     assert code_ev.source_ref == f"{PAYMENT}:118-122@{repo.c2[:8]}"
     assert code_ev.id == make_evidence_id("code", code_ev.source_ref)
@@ -133,6 +134,10 @@ async def test_findings_become_evidence_with_excerpts_read_from_the_repository(r
     assert LIE in code_ev.summary and LIE not in code_ev.content  # the model's claim is only ever the summary
 
     assert commit_ev.source_ref == f"commit {repo.c2[:8]}"
+
+    changed = [e for e in final["evidence"] if e.kind == "code" and "changed by commit" in e.summary]  # the suspect commit is opened up into the code it changed
+    assert [e.source_ref for e in changed] == [f"{PAYMENT}:117-123@{repo.c2[:8]}"]
+    assert f"changed by commit {repo.c2[:8]}" in changed[0].summary and "gateway.call(request)" in changed[0].content
     assert commit_ev.id == make_evidence_id("commit", commit_ev.source_ref)
     assert "payment: drop the gateway timeout" in commit_ev.content and "Alice Example" in commit_ev.content
     assert "-        response = gateway.call(request, TIMEOUT_MS);" in commit_ev.content  # the patch is real
@@ -147,14 +152,14 @@ async def test_the_pinned_commit_and_the_budget_are_recorded(repo: Repo) -> None
 
     assert (final["repo"].repo, final["repo"].branch, final["repo"].sha, final["repo"].path_prefix) == ("acme/shop", "main", repo.c2, "services/payment")
     # 1 to open + 3 seeding + 1 show_commit asked for + 2 excerpts read for the two pieces of evidence
-    assert final["tool_calls"] == 1 + 3 + 1 + 2
+    assert final["tool_calls"] == 1 + 3 + 1 + 2 + 2  # plus opening the suspect commit and reading the one file it changed
     assert code.calls == [(ctx.tenant_id, "payment-service")]  # looked up by the incident's service, for the context's tenant
 
 
 async def test_unresolved_questions_become_gaps(repo: Repo) -> None:
     ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo))
     final = await run_node(state_with(), ctx)
-    assert final["gaps"] == ["Code investigation left open: Whether the gateway itself was slow"]
+    assert final["gaps"][-1] == "Code investigation left open: Whether the gateway itself was slow"  # the second pass settled nothing either
 
 
 async def test_evidence_ids_are_stable_so_a_repeated_finding_is_one_piece_of_evidence(repo: Repo) -> None:
@@ -175,7 +180,7 @@ async def test_a_finding_falls_back_to_the_kind_it_can_cite(repo: Repo) -> None:
     )
     ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo, answer=answer, script=[ai(call("show_commit", "c1", sha=repo.c1[:8])), ai(call("read_file", "c2", path=PAYMENT, start_line=1, end_line=2)), AIMessage(content="done")]))
     final = await run_node(state_with(), ctx)
-    assert sorted(e.kind for e in final["evidence"]) == ["code", "commit"]
+    assert {e.kind for e in final["evidence"]} == {"code", "commit"} and sum(e.kind == "commit" for e in final["evidence"]) == 1
 
 
 # -------------------------------------------------------------------------- gaps
@@ -239,14 +244,14 @@ async def test_a_state_without_an_incident_does_nothing(repo: Repo) -> None:
 async def test_the_code_investigation_gets_the_default_share_of_a_fresh_budget() -> None:
     limits, reason = plan_limits(new_state(investigation_id="i", incident_id="x", scope=InvestigationScope()), make_context())
     assert reason is None and limits is not None
-    assert limits.max_tool_calls == MAX_CODE_CALLS and limits.max_seconds == 90.0
+    assert limits.max_tool_calls == MAX_CODE_CALLS and limits.max_seconds == 180.0
 
 
-@pytest.mark.parametrize(("used", "expected"), [(3, 16), (13, 8), (17, 4), (18, None), (29, None)])
+@pytest.mark.parametrize(("used", "expected"), [(3, 32), (53, 8), (57, 4), (58, None), (69, None)])
 async def test_calls_already_spent_shrink_the_share(used: int, expected: int | None) -> None:
     state = new_state(investigation_id="i", incident_id="x", scope=InvestigationScope())
     state["tool_calls"] = used
-    limits, reason = plan_limits(state, make_context())  # budget 30: minus used, minus 1 to open, minus 8 kept back
+    limits, reason = plan_limits(state, make_context())  # budget 70: minus used, minus 1 to open, minus 8 kept back
     assert (limits.max_tool_calls if limits else None) == expected
     assert (reason is None) == (expected is not None)
     assert reason is None or "tool-call budget" in reason
@@ -254,19 +259,19 @@ async def test_calls_already_spent_shrink_the_share(used: int, expected: int | N
 
 async def test_time_already_spent_shrinks_the_share_and_too_little_skips_it() -> None:
     state = new_state(investigation_id="i", incident_id="x", scope=InvestigationScope())
-    late = dataclasses.replace(make_context(), started_at=time.monotonic() - 150)  # 300 - 150 - 120 reserved = 30 s
+    late = dataclasses.replace(make_context(), started_at=time.monotonic() - 450)  # 600 - 450 - 120 reserved = 30 s
     limits, _ = plan_limits(state, late)
     assert limits is not None and 25 < limits.max_seconds <= 30
-    too_late = dataclasses.replace(make_context(), started_at=time.monotonic() - 250)
+    too_late = dataclasses.replace(make_context(), started_at=time.monotonic() - 550)
     assert plan_limits(state, too_late) == (None, "time budget left was too small")
-    custom = dataclasses.replace(make_context(), budget=Budget(max_wall_seconds=1000, max_tool_calls=100))
+    custom = dataclasses.replace(make_context(), budget=Budget(max_wall_seconds=2000, max_tool_calls=200))
     limits, _ = plan_limits(state, custom)
-    assert limits is not None and limits.max_tool_calls == 16 and limits.max_seconds == 90.0  # never more than the cap
+    assert limits is not None and limits.max_tool_calls == 32 and limits.max_seconds == 180.0  # never more than the cap
 
 
 async def test_with_too_little_budget_the_code_is_pinned_but_not_investigated(repo: Repo) -> None:
     ctx, models = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo))
-    state = state_with(tool_calls=25)
+    state = state_with(tool_calls=62)
     final = await run_node(state, ctx)
     assert final["gaps"] == ["The code was not examined because the tool-call budget left was too small"]
     assert final["repo"].sha == repo.c2 and final["evidence"] == [] and models.purposes == []
@@ -275,9 +280,9 @@ async def test_with_too_little_budget_the_code_is_pinned_but_not_investigated(re
 async def test_the_investigation_limits_follow_the_parents_budget(repo: Repo) -> None:
     model = tool_model(repo, script=[ai(*(call("list_files", f"g{i}") for i in range(30))), ai(*(call("list_files", f"h{i}") for i in range(30)))])
     ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=model)
-    final = await run_node(state_with(tool_calls=13), ctx)  # budget 30: 30 - 13 - 1 - 8 = 8 calls for the investigator
+    final = await run_node(state_with(tool_calls=53), ctx)  # budget 70: 70 - 53 - 1 - 8 = 8 calls for the investigator
     # 8 for the investigator (3 seeding + 5 asked), plus 1 to open, plus excerpts for the evidence it found
-    assert final["tool_calls"] - 13 >= 1 + 8
+    assert final["tool_calls"] - 53 >= 1 + 8
     assert any("tool-call limit (8)" in g for g in final["gaps"])
 
 
@@ -322,7 +327,7 @@ async def test_the_subgraphs_model_calls_are_recorded_with_the_rest_of_the_run(r
     await builder.compile().ainvoke(state_with(), {"callbacks": [recorder]}, context=ctx)
 
     assert {"gather_code", "seed", "agent", "tools", "finalize"} <= {n.node for n in recorder.nodes}
-    assert [c.node for c in recorder.calls] == ["agent", "agent"]  # both tool-calling turns of the investigator
+    assert [c.node for c in recorder.calls] == ["agent", "agent", "agent"]  # both turns of the investigator, and the turn of the second pass
 
 
 async def test_the_subgraph_does_not_write_its_conversation_into_the_parents_checkpoint(repo: Repo) -> None:
@@ -350,9 +355,10 @@ async def test_the_whole_graph_with_code_evidence_reaches_a_root_cause(repo: Rep
     updates = [u async for u in build_graph().astream(state, context=ctx, stream_mode="updates")]
 
     code_update = next(u["gather_code"] for u in updates if "gather_code" in u)
-    assert sorted(e.kind for e in code_update["evidence"]) == ["code", "commit"]
+    assert {e.kind for e in code_update["evidence"]} == {"code", "commit"}
     events = [e for u in updates if "gather_code" in u for e in events_from_update(u)]
-    assert [(t, p["kind"]) for t, p in events if t == "evidence.added"] == [("evidence.added", "code"), ("evidence.added", "commit")]
+    added = [p["kind"] for t, p in events if t == "evidence.added"]
+    assert added[0] == "code" and "commit" in added and set(added) == {"code", "commit"}
     assert any(t == "gap.recorded" and "left open" in p["message"] for t, p in events)
     assert "gather_code" in {name for u in updates for name in u} and any("root_cause" in u for u in updates)
     # synthesize, verify and root_cause read the code evidence like any other
@@ -368,7 +374,7 @@ async def test_the_whole_graph_state_has_the_pinned_commit_and_a_shared_budget(r
     assert {e.kind for e in final["evidence"]} >= {"log", "timeline", "incident", "code", "commit"}
     # load_context 3, gather_logs 3, gather_history 1, gather_code: 1 to open + seeding 4 (the first frame: list, read,
     # commits; the second frame, Dispatcher.java, is not in the repository: one listing) + 1 show_commit + 2 excerpts
-    assert final["tool_calls"] == 3 + 3 + 1 + (1 + 4 + 1 + 2) + 2  # + the change proposer: the gate is off and code is available, so it runs
+    assert final["tool_calls"] == 3 + 3 + 1 + (1 + 4 + 1 + 2 + 2) + 2  # + opening the suspect commit and its one changed file; + the change proposer: the gate is off and code is available, so it runs
     assert final["root_cause"] is not None and final["status"].value == "RUNNING"
 
 
@@ -384,3 +390,42 @@ async def test_a_run_with_the_code_source_turned_off_never_touches_the_code(repo
 
 async def test_the_context_has_no_code_access_unless_the_server_configures_one() -> None:
     assert make_context().code is None
+
+
+async def test_questions_the_first_pass_left_open_are_put_to_a_second_pass_that_reads_the_code(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.graph.nodes import gather_code as module
+
+    briefs: list[str] = []
+    real = module.investigate_code
+
+    async def spy(ctx: Any, *, brief: str, frames: list[Any], config: Any = None) -> Any:
+        briefs.append(brief)
+        return await real(ctx, brief=brief, frames=frames, config=config)
+
+    monkeypatch.setattr(module, "investigate_code", spy)
+    ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo))
+
+    final = await run_node(state_with(), ctx)
+
+    assert len(briefs) == 2 and "Whether the gateway itself was slow" not in briefs[0]
+    assert "left these questions open" in briefs[1] and "- Whether the gateway itself was slow" in briefs[1]
+    assert final["tool_calls"] > 0
+
+
+async def test_there_is_no_second_pass_when_nothing_was_left_open(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.graph.nodes import gather_code as module
+
+    briefs: list[str] = []
+    real = module.investigate_code
+
+    async def spy(ctx: Any, *, brief: str, frames: list[Any], config: Any = None) -> Any:
+        briefs.append(brief)
+        return await real(ctx, brief=brief, frames=frames, config=config)
+
+    monkeypatch.setattr(module, "investigate_code", spy)
+    answer = findings_answer(repo).model_copy(update={"unresolved": []})
+    ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo, answer=answer))
+
+    await run_node(state_with(), ctx)
+
+    assert len(briefs) == 1

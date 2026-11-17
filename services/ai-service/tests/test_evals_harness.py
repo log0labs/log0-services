@@ -300,7 +300,7 @@ async def test_a_crashing_run_is_a_result_not_a_crash():
     case = BY_ID["bug-02-lowercase-sku"]
 
     class Broken:
-        def for_purpose(self, purpose):
+        def for_purpose(self, purpose, *, strong=False):
             raise RuntimeError("provider exploded")
 
         def structured_method(self, purpose):
@@ -335,7 +335,7 @@ class JudgeModels:
     def __init__(self, model):
         self.model = model
 
-    def for_purpose(self, purpose):
+    def for_purpose(self, purpose, *, strong=False):
         return self.model
 
     def structured_method(self, purpose):

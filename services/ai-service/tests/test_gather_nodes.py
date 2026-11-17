@@ -234,3 +234,19 @@ async def test_gather_history_without_an_incident_does_nothing() -> None:
     history = FakeHistory()
     final = await _run(gather_history, _state(with_incident=False), make_context(history=history))
     assert final["evidence"] == [] and history.calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_neighbours_name_every_service_and_say_which_patterns_began_with_the_incident() -> None:
+    rows = [
+        {"service_name": "gateway", "fingerprint": "a" * 64, "message_template": "retry storm", "n": 9000, "first_ts": FIRST - timedelta(minutes=25), "last_ts": LAST},
+        {"service_name": "inventory", "fingerprint": "b" * 64, "message_template": "hold expired for order <uuid>", "n": 16, "first_ts": FIRST, "last_ts": LAST},
+    ]
+
+    final = await _run(gather_logs, _state(), make_context(logs=FakeLogs(cooccurring_rows=rows)))
+    neighbours = {e.source_ref.split()[0]: e for e in final["evidence"]}["cooccurring"]
+
+    assert "in 2 service(s) (gateway, inventory)" in neighbours.summary
+    assert "began with the incident: inventory: hold expired for order <uuid> (16x)" in neighbours.summary
+    assert "retry storm (9000x" in neighbours.content and "[began with the incident]" not in neighbours.content.splitlines()[0]
+    assert "[began with the incident]" in neighbours.content.splitlines()[1]

@@ -65,3 +65,49 @@ def test_the_method_can_be_changed_with_the_model(monkeypatch: pytest.MonkeyPatc
     get_settings.cache_clear()
     assert PurposeChatModels(get_settings()).structured_method(Purpose.INVESTIGATION) == "json_schema"
 
+
+
+def test_the_strong_model_is_used_only_when_configured_and_the_workspace_has_not_chosen_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.model_spec import ModelSpec
+
+    built: list[str] = []
+    monkeypatch.setattr(models_module, "chat_model_for_purpose", lambda r, p, g: object())
+    monkeypatch.setattr(models_module, "build_chat_model", lambda **kw: built.append(kw["model"]) or object())
+
+    plain = get_settings().model_copy(update={"llm_root_cause": None})
+    models = PurposeChatModels(plain)
+    assert models.for_purpose(Purpose.INVESTIGATION, strong=True) is models.for_purpose(Purpose.INVESTIGATION)  # nothing configured
+
+    configured = get_settings().model_copy(update={"llm_root_cause": ModelSpec(provider="google_genai", model="strong-1")})
+    models = PurposeChatModels(configured, resolver=_FixedResolver(configured, "google_genai"))
+    first = models.for_purpose(Purpose.INVESTIGATION, strong=True)
+    assert models.for_purpose(Purpose.INVESTIGATION, strong=True) is first and built == ["strong-1"]  # built once
+    assert models.for_purpose(Purpose.TRIAGE, strong=True) is not first  # only the investigation purpose has a strong model
+
+    own = _FixedResolver(configured, "google_genai", chosen=ModelSpec(provider="groq", model="theirs"))
+    assert PurposeChatModels(configured, resolver=own).for_purpose(Purpose.INVESTIGATION, strong=True) is not first and built == ["strong-1"]
+
+
+class _FixedResolver:
+    def __init__(self, settings: Settings, provider: str, chosen: Any = None) -> None:
+        self._settings, self._chosen = settings, chosen
+
+    def model_for(self, purpose: Purpose) -> Any:
+        return self._chosen if self._chosen is not None and purpose == Purpose.INVESTIGATION else self._settings.llm_models[purpose]
+
+    def api_key_for(self, provider: str) -> Any:
+        from pydantic import SecretStr
+
+        return SecretStr("k")
+
+
+def test_the_strong_model_gets_room_to_think(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.model_spec import ModelSpec
+
+    seen: list[int] = []
+    monkeypatch.setattr(models_module, "build_chat_model", lambda **kw: seen.append(kw["generation"].max_tokens) or object())
+    configured = get_settings().model_copy(update={"llm_root_cause": ModelSpec(provider="google_genai", model="strong-1")})
+
+    PurposeChatModels(configured, resolver=_FixedResolver(configured, "google_genai")).for_purpose(Purpose.INVESTIGATION, strong=True)
+
+    assert seen == [models_module.STRONG_MODEL_MAX_TOKENS] and models_module.STRONG_MODEL_MAX_TOKENS > configured.llm_default_max_tokens

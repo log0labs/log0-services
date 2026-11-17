@@ -51,6 +51,7 @@ class DbCodeAccess:
             if mapping is None:
                 return None
             connection = await repository_store.get(session, tenant_id=tenant_id, repository_id=mapping.repository_id)
+            siblings = tuple(p for p in await repository_store.mapped_prefixes(session, tenant_id=tenant_id, repository_id=mapping.repository_id) if p != mapping.path_prefix)
         if connection is None:  # disconnected between the two reads
             return None
 
@@ -76,6 +77,7 @@ class DbCodeAccess:
             ),
             code=CodeTools(checkout.path, prefix=prefix, git_binary=self._git, rg_binary=self._rg),
             git=GitTools(checkout.path, prefix=prefix, git_binary=self._git),
+            siblings=siblings,
         )
 
     @asynccontextmanager
@@ -88,6 +90,7 @@ class DbCodeAccess:
                 yield None
                 return
             connection = await repository_store.get(session, tenant_id=tenant_id, repository_id=mapping.repository_id)
+            siblings = tuple(p for p in await repository_store.mapped_prefixes(session, tenant_id=tenant_id, repository_id=mapping.repository_id) if p != mapping.path_prefix)
         if connection is None:
             yield None
             return
@@ -109,6 +112,7 @@ class DbCodeAccess:
                     repo=RepoContext(repo=f"{connection.owner}/{connection.name}", branch=connection.default_branch, sha=sha, path_prefix=prefix),
                     code=CodeTools(root, prefix=prefix, git_binary=self._git, rg_binary=self._rg),
                     git=GitTools(root, prefix=prefix, git_binary=self._git),
+                    siblings=siblings,
                 )
         except CheckoutError as exc:  # raised before the block ran (the commit is gone); errors inside it are not ours
             raise CodeAccessError(f"the pinned commit is no longer available ({exc})") from None

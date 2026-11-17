@@ -129,7 +129,7 @@ class ScriptedModels:
     def __init__(self, chat: ScriptedChat) -> None:
         self.chat = chat
 
-    def for_purpose(self, purpose: Purpose) -> BaseChatModel:
+    def for_purpose(self, purpose: Purpose, *, strong: bool = False) -> BaseChatModel:
         return self.chat
 
     def structured_method(self, purpose: Purpose) -> StructuredOutputMethod:
