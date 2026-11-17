@@ -9,9 +9,9 @@ name: AI evaluation
 #            with the committed baseline, and fails on a regression. It sends the (synthetic) fixture logs and
 #            the demo repository's code to the model provider, so it never runs for pull requests.
 #
-# Secrets (repository settings): DEMO_SHOP_DEPLOY_KEY (a read-only deploy key for ashmitjsg/log0-demo-shop, which is private),
+# Secrets (repository settings): DEMO_SHOP_TOKEN (a read-only fine-grained token for log0labs/log0-demo-shop, which is private; deploy keys are disabled in the organization),
 # and the provider keys for `real` (GROQ_API_KEY, optionally OPENAI_API_KEY, ANTHROPIC_API_KEY, HF_TOKEN).
-# Without DEMO_SHOP_DEPLOY_KEY the harness job still runs everything that does not need the demo repository.
+# Without DEMO_SHOP_TOKEN the harness job still runs everything that does not need the demo repository.
 
 on:
   pull_request:
@@ -55,15 +55,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SKIP_INTEGRATION_TESTS: "1"
-      HAS_DEMO_TOKEN: ${{ secrets.DEMO_SHOP_DEPLOY_KEY != '' }}
+      HAS_DEMO_TOKEN: ${{ secrets.DEMO_SHOP_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Check out the demo shop (all isolated branches and tags)
         if: env.HAS_DEMO_TOKEN == 'true'
         uses: actions/checkout@v4
         with:
-          repository: ashmitjsg/log0-demo-shop
-          ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
+          repository: log0labs/log0-demo-shop
+          token: ${{ secrets.DEMO_SHOP_TOKEN }}
           path: demo-shop
           fetch-depth: 0
       - name: Make the isolated branches and tags local
@@ -119,18 +119,18 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       JWT_SECRET: ci-only-secret-for-the-evaluation-run-0123456789
       INTERNAL_SERVICE_TOKEN: ci-only-internal-token-0123456789
-      HAS_KEYS: ${{ secrets.GROQ_API_KEY != '' && secrets.DEMO_SHOP_DEPLOY_KEY != '' }}
+      HAS_KEYS: ${{ secrets.GROQ_API_KEY != '' && secrets.DEMO_SHOP_TOKEN != '' }}
     steps:
       - name: Nothing to do without the secrets
         if: env.HAS_KEYS != 'true'
-        run: echo "::notice::GROQ_API_KEY and DEMO_SHOP_DEPLOY_KEY are not set, so the real evaluation did not run."
+        run: echo "::notice::GROQ_API_KEY and DEMO_SHOP_TOKEN are not set, so the real evaluation did not run."
       - uses: actions/checkout@v4
         if: env.HAS_KEYS == 'true'
       - uses: actions/checkout@v4
         if: env.HAS_KEYS == 'true'
         with:
-          repository: ashmitjsg/log0-demo-shop
-          ssh-key: ${{ secrets.DEMO_SHOP_DEPLOY_KEY }}
+          repository: log0labs/log0-demo-shop
+          token: ${{ secrets.DEMO_SHOP_TOKEN }}
           path: demo-shop
           fetch-depth: 0
       - if: env.HAS_KEYS == 'true'

@@ -84,6 +84,14 @@ class ConnectionCheckOut(CamelModel):
 # ----------------------------------------------------------------------------- repositories
 
 
+class RepositoryTokenIn(CamelModel):
+    """A new access token for a repository that is already connected (rotation, or the repository changed owner)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: SecretStr = Field(min_length=8, max_length=512)
+
+
 class RepositoryIn(CamelModel):
     model_config = ConfigDict(extra="forbid")
 

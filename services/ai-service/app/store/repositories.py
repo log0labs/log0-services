@@ -116,6 +116,20 @@ async def create(
     return _to_connection(result.one())
 
 
+async def replace_token(session: AsyncSession, *, tenant_id: UUID, repository_id: UUID, token: EncryptedSecret) -> RepositoryConnection | None:
+    """Store a new encrypted token for a connection of this tenant. Everything else about the connection (its id, deploy target,
+    service mappings, installation) stays. ``None`` when there is no such connection."""
+    result = await session.execute(
+        update(repository_connection)
+        .where(repository_connection.c.tenant_id == tenant_id, repository_connection.c.id == repository_id)
+        .values(token_ciphertext=token.ciphertext, key_id=token.key_id)
+        .returning(repository_connection)
+    )
+    row = result.first()
+    await session.commit()
+    return _to_connection(row) if row else None
+
+
 async def list_for_tenant(session: AsyncSession, *, tenant_id: UUID) -> list[RepositoryConnection]:
     result = await session.execute(
         select(repository_connection)

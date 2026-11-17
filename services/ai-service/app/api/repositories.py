@@ -21,6 +21,7 @@ from app.integrations.github import (
 from app.schemas.ai_config import (
     RepositoryIn,
     RepositoryOut,
+    RepositoryTokenIn,
     ServiceRepositoryIn,
     ServiceRepositoryOut,
 )
@@ -93,6 +94,34 @@ async def list_repositories(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[RepositoryOut]:
     return [_out(row) for row in await store.list_for_tenant(session, tenant_id=user.tenant_id)]
+
+
+@router.put("/{repository_id}/token", response_model=RepositoryOut)
+async def replace_repository_token(
+    repository_id: UUID,
+    body: RepositoryTokenIn,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    github: Annotated[GitHubClient, Depends(get_github)],
+    box: Annotated[SecretBox, Depends(require_secret_box)],
+) -> RepositoryOut:
+    """Replace the token of a connected repository, keeping everything attached to it. The new token must be able to read it."""
+    current = await store.get(session, tenant_id=admin.tenant_id, repository_id=repository_id)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    token = body.token.get_secret_value()
+    try:
+        found = await github.get_repository(current.owner, current.name, token)
+    except GitHubAccessError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=_GITHUB_PROBLEMS[exc.problem]) from None
+    except GitHubUnavailableError:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub could not be reached") from None
+    encrypted = box.encrypt(token, context=secret_context(admin.tenant_id, "repository_connection", f"{current.owner}/{current.name}"))
+    row = await store.replace_token(session, tenant_id=admin.tenant_id, repository_id=repository_id, token=encrypted)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    logger.info("repository token replaced: tenant=%s repository=%s (GitHub says %s/%s)", admin.tenant_id, repository_id, found.owner, found.name)
+    return _out(row)
 
 
 @router.delete("/{repository_id}", status_code=status.HTTP_204_NO_CONTENT)
