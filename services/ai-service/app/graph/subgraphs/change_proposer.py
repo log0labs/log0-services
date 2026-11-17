@@ -264,7 +264,7 @@ async def seed(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorCont
 async def agent(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorContext]) -> dict[str, Any]:
     ctx = runtime.context
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools(
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).bind_tools(
             [*(spec.as_langchain_tool() for spec in ctx.tools.values()), _decoy_tool()]
         )
         response = await invoke_with_tool_retry(
@@ -332,7 +332,7 @@ async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigator
     first = str(state["messages"][0].content) if state["messages"] else ""
     prompt = f"{first}\n\nNotes of the files you read:\n<repository_data>\n{escape_data(render_notes(state['messages']))}\n</repository_data>"
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).with_structured_output(
             ChangeProposalAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
         raw = await invoke_with_tool_retry(

@@ -80,6 +80,9 @@ def usage_for_row(recorder: UsageRecorder) -> dict[str, Any]:
     }
 
 
+RETRY_NODES = ("root_cause", "propose_changes")  # the steps a finished run can be taken back to
+
+
 class GraphExecutor:
     """Holds the compiled graph and the backends; ``run`` matches the runner's ``ExecuteFn``."""
 
@@ -141,6 +144,23 @@ class GraphExecutor:
                 logger.info("tracing is off for investigation %s: the tenant uses its own LLM key and has not opted in", investigation_id)
         with tracing_scope(allowed):
             await self._run(session_factory, investigation_id, tenant_id)
+
+    async def rewind(self, investigation_id: UUID, node: str) -> bool:
+        """Take a finished run back to just before ``node``, keeping everything gathered up to there.
+
+        The saved state of that moment becomes the run's newest state, so the normal resume path continues from it and the
+        earlier steps (and their tokens) are not repeated. ``False`` when the run never reached ``node``.
+        """
+        config: Any = {"configurable": {"thread_id": str(investigation_id)}}
+        async for snapshot in self._graph.aget_state_history(config):
+            if snapshot.next == (node,):
+                await self._graph.aupdate_state(snapshot.config, {})
+                return True
+        return False
+
+    async def can_rewind(self, investigation_id: UUID, node: str) -> bool:
+        config: Any = {"configurable": {"thread_id": str(investigation_id)}}
+        return any([s.next == (node,) async for s in self._graph.aget_state_history(config)])
 
     async def _models_for(self, session_factory: SessionFactory, tenant_id: UUID) -> ChatModels:
         """The platform models, unless the workspace saved its own choice (model, key, temperature, token limit) in

@@ -57,6 +57,9 @@ MAX_LOG_SITES = 3  # other services' new log messages that are looked up in the 
 MIN_ANCHOR_CHARS = 12  # shorter fixed text matches too much code to point anywhere
 ONSET_SLACK = timedelta(minutes=5)
 MAX_COMMIT_FILES = 4  # files of the suspect commit that become code evidence
+MAX_COMMIT_RANGES = 8  # pieces of those files that are read
+PIECE_LINES = 60  # the most lines of one piece
+MERGE_GAP = 10  # hunks closer than this many lines are one piece
 _DIFF_FILE = re.compile(r"^diff --git a/\S+ b/(?P<path>\S+)$")
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 _PLACEHOLDER = re.compile(r"<[a-z_]+>")  # the fingerprinter writes <uuid>, <number>, ... for the variable parts of a message
@@ -87,12 +90,14 @@ def _is_test_path(path: str) -> bool:
 
 
 def changed_ranges(patch: str, limit: int = MAX_COMMIT_FILES) -> list[tuple[str, int, int]]:
-    """The lines a commit's patch changed, as ``(path, first line, last line)`` of the new file, one range per file.
+    """The lines a commit's patch changed, as ``(path, first line, last line)`` of the new file, one range per changed place.
 
-    A file's hunks are merged into one range. Deleted files, test files and anything past ``limit`` files are left out:
+    Hunks that are close together are merged; far apart ones stay separate, so a change at the top and one at the bottom of
+    a long file do not turn into one range whose middle is never read. A range longer than ``PIECE_LINES`` is cut into pieces,
+    and at most ``MAX_COMMIT_RANGES`` come back. Deleted files, test files and anything past ``limit`` files are left out:
     the code a fix must change is the code the suspect commit changed, not the tests that cover it.
     """
-    ranges: dict[str, tuple[int, int]] = {}
+    ranges: dict[str, list[tuple[int, int]]] = {}
     path: str | None = None
     for line in patch.splitlines():
         header = _DIFF_FILE.match(line)
@@ -106,9 +111,18 @@ def changed_ranges(patch: str, limit: int = MAX_COMMIT_FILES) -> list[tuple[str,
         if start == 0:  # the file no longer exists
             continue
         end = start + max(int(hunk["count"] or 1), 1) - 1
-        first, last = ranges.get(path, (start, end))
-        ranges[path] = (min(first, start), max(last, end))
-    return [(name, first, last) for name, (first, last) in list(ranges.items())[:limit]]
+        places = ranges.setdefault(path, [])
+        if places and start - places[-1][1] <= MERGE_GAP:
+            places[-1] = (places[-1][0], max(places[-1][1], end))
+        else:
+            places.append((start, end))
+    pieces = [
+        (name, first, min(first + PIECE_LINES - 1, last))
+        for name, places in list(ranges.items())[:limit]
+        for begin, last in places
+        for first in range(begin, last + 1, PIECE_LINES)
+    ]
+    return pieces[:MAX_COMMIT_RANGES]
 
 
 async def commit_code_evidence(commit: str, checkout: CodeCheckout) -> tuple[list[Evidence], int]:
@@ -128,7 +142,7 @@ async def commit_code_evidence(commit: str, checkout: CodeCheckout) -> tuple[lis
     for path, first, last in changed_ranges(detail.patch):
         calls += 1
         try:
-            piece = await checkout.code.read_file(path, first, min(last, first + EXCERPT_LINES - 1))
+            piece = await checkout.code.read_file(path, first, last)
         except CodeToolError:
             continue
         ref = f"{path}:{first}-{last}@{sha8}"

@@ -156,7 +156,7 @@ class ScriptedModels:
     def __init__(self, case: Case, mode: str = "oracle") -> None:
         self.chat = ScriptedChat(case, mode)
 
-    def for_purpose(self, purpose: Purpose) -> ScriptedChat:
+    def for_purpose(self, purpose: Purpose, *, strong: bool = False) -> ScriptedChat:
         return self.chat
 
     def structured_method(self, purpose: Purpose) -> StructuredOutputMethod:

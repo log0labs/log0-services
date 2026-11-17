@@ -93,6 +93,12 @@ class CreateInvestigationResponse(CamelModel):
     status: InvestigationStatus
 
 
+class RetryInvestigationRequest(CamelModel):
+    """Run a finished investigation again from one step, keeping what it already gathered."""
+
+    from_step: Literal["root_cause", "propose_changes"] = Field(alias="from")
+
+
 class ResumeInvestigationRequest(CamelModel):
     """The engineer's decision at the review gate."""
 

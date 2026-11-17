@@ -202,10 +202,10 @@ async def test_the_commit_the_code_was_read_at_is_stored_and_code_evidence_is_in
     done = await _row(session_factory, row.id)
     assert done.repo_sha == repo.c2  # the exact code the investigation read, for the report and for later steps
     assert done.graph_version == GRAPH_VERSION
-    assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2) + 2  # + the change proposer (auto-approved: gate off, code available)
+    assert done.tool_call_count == 3 + 3 + 1 + (1 + 4 + 1 + 2 + 2) + 2  # the suspect commit is opened (2 calls); + the change proposer (auto-approved: gate off, code available)
     events = await _events(session_factory, row.id)
     kinds = [e.payload["kind"] for e in events if e.type == "evidence.added"]
-    assert kinds.count("code") == 1 and kinds.count("commit") == 1
+    assert kinds.count("code") == 2 and kinds.count("commit") == 1  # the cited code and the code the suspect commit changed
     assert any(e.type == "gap.recorded" and "left open" in e.payload["message"] for e in events)
     assert repo.c2 not in str([e.payload for e in events])  # events carry summaries, never the pinned sha or excerpts
 
@@ -368,3 +368,34 @@ async def test_a_graph_that_already_finished_is_not_run_again(session_factory: S
     assert len(backends.api.calls) == calls_after_first == 1
     assert len(await _events(session_factory, row.id)) == events_after_first
     assert backends.models.purposes == [Purpose.TRIAGE] + [Purpose.INVESTIGATION] * 3  # nothing asked twice
+
+
+async def test_a_finished_run_can_be_taken_back_to_the_root_cause_step_and_only_that_step_runs_again(session_factory: SessionFactory) -> None:
+    row = await _create(session_factory)
+    backends = Backends(build_graph(InMemorySaver()))
+    await backends.executor.run(session_factory, row.id, TENANT)
+    calls, asked = len(backends.api.calls), len(backends.models.purposes)
+
+    assert await backends.executor.can_rewind(row.id, "root_cause") and not await backends.executor.can_rewind(row.id, "propose_changes")
+    assert await backends.executor.rewind(row.id, "root_cause")
+    await backends.executor.run(session_factory, row.id, TENANT)
+
+    assert len(backends.api.calls) == calls  # the incident was not loaded again
+    assert backends.models.purposes[asked:] == [Purpose.INVESTIGATION]  # one model call: the root cause
+    assert (await _row(session_factory, row.id)).root_cause is not None
+    assert not await backends.executor.rewind(row.id, "no_such_step")
+
+
+async def test_only_a_finished_run_without_a_pull_request_is_reopened_and_its_results_are_cleared(session_factory: SessionFactory) -> None:
+    row = await _create(session_factory)
+    backends = Backends(build_graph(InMemorySaver()))
+    async with session_factory() as session:
+        assert not await store.reopen(session, tenant_id=TENANT, investigation_id=row.id)  # still QUEUED
+    await backends.executor.run(session_factory, row.id, TENANT)
+    async with session_factory() as session:
+        await store.transition_status(session, investigation_id=row.id, tenant_id=TENANT, status=InvestigationStatus.COMPLETED, set_completed=True)
+        assert not await store.reopen(session, tenant_id=UUID(int=7), investigation_id=row.id)  # another tenant
+        assert await store.reopen(session, tenant_id=TENANT, investigation_id=row.id)
+
+    reopened = await _row(session_factory, row.id)
+    assert reopened.status == InvestigationStatus.QUEUED and reopened.root_cause is None and reopened.completed_at is None

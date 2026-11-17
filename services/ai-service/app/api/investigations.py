@@ -26,6 +26,7 @@ from app.schemas.investigation import (
     InvestigationStatus,
     LatestInvestigation,
     ResumeInvestigationRequest,
+    RetryInvestigationRequest,
 )
 from app.security.jwt import CurrentUser, get_current_user, require_investigation_writer
 from app.store import events as event_store
@@ -185,6 +186,41 @@ async def resume_investigation(
         request=request,
         not_waiting="Investigation is not waiting for a review",
     )
+
+
+@router.post(
+    "/{investigation_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=CreateInvestigationResponse,
+)
+async def retry_investigation(
+    investigation_id: UUID,
+    body: RetryInvestigationRequest,
+    request: Request,
+    user: Annotated[CurrentUser, Depends(require_investigation_writer)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> CreateInvestigationResponse:
+    """Run a finished investigation again from ``root_cause`` or ``propose_changes`` instead of from the start.
+
+    Only a COMPLETED or FAILED investigation that opened no pull request can be taken back; the evidence, hypotheses and
+    code already read are kept, so only the chosen step and what follows it cost model calls.
+    """
+    executor = request.app.state.graph_executor
+    row = await investigation_store.get_by_id(session, tenant_id=user.tenant_id, investigation_id=investigation_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if executor is None or not await executor.can_rewind(investigation_id, body.from_step):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"This investigation never reached {body.from_step}")
+    try:
+        reopened = await investigation_store.reopen(session, tenant_id=user.tenant_id, investigation_id=investigation_id)
+    except ActiveInvestigationError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An investigation is already active for this incident") from None
+    if not reopened:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a finished investigation without a pull request or deploy can be run again")
+    await executor.rewind(investigation_id, body.from_step)
+    await event_store.append_event(session, investigation_id=investigation_id, type="investigation.retried", payload={"from": body.from_step})
+    request.app.state.investigation_runner.schedule(investigation_id, tenant_id=user.tenant_id)
+    return CreateInvestigationResponse(investigation_id=investigation_id, status=InvestigationStatus.QUEUED)
 
 
 def get_memory(request: Request) -> Memory:

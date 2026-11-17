@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     llm_investigation: ModelSpecField = ModelSpec(
         provider="groq", model="qwen/qwen3.8-27b"
     )
+    # An optional stronger model for the two steps that decide the outcome (root cause and writing the fix); unset, it uses the investigation model.
+    # A workspace that chose its own investigation model keeps it. Env name: LLM_ROOT_CAUSE
+    llm_root_cause: ModelSpecField | None = None
     llm_evaluation: ModelSpecField = ModelSpec(
         provider="groq", model="openai/gpt-oss-120b"
     )

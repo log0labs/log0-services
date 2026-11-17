@@ -263,7 +263,7 @@ from app.graph.nodes.gather_code import (
     commit_code_evidence,
 )
 from app.graph.nodes.root_cause import cap_without_code
-from app.schemas.domain import Evidence, RootCause
+from app.schemas.domain import CodeLocation, Evidence, RootCause
 
 PATCH = """\
 commit abc
@@ -293,8 +293,19 @@ diff --git a/old.txt b/old.txt
 """
 
 
-def test_the_changed_lines_of_each_file_are_merged_into_one_range_and_tests_and_deletions_are_left_out() -> None:
-    assert changed_ranges(PATCH) == [("services/inventory/src/stock.rs", 10, 77), ("services/storefront-api/src/app.js", 95, 102)]
+def test_each_changed_place_is_its_own_range_and_tests_and_deletions_are_left_out() -> None:
+    assert changed_ranges(PATCH) == [
+        ("services/inventory/src/stock.rs", 10, 18),
+        ("services/inventory/src/stock.rs", 66, 77),
+        ("services/storefront-api/src/app.js", 95, 102),
+    ]
+
+
+def test_close_hunks_merge_and_long_ranges_are_cut_into_pieces() -> None:
+    near = "diff --git a/a.py b/a.py\n@@ -1,1 +1,3 @@\n+x\n@@ -9,1 +9,3 @@\n+y\n"
+    assert changed_ranges(near) == [("a.py", 1, 11)]
+    big = "diff --git a/b.py b/b.py\n@@ -0,0 +1,150 @@\n+x\n"
+    assert changed_ranges(big) == [("b.py", 1, 60), ("b.py", 61, 120), ("b.py", 121, 150)]
 
 
 def test_only_the_first_few_files_are_kept() -> None:
@@ -355,6 +366,8 @@ def test_a_cause_without_a_code_location_is_not_high_confidence_once_the_code_wa
     band, why = cap_without_code("high", _cause("ev_1", "ev_2"), evidence, code_read=True)
     assert band == "medium" and why is not None and "no code location" in why
 
-    assert cap_without_code("high", _cause("ev_1", "ev_3"), evidence, code_read=True) == ("high", None)  # it cites code
+    assert cap_without_code("high", _cause("ev_1", "ev_3"), evidence, code_read=True)[0] == "medium"  # cites code but names no location
+    located = _cause("ev_1", "ev_3").model_copy(update={"affected_locations": [CodeLocation(file_path="a.rs", line=3)]})
+    assert cap_without_code("high", located, evidence, code_read=True) == ("high", None)
     assert cap_without_code("high", _cause("ev_1", "ev_2"), evidence, code_read=False) == ("high", None)  # no repository to read
     assert cap_without_code("low", _cause("ev_1"), evidence, code_read=True) == ("low", None)
