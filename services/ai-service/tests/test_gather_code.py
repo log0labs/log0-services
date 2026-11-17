@@ -159,7 +159,7 @@ async def test_the_pinned_commit_and_the_budget_are_recorded(repo: Repo) -> None
 async def test_unresolved_questions_become_gaps(repo: Repo) -> None:
     ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo))
     final = await run_node(state_with(), ctx)
-    assert final["gaps"] == ["Code investigation left open: Whether the gateway itself was slow"]
+    assert final["gaps"][-1] == "Code investigation left open: Whether the gateway itself was slow"  # the second pass settled nothing either
 
 
 async def test_evidence_ids_are_stable_so_a_repeated_finding_is_one_piece_of_evidence(repo: Repo) -> None:
@@ -327,7 +327,7 @@ async def test_the_subgraphs_model_calls_are_recorded_with_the_rest_of_the_run(r
     await builder.compile().ainvoke(state_with(), {"callbacks": [recorder]}, context=ctx)
 
     assert {"gather_code", "seed", "agent", "tools", "finalize"} <= {n.node for n in recorder.nodes}
-    assert [c.node for c in recorder.calls] == ["agent", "agent"]  # both tool-calling turns of the investigator
+    assert [c.node for c in recorder.calls] == ["agent", "agent", "agent"]  # both turns of the investigator, and the turn of the second pass
 
 
 async def test_the_subgraph_does_not_write_its_conversation_into_the_parents_checkpoint(repo: Repo) -> None:
@@ -390,3 +390,42 @@ async def test_a_run_with_the_code_source_turned_off_never_touches_the_code(repo
 
 async def test_the_context_has_no_code_access_unless_the_server_configures_one() -> None:
     assert make_context().code is None
+
+
+async def test_questions_the_first_pass_left_open_are_put_to_a_second_pass_that_reads_the_code(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.graph.nodes import gather_code as module
+
+    briefs: list[str] = []
+    real = module.investigate_code
+
+    async def spy(ctx: Any, *, brief: str, frames: list[Any], config: Any = None) -> Any:
+        briefs.append(brief)
+        return await real(ctx, brief=brief, frames=frames, config=config)
+
+    monkeypatch.setattr(module, "investigate_code", spy)
+    ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo))
+
+    final = await run_node(state_with(), ctx)
+
+    assert len(briefs) == 2 and "Whether the gateway itself was slow" not in briefs[0]
+    assert "left these questions open" in briefs[1] and "- Whether the gateway itself was slow" in briefs[1]
+    assert final["tool_calls"] > 0
+
+
+async def test_there_is_no_second_pass_when_nothing_was_left_open(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.graph.nodes import gather_code as module
+
+    briefs: list[str] = []
+    real = module.investigate_code
+
+    async def spy(ctx: Any, *, brief: str, frames: list[Any], config: Any = None) -> Any:
+        briefs.append(brief)
+        return await real(ctx, brief=brief, frames=frames, config=config)
+
+    monkeypatch.setattr(module, "investigate_code", spy)
+    answer = findings_answer(repo).model_copy(update={"unresolved": []})
+    ctx, _ = context_with_code(FakeCode(checkout_for(repo)), investigation=tool_model(repo, answer=answer))
+
+    await run_node(state_with(), ctx)
+
+    assert len(briefs) == 1

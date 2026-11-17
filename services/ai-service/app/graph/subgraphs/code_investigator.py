@@ -291,7 +291,7 @@ def _room(state: CodeInvestigationState, ctx: CodeInvestigatorContext) -> str | 
 async def agent(state: CodeInvestigationState, runtime: Runtime[CodeInvestigatorContext]) -> dict[str, Any]:
     ctx = runtime.context
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools([spec.as_langchain_tool() for spec in ctx.tools.values()])
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).bind_tools([spec.as_langchain_tool() for spec in ctx.tools.values()])
         response = await invoke_with_tool_retry(
             lambda: model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]),
             timeout=ctx.limits.model_timeout_seconds,
@@ -397,7 +397,7 @@ async def finalize(state: CodeInvestigationState, runtime: Runtime[CodeInvestiga
 
     prompt = f"{state['messages'][0].content}\n\nNotes of the tool calls:\n<repository_data>\n{escape_data(render_transcript(state['messages']))}\n</repository_data>"
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION).with_structured_output(
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).with_structured_output(
             CodeFindingsAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
         )
         raw = await invoke_with_tool_retry(

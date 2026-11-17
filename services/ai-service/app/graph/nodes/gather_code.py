@@ -17,6 +17,7 @@ was not examined, and the rest of the investigation continues without code evide
 import logging
 import re
 import time
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -26,6 +27,7 @@ from app.graph.code_access import CodeAccessError, CodeCheckout
 from app.graph.nodes.load_context import investigation_window
 from app.graph.state import InvestigationContext, InvestigationState
 from app.graph.subgraphs.code_investigator import (
+    CodeInvestigationResult,
     CodeInvestigatorContext,
     CodeLimits,
     investigate_code,
@@ -43,6 +45,8 @@ logger = logging.getLogger(__name__)
 _OPEN_CALLS = 1  # looking up the repository and making sure the checkout is current
 MAX_CODE_CALLS = 32  # the most the code investigation may use (seeding included)
 RESERVED_CALLS = 8  # kept for the other branches and for verify's follow-up searches
+FOLLOWUP_CALLS = 16  # the most the second pass, which answers what the first left open, may use
+FOLLOWUP_SECONDS = 120.0
 MIN_CODE_CALLS = 4  # below this the investigation cannot do anything useful
 MAX_CODE_SECONDS = 180.0
 RESERVED_SECONDS = 120.0  # kept for synthesize, verify and root_cause
@@ -201,6 +205,44 @@ async def other_service_log_sites(incident: IncidentContext, ctx: InvestigationC
     return lines, calls
 
 
+async def answer_open_questions(
+    first: CodeInvestigationResult,
+    limits: CodeLimits,
+    investigator: CodeInvestigatorContext,
+    incident: IncidentContext,
+    state: InvestigationState,
+    checkout: CodeCheckout,
+    ctx: InvestigationContext,
+    log_sites: tuple[str, ...],
+) -> CodeInvestigationResult | None:
+    """A second, shorter pass that answers what the first one wrote down as unresolved, or ``None`` when nothing was left open
+    or too little budget remains. The result merges both passes: the findings of both, the questions of the second only.
+
+    A question a model leaves open is usually one it could settle by reading the function it calls. The pass is told exactly
+    which questions to answer, so it reads that code instead of stopping at the call site.
+    """
+    if not first.findings.unresolved:
+        return None
+    calls = min(FOLLOWUP_CALLS, limits.max_tool_calls - first.findings.tool_calls)
+    seconds = min(FOLLOWUP_SECONDS, ctx.budget.max_wall_seconds - (time.monotonic() - ctx.started_at) - RESERVED_SECONDS)
+    if calls < MIN_CODE_CALLS or seconds < MIN_CODE_SECONDS:
+        return None
+    questions = "\n".join(f"- {q}" for q in first.findings.unresolved)
+    brief = (
+        f"{build_brief(incident, state, checkout.siblings, log_sites)}\n\n"
+        "A first pass left these questions open. Answer each by reading the code that decides it: open the body of every "
+        "function the question concerns (in any service), not only the line that calls it:\n"
+        f"{questions}"
+    )
+    second = await investigate_code(replace(investigator, limits=replace(limits, max_tool_calls=calls, max_seconds=seconds)), brief=brief, frames=[])
+    known = {f.summary for f in first.findings.findings}
+    merged = [*first.findings.findings, *[f for f in second.findings.findings if f.summary not in known]]
+    return CodeInvestigationResult(
+        findings=second.findings.model_copy(update={"findings": merged, "tool_calls": first.findings.tool_calls + second.findings.tool_calls}),
+        gaps=[*first.gaps, *second.gaps],
+    )
+
+
 def build_brief(incident: IncidentContext, state: InvestigationState, siblings: tuple[str, ...] = (), log_sites: tuple[str, ...] = ()) -> str:
     """The incident in plain text for the investigator. Deliberately without the earlier AI summary:
     a previous model's guess would anchor the new analysis."""
@@ -305,6 +347,10 @@ async def gather_code(state: InvestigationState, runtime: Runtime[InvestigationC
     # so the subgraph's model calls and node timings land in the same usage recorder as the rest of the run
     # (a test checks it), and nothing else of the parent's config (checkpointing included) is inherited.
     result = await investigate_code(investigator, brief=build_brief(incident, state, checkout.siblings, tuple(log_sites)), frames=state["stack_frames"])
+
+    followup = await answer_open_questions(result, limits, investigator, incident, state, checkout, ctx, tuple(log_sites))
+    if followup is not None:
+        result = followup
 
     evidence: list[Evidence] = []
     extra_calls = 0
