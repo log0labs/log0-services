@@ -264,7 +264,7 @@ async def seed(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorCont
 async def agent(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorContext]) -> dict[str, Any]:
     ctx = runtime.context
     try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).bind_tools(
+        model = ctx.models.for_purpose(Purpose.INVESTIGATION).bind_tools(
             [*(spec.as_langchain_tool() for spec in ctx.tools.values()), _decoy_tool()]
         )
         response = await invoke_with_tool_retry(
@@ -322,6 +322,9 @@ def render_notes(messages: list[AnyMessage]) -> str:
     return "\n".join(lines)[:NOTES_TOTAL_CHARS]
 
 
+STRONG_MODEL_TIMEOUT_SECONDS = 150.0  # the stronger model thinks before it answers
+
+
 async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigatorContext]) -> dict[str, Any]:
     ctx = runtime.context
     gaps: list[str] = []
@@ -338,7 +341,7 @@ async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigator
                 ChangeProposalAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
             )
             raw = await invoke_with_tool_retry(
-                lambda model=model: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=ctx.limits.model_timeout_seconds, what="change finalize"
+                lambda model=model: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=max(ctx.limits.model_timeout_seconds, STRONG_MODEL_TIMEOUT_SECONDS) if strong else ctx.limits.model_timeout_seconds, what="change finalize"
             )
             answer = ChangeProposalAnswer.model_validate(raw)
             break

@@ -16,7 +16,8 @@ from app.llm.purpose import Purpose, StructuredOutputMethod
 from app.llm.resolver import LlmResolver, PlatformLlmResolver
 
 # A reasoning model spends part of its output budget on thinking; with too small a budget it answers with nothing at all
-# (a structured request then comes back empty). The stronger model gets room for both.
+# (a structured request then comes back empty). The stronger model gets room for both. It is used only for the two single calls that decide the outcome (the root cause and
+# the final write-up of the fix): every tool-using turn re-sends the whole conversation, which makes a strong model costly.
 STRONG_MODEL_MAX_TOKENS = 32768
 
 
