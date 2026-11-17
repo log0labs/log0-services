@@ -331,16 +331,20 @@ async def finalize(state: ChangeProposalState, runtime: Runtime[CodeInvestigator
 
     first = str(state["messages"][0].content) if state["messages"] else ""
     prompt = f"{first}\n\nNotes of the files you read:\n<repository_data>\n{escape_data(render_notes(state['messages']))}\n</repository_data>"
-    try:
-        model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=True).with_structured_output(
-            ChangeProposalAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
-        )
-        raw = await invoke_with_tool_retry(
-            lambda: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=ctx.limits.model_timeout_seconds, what="change finalize"
-        )
-        answer = ChangeProposalAnswer.model_validate(raw)
-    except Exception:
-        logger.warning("change proposer: the changes could not be generated", exc_info=True)
+    answer: ChangeProposalAnswer | None = None
+    for strong in (True, True, False):  # a model that answers with no structured data is asked again, then the ordinary model is tried
+        try:
+            model = ctx.models.for_purpose(Purpose.INVESTIGATION, strong=strong).with_structured_output(
+                ChangeProposalAnswer, method=ctx.models.structured_method(Purpose.INVESTIGATION)
+            )
+            raw = await invoke_with_tool_retry(
+                lambda model=model: model.ainvoke([("system", FINALIZE_PROMPT), ("human", prompt)]), timeout=ctx.limits.model_timeout_seconds, what="change finalize"
+            )
+            answer = ChangeProposalAnswer.model_validate(raw)
+            break
+        except Exception:
+            logger.warning("change proposer: the changes could not be generated (strong=%s)", strong, exc_info=True)
+    if answer is None:
         return {"gaps": [*gaps, "No fix was proposed (the model was unavailable or its answer was unusable)"]}
 
     changes, notes, more = ground_changes(answer, set(state["seen_paths"]))
