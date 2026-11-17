@@ -38,9 +38,9 @@ from app.graph.subgraphs.code_tools import build_toolset
 logger = logging.getLogger(__name__)
 
 _OPEN_CALLS = 1  # making the snapshot
-MAX_CHANGE_CALLS = 12
-MAX_CHANGE_STEPS = 8
-MAX_CHANGE_SECONDS = 120.0
+MAX_CHANGE_CALLS = 24
+MAX_CHANGE_STEPS = 16
+MAX_CHANGE_SECONDS = 240.0
 _CODE_REF = re.compile(r"^(?P<path>.+):(?P<start>\d+)-(?P<end>\d+)@[0-9a-f]{8}$")
 MAX_BRIEF_ITEMS = 5
 MAX_BRIEF_TEXT = 600
@@ -119,7 +119,8 @@ async def propose_changes(state: InvestigationState, runtime: Runtime[Investigat
                     "tool_calls": _OPEN_CALLS,
                     "change_attempts": attempts,
                 }
-            tools = {name: spec for name, spec in build_toolset(checkout.code, checkout.git).items() if name in READ_ONLY_TOOLS}
+            wide = checkout.widened()  # a fix can span the services the root cause points at
+            tools = {name: spec for name, spec in build_toolset(wide.code, wide.git).items() if name in READ_ONLY_TOOLS}
             limits = CodeLimits(max_tool_calls=MAX_CHANGE_CALLS, max_steps=MAX_CHANGE_STEPS, max_seconds=MAX_CHANGE_SECONDS)
             proposal = await propose_code_changes(
                 CodeInvestigatorContext(tools=tools, models=ctx.models, limits=limits), brief=build_brief(state), focus=focus

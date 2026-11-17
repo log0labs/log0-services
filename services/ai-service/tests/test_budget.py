@@ -15,18 +15,18 @@ def _check(budget: Budget, *, elapsed: float = 0, tools: int = 0, rounds: int = 
 
 def test_the_defaults_are_the_limits_from_the_architecture() -> None:
     budget = Budget()
-    assert (budget.max_wall_seconds, budget.max_tool_calls, budget.max_verify_rounds) == (300, 30, 2)
+    assert (budget.max_wall_seconds, budget.max_tool_calls, budget.max_verify_rounds) == (600, 70, 2)
 
 
 def test_there_is_room_below_every_limit() -> None:
-    assert _check(Budget(), elapsed=299.9, tools=29, rounds=1) is None
+    assert _check(Budget(), elapsed=599.9, tools=69, rounds=1) is None
 
 
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
-        ({"elapsed": 300}, "time limit (300 seconds)"),
-        ({"tools": 30}, "tool-call limit (30)"),
+        ({"elapsed": 600}, "time limit (600 seconds)"),
+        ({"tools": 70}, "tool-call limit (70)"),
         ({"rounds": 2}, "verification round limit (2)"),
     ],
 )

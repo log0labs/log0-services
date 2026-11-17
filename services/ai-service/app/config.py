@@ -157,8 +157,8 @@ class Settings(BaseSettings):
     deploy_poll_seconds: float = 30.0  # how often a waiting deploy looks at its pipeline run
     deploy_sweep_seconds: float = 10.0  # how often the sweeper looks for runs whose wake-up time has come
     # What a pull request may be: no protected files (workflows, locks, keys), at most this much, at most this often.
-    pr_max_files: int = 10
-    pr_max_changed_lines: int = 400
+    pr_max_files: int = 25  # the most a pull request log0 opens may touch: a human has to review it, and review quality falls with size
+    pr_max_changed_lines: int = 1000
     pr_max_per_repository_per_hour: int = 3
     pr_max_per_tenant_per_hour: int = 10
     # Optional: run a repository's own tests in a locked-down container when it has no CI (see app/sandbox/docker.py).

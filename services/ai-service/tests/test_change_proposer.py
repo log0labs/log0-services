@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 
 from app.graph.subgraphs import change_proposer as cp
 from app.graph.subgraphs.change_proposer import (
+    MAX_CHANGES,
     NOTES_RESULT_CHARS,
     READ_ONLY_TOOLS,
     CodeFocus,
@@ -259,8 +260,10 @@ async def test_delete_needs_a_file_that_was_read_and_clears_the_code_fields() ->
 
 
 async def test_changes_are_capped_and_the_same_edit_is_kept_once() -> None:
-    drafts = [modify(old=f"{OLD} {i}", new=f"{NEW} {i}") for i in range(8)]
-    assert len(grounded(*drafts)[0]) == 5
+    drafts = [modify(old=f"{OLD} {i}", new=f"{NEW} {i}") for i in range(MAX_CHANGES + 3)]
+    kept, _, cut = grounded(*drafts)
+    assert len(kept) == MAX_CHANGES
+    assert any("3 more change(s)" in gap and "incomplete" in gap for gap in cut)  # a bigger fix is said to be cut, never cut silently
     again, _, gaps = grounded(modify(), modify())
     assert len(again) == 1 and len(gaps) == 1  # the duplicate counts as discarded
 

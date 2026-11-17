@@ -8,7 +8,8 @@ box, the 3.4 cache). Tests wire a fake that points at a temporary repository.
 """
 
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
+from pathlib import PurePosixPath
 from typing import Protocol
 from uuid import UUID
 
@@ -24,6 +25,22 @@ class CodeAccessError(Exception):
     """
 
 
+def shared_prefix(prefix: str, siblings: tuple[str, ...]) -> str:
+    """The folder that holds ``prefix`` and every sibling folder: where a failure that crosses services can be searched.
+
+    ``""`` (the whole repository) stays ``""``, and with no siblings nothing changes.
+    """
+    if not prefix or not siblings:
+        return prefix
+    parts = [PurePosixPath(p).parts for p in (prefix, *siblings) if p]
+    common: list[str] = []
+    for column in zip(*parts, strict=False):
+        if len(set(column)) != 1:
+            break
+        common.append(column[0])
+    return "/".join(common)
+
+
 @dataclass(frozen=True)
 class CodeCheckout:
     """A repository ready to be read: where and at which commit, and the tools over it."""
@@ -31,6 +48,15 @@ class CodeCheckout:
     repo: RepoContext  # owner/name, branch, the commit sha everything was read at, the service folder
     code: CodeTools
     git: GitTools
+    siblings: tuple[str, ...] = ()  # the folders of the other services mapped to the same repository
+
+    def widened(self) -> "CodeCheckout":
+        """The same checkout whose default scope also covers the sibling services, because a failure can start in one
+        service and show in another. A tool can still read any file by path; this widens what listing and searching see."""
+        prefix = shared_prefix(self.repo.path_prefix, self.siblings)
+        if prefix == self.repo.path_prefix or not (hasattr(self.code, "prefix") and hasattr(self.git, "prefix") and is_dataclass(self.code) and is_dataclass(self.git)):
+            return self
+        return replace(self, code=replace(self.code, prefix=prefix), git=replace(self.git, prefix=prefix))
 
 
 class CodeAccess(Protocol):

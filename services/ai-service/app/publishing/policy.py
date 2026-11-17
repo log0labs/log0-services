@@ -44,8 +44,8 @@ _MAX_REASONS_SHOWN = 3
 
 @dataclass(frozen=True)
 class PrLimits:
-    max_files: int = 10
-    max_changed_lines: int = 400  # additions plus deletions over the whole change
+    max_files: int = 25
+    max_changed_lines: int = 1000  # additions plus deletions over the whole change
     max_per_repository_per_hour: int = 3
     max_per_tenant_per_hour: int = 10
 
@@ -76,10 +76,10 @@ def check_diff(files: list[FileDiff], limits: PrLimits) -> list[str]:
     """Reasons the change cannot be published as a pull request (empty: it can)."""
     reasons = [reason for file in files if (reason := protected_reason(file.file_path))]
     if len(files) > limits.max_files:
-        reasons.append(f"it touches {len(files)} files and the limit is {limits.max_files}")
+        reasons.append(f"it touches {len(files)} files and the limit is {limits.max_files} (the diff is still shown: apply it yourself, or ask the operator to raise PR_MAX_FILES)")
     changed = sum(file.additions + file.deletions for file in files)
     if changed > limits.max_changed_lines:
-        reasons.append(f"it changes {changed} lines and the limit is {limits.max_changed_lines}")
+        reasons.append(f"it changes {changed} lines and the limit is {limits.max_changed_lines} (the diff is still shown: apply it yourself, or ask the operator to raise PR_MAX_CHANGED_LINES)")
     return reasons[:_MAX_REASONS_SHOWN]
 
 

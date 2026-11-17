@@ -269,7 +269,7 @@ async def test_without_models_verify_raises() -> None:
 @pytest.mark.parametrize(
     ("state_over", "budget", "expected"),
     [
-        ({"tool_calls": 30}, Budget(), "tool-call limit"),
+        ({"tool_calls": 70}, Budget(), "tool-call limit"),
         ({"verify_round": 2}, Budget(), "verification round limit"),
         ({}, Budget(max_wall_seconds=0), "time limit"),
     ],

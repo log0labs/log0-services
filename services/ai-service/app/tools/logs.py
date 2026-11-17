@@ -181,22 +181,41 @@ WHERE tenant_id = {{tenant_id:String}}
   AND level IN ('WARN', 'ERROR', 'FATAL')
 {exclude}
 GROUP BY service_name, fingerprint
-ORDER BY n DESC
+ORDER BY {order}
+LIMIT {{per_service:UInt32}} BY service_name
 LIMIT {{max_rows:UInt32}}
 """
+_ORDER_BY_COUNT = "n DESC"
+_ORDER_NEWEST_FIRST = "(first_ts >= {onset:DateTime64(3)}) DESC, n DESC"  # patterns that began with the incident come before older noise
 _EXCLUDE_FINGERPRINT = "  AND fingerprint != {exclude_fingerprint:String}"
 
 
-async def get_cooccurring_errors(backend: LogBackend, *, tenant_id: UUID, start: datetime, end: datetime, exclude_fingerprint: str | None = None, limit: int = 20) -> list[CooccurringError]:
-    """What else was failing in the window (WARN/ERROR/FATAL), across all services."""
+async def get_cooccurring_errors(
+    backend: LogBackend,
+    *,
+    tenant_id: UUID,
+    start: datetime,
+    end: datetime,
+    exclude_fingerprint: str | None = None,
+    limit: int = 20,
+    onset: datetime | None = None,
+    per_service: int = 3,
+) -> list[CooccurringError]:
+    """What else was failing in the window (WARN/ERROR/FATAL), across all services.
+
+    At most ``per_service`` patterns of each service, so one noisy service cannot hide a quiet one. With ``onset``, patterns
+    that first appeared at or after it come first (what started with the incident), then the most frequent.
+    """
     start, end = _check_window(start, end)
     if not 1 <= limit <= MAX_COOCCURRING_LIMIT:
         raise ValueError(f"limit must be between 1 and {MAX_COOCCURRING_LIMIT}")
-    parameters: dict[str, Any] = {"start": start, "end": end, "max_rows": limit}
+    parameters: dict[str, Any] = {"start": start, "end": end, "max_rows": limit, "per_service": max(1, min(per_service, limit))}
+    if onset is not None:
+        parameters["onset"] = onset
     if exclude_fingerprint is not None:
         parameters["exclude_fingerprint"] = exclude_fingerprint
     rows = await backend.query(
-        _COOCCURRING_SQL.format(exclude=_EXCLUDE_FINGERPRINT if exclude_fingerprint is not None else ""),
+        _COOCCURRING_SQL.format(exclude=_EXCLUDE_FINGERPRINT if exclude_fingerprint is not None else "", order=_ORDER_NEWEST_FIRST if onset is not None else _ORDER_BY_COUNT),
         tenant_id=tenant_id,
         parameters=parameters,
     )

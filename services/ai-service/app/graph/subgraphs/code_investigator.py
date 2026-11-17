@@ -122,9 +122,9 @@ Rules:
 
 @dataclass(frozen=True)
 class CodeLimits:
-    max_tool_calls: int = 16  # seeding included
-    max_steps: int = 10  # model turns
-    max_seconds: float = 90.0
+    max_tool_calls: int = 32  # seeding included
+    max_steps: int = 20  # model turns
+    max_seconds: float = 180.0
     tool_timeout_seconds: float = 30.0
     model_timeout_seconds: float = 60.0
 

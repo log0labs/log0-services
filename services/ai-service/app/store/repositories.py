@@ -227,6 +227,16 @@ async def list_services(session: AsyncSession, *, tenant_id: UUID) -> list[Servi
     return [_to_service(row) for row in result.all()]
 
 
+async def mapped_prefixes(session: AsyncSession, *, tenant_id: UUID, repository_id: UUID) -> list[str]:
+    """The folders of every service of this tenant that is mapped to the repository (the whole repository, ``""``, is left out)."""
+    result = await session.execute(
+        select(service_repository.c.path_prefix).where(
+            service_repository.c.tenant_id == tenant_id, service_repository.c.repository_id == repository_id, service_repository.c.path_prefix != ""
+        )
+    )
+    return sorted({row[0] for row in result.all()})
+
+
 async def get_service(session: AsyncSession, *, tenant_id: UUID, service_name: str) -> ServiceRepository | None:
     result = await session.execute(
         select(service_repository).where(

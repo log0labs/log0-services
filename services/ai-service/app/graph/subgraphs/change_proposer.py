@@ -52,7 +52,7 @@ from app.tools.code import CodeToolError, check_repo_path, is_excluded
 
 logger = logging.getLogger(__name__)
 
-MAX_CHANGES = 5
+MAX_CHANGES = 20  # edits in one proposal (several can be in one file); a bigger fix is said to be cut, never cut silently
 MAX_OLD_CODE = 4000
 MAX_NEW_CODE = 8000
 MAX_EXPLANATION = 400
@@ -114,7 +114,7 @@ Rules:
 FINALIZE_PROMPT = """You write the code changes that fix a production incident.
 
 You are given the root cause and the notes of every file you read. Write the smallest set of changes that
-fixes it (at most five).
+fixes it (at most twenty). A fix may span several files and services: include every edit it needs, and keep each one small.
 
 Rules:
 - For a modify change, old_code is the exact existing text, copied character for character from the notes
@@ -212,6 +212,8 @@ def ground_changes(answer: ChangeProposalAnswer, seen_paths: set[str]) -> tuple[
         text = " ".join(item.split())[:MAX_NOTE_CHARS]
         if text and text not in notes:
             notes.append(text)
+    if len(kept) > MAX_CHANGES:
+        gaps.append(f"{len(kept) - MAX_CHANGES} more change(s) were proposed than one proposal may hold ({MAX_CHANGES}); they were left out, so this fix is incomplete")
     return kept[:MAX_CHANGES], notes[:MAX_NOTES], gaps
 
 

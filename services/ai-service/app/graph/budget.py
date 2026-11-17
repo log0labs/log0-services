@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Budget:
-    max_wall_seconds: float = 300.0
-    max_tool_calls: int = 30
+    max_wall_seconds: float = 600.0
+    max_tool_calls: int = 70
     max_verify_rounds: int = 2
 
     def exhausted(self, *, elapsed_seconds: float, tool_calls: int, verify_rounds: int) -> str | None:

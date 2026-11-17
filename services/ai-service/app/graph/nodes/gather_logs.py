@@ -12,7 +12,7 @@ As in ``load_context``, a ClickHouse outage becomes a gap, never an error.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from langgraph.runtime import Runtime
@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 
 _TOOL_CALLS = 3  # get_error_timeline, get_cooccurring_errors, search_logs
 COOCCURRING_LIMIT = 10
+MAX_SUMMARY = 500
+ONSET_SLACK = timedelta(minutes=5)  # a pattern that first appeared this long before the incident still counts as beginning with it
 SAMPLE_LINES = 15
 MAX_TIMELINE_LINES = 60
 MAX_SLOTS = 120  # a timeline longer than this is too long to read, so use bigger buckets
@@ -109,18 +111,21 @@ def cooccurring_evidence(incident: IncidentContext, start: datetime, end: dateti
             content="",
         )
     top = errors[0]
+    onset = incident.first_seen_at - ONSET_SLACK
+    began = [e for e in errors if e.first_seen >= onset]
     lines = [
-        f"{e.service_name}: {e.message_template} ({e.count}x, {_hhmm(e.first_seen)}-{_hhmm(e.last_seen)})"
+        f"{e.service_name}: {e.message_template} ({e.count}x, {_hhmm(e.first_seen)}-{_hhmm(e.last_seen)})" + (" [began with the incident]" if e in began else "")
         for e in errors
     ]
+    services = sorted({e.service_name for e in errors})
+    summary = f"{len(errors)} other failing pattern(s) {window} in {len(services)} service(s) ({', '.join(services[:4])}); most frequent: {top.service_name}: {top.message_template[:120]} ({top.count}x)"
+    if began:
+        summary += "; began with the incident: " + "; ".join(f"{e.service_name}: {e.message_template[:80]} ({e.count}x)" for e in began[:3])
     return Evidence(
         id=make_evidence_id("log", ref),
         kind="log",
         source_ref=ref,
-        summary=(
-            f"{len(errors)} other failing pattern(s) {window}; "
-            f"most frequent: {top.service_name}: {top.message_template[:120]} ({top.count}x)"
-        ),
+        summary=summary[:MAX_SUMMARY],
         content="\n".join(lines)[:MAX_CONTENT],
     )
 
@@ -204,6 +209,7 @@ async def gather_logs(state: InvestigationState, runtime: Runtime[InvestigationC
             end=end,
             exclude_fingerprint=incident.fingerprint,
             limit=COOCCURRING_LIMIT,
+            onset=max(start, incident.first_seen_at - ONSET_SLACK),
         ),
         search_logs(
             ctx.logs,
