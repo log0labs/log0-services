@@ -102,6 +102,9 @@ Work like this:
 - Read the code you are going to change, and enough around it to be sure the change is correct and fits
   the existing style. Read other files only when the fix needs them (a caller, a constant, a test helper).
 - Make the smallest change that fixes the root cause. Do not refactor, rename or reformat anything else.
+- Read source files only: skip build files, lock files, Dockerfiles, CI and other configuration unless the fix is in one of them.
+- When the fix needs something another service does not have yet (an endpoint, a client call), read that service's handler, its
+  storage and its tests, so the change you write matches how it works.
 - Stop as soon as you can write the change: you have a limited number of tool calls. When you are done
   looking, reply in plain text with a short summary and call no more tools.
 

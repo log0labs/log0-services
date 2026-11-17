@@ -38,9 +38,9 @@ from app.graph.subgraphs.code_tools import build_toolset
 logger = logging.getLogger(__name__)
 
 _OPEN_CALLS = 1  # making the snapshot
-MAX_CHANGE_CALLS = 24
-MAX_CHANGE_STEPS = 16
-MAX_CHANGE_SECONDS = 240.0
+MAX_CHANGE_CALLS = 40
+MAX_CHANGE_STEPS = 30
+MAX_CHANGE_SECONDS = 400.0  # a fix that spans services reads a file or two in each
 _CODE_REF = re.compile(r"^(?P<path>.+):(?P<start>\d+)-(?P<end>\d+)@[0-9a-f]{8}$")
 MAX_BRIEF_ITEMS = 5
 MAX_BRIEF_TEXT = 600
